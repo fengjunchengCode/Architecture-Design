@@ -8,6 +8,20 @@
 
 Python 脚本只做确定性工作：初始化目录、扫描文件、计算 hash、校验 YAML/frontmatter、检查 S0 区位图门槛、生成机器可读报告。建筑语义理解、冲突判断、低置信标记、pending questions 和正文写入由 agent 按 skill 完成。
 
+## 上下文边界
+
+默认只读取以下权威入口：
+
+- `AGENTS.md`
+- `README.md`
+- `_schema/record.schema.md`
+- `_schema/folder.convention.md`
+- `_schema/folder.convention.yaml`
+- `skills/*/SKILL.md`
+- `_tools/*.py` 与 `_tools/init_project/*.py`
+
+`docs/planning/` 是历史规划与讨论材料，只在用户明确要求“查看背景、历史规划、baseline、步骤规划”时读取。不要把其中内容当作当前执行规范；如与 `_schema/`、`skills/` 或本文件冲突，以当前权威入口为准。
+
 ## 首次进入仓库
 
 1. 运行依赖安装：
