@@ -6,12 +6,12 @@ folders:
     required: true
     items:
       - pattern: "brief.*"
-        ext: [docx, pdf, md]
+        ext: [doc, docx, pdf, md, txt]
         min: 0
         max: 1
         required: false
       - pattern: "supplement_*.*"
-        ext: [txt, md, docx, jpg, png]
+        ext: [txt, md, doc, docx, jpg, png]
         min: 0
         max: 999
         required: false
@@ -85,7 +85,7 @@ s0_ready_gate:
       min: 1
   recommended:
     - path: 01_briefing
-      ext: [docx, pdf, md, txt]
+      ext: [doc, docx, pdf, md, txt]
       min: 1
     - path: 04_chat
       ext: [txt, html, md]

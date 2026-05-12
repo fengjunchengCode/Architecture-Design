@@ -8,15 +8,19 @@
 
 Python 脚本只做确定性工作：初始化目录、扫描文件、计算 hash、校验 YAML/frontmatter、检查 S0 区位图门槛、生成机器可读报告。建筑语义理解、冲突判断、低置信标记、pending questions 和正文写入由 agent 按 skill 完成。
 
+文件读取必须遵守 `inventory.json` 的 `read_policy`。正文提取优先使用 `python _tools/extract_text.py {文件路径}`。老 `.doc` 二进制文件只登记路径/hash/文件名，必须先转换为 `.docx`、PDF 或 TXT 后再做语义解析；不得用 `strings`、裸 `cat`、裸 `Read` 或临时 `textract` 探测作为兜底。
+
 ## 上下文边界
 
 默认只读取以下权威入口：
 
 - `AGENTS.md`
 - `README.md`
+- `SKILL.md`
 - `_schema/record.schema.md`
 - `_schema/folder.convention.md`
 - `_schema/folder.convention.yaml`
+- `skills/_shared/*.md`
 - `skills/*/SKILL.md`
 - `_tools/*.py` 与 `_tools/init_project/*.py`
 
@@ -40,7 +44,10 @@ python _tools/selfcheck.py
 
 - `_schema/record.schema.md`
 - `_schema/folder.convention.md`
+- `SKILL.md`
 - `skills/S0_project_intake/SKILL.md`
+
+后续阶段默认先由 `SKILL.md` 做路由，再读取对应子 skill。根 skill 只负责总协议、gate 和路由，不直接写 `record.md` 阶段正文。
 
 ## 新项目初始化
 
@@ -78,9 +85,16 @@ python _tools/uploader/server.py
 python _tools/validate_record.py 26-SZ-NSXX
 ```
 
+## 续跑原则
+
+续跑以 `record.md` 为准。已有 marker 内容代表该阶段已有结果，agent 不得因为缺少额外状态文件而从 S0 重新开始。
+
+进入已有项目时，先读 `record.md` frontmatter、各阶段 marker、`completeness.ready_for` 和 `completeness.blocked`，再决定是补充当前阶段、重跑某个阶段，还是进入下一阶段。
+
 ## 写入约束
 
 - 每个 skill 只能改写自己 marker 之间的正文段。
+- 根 skill `SKILL.md` 不写阶段正文，只做路由和执行前检查。
 - YAML frontmatter 字段必须遵守 `_schema/record.schema.md`。
 - 新字段先改 schema，再改工具和 skill。
 - 不要把外部平台字段写入核心 schema。外部同步以后放到 `integrations/` 或独立投影器。

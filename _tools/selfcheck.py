@@ -50,6 +50,26 @@ def check_compile(path: str) -> Check:
     return Check(f"compile:{path}", True, "ok")
 
 
+def check_skill_frontmatter(path: str) -> Check:
+    full = REPO_ROOT / path
+    if not full.exists():
+        return Check(f"skill-frontmatter:{path}", False, "missing")
+    text = full.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return Check(f"skill-frontmatter:{path}", False, "missing frontmatter")
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return Check(f"skill-frontmatter:{path}", False, "unclosed frontmatter")
+    frontmatter = text[4:end]
+    has_name = any(line.startswith("name:") and line[5:].strip() for line in frontmatter.splitlines())
+    has_description = any(
+        line.startswith("description:") and line[12:].strip() for line in frontmatter.splitlines()
+    )
+    ok = has_name and has_description
+    detail = "ok" if ok else "requires name and description"
+    return Check(f"skill-frontmatter:{path}", ok, detail)
+
+
 def run_checks() -> list[Check]:
     checks = [
         check_python(),
@@ -62,17 +82,40 @@ def run_checks() -> list[Check]:
         check_file("_tools/init_project/scaffold.py"),
         check_file("_tools/validate_record.py"),
         check_file("_tools/inventory.py"),
+        check_file("_tools/extract_text.py"),
         check_file("_tools/uploader/server.py"),
         check_file("_tools/uploader/static/index.html"),
+        check_file("SKILL.md"),
+        check_file("skills/_shared/record_contract.md"),
+        check_file("skills/_shared/marker_contract.md"),
+        check_file("skills/_shared/folder_contract.md"),
+        check_file("skills/_shared/confidence_contract.md"),
+        check_file("skills/_shared/output_style.md"),
         check_file("skills/S0_project_intake/SKILL.md"),
+        check_file("skills/S1_site_analysis/SKILL.md"),
+        check_file("skills/S2_dwg_parse/SKILL.md"),
+        check_file("skills/S3_area_and_massing/SKILL.md"),
+        check_file("skills/S4_questions_summary/SKILL.md"),
+        check_file("skills/S9_report_outline/SKILL.md"),
     ]
     (REPO_ROOT / "projects").mkdir(exist_ok=True)
     checks.append(check_file("projects"))
+    skill_paths = [
+        "SKILL.md",
+        "skills/S0_project_intake/SKILL.md",
+        "skills/S1_site_analysis/SKILL.md",
+        "skills/S2_dwg_parse/SKILL.md",
+        "skills/S3_area_and_massing/SKILL.md",
+        "skills/S4_questions_summary/SKILL.md",
+        "skills/S9_report_outline/SKILL.md",
+    ]
+    checks.extend(check_skill_frontmatter(path) for path in skill_paths)
     checks.extend(
         [
             check_compile("_tools/init_project/scaffold.py"),
             check_compile("_tools/validate_record.py"),
             check_compile("_tools/inventory.py"),
+            check_compile("_tools/extract_text.py"),
             check_compile("_tools/uploader/server.py"),
         ]
     )

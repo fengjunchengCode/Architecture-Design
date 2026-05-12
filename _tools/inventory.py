@@ -24,6 +24,11 @@ INPUT_DIRS = [
 ]
 
 LOCATION_EXTS = {".png", ".jpg", ".jpeg", ".pdf"}
+DIRECT_TEXT_EXTS = {".txt", ".md", ".html", ".htm", ".csv", ".json", ".yaml", ".yml"}
+DOCUMENT_EXTRACT_EXTS = {".docx", ".pdf"}
+VISUAL_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+LEGACY_WORD_EXTS = {".doc"}
+BINARY_INDEX_ONLY_EXTS = {".dwg", ".dxf", ".skp", ".psd", ".heic"}
 
 
 @dataclass
@@ -32,6 +37,10 @@ class FileRecord:
     size_bytes: int
     sha1: str
     bucket: str
+    ext: str
+    read_policy: str
+    requires_conversion: bool
+    agent_note: str
 
 
 def sha1_file(path: Path) -> str:
@@ -59,6 +68,25 @@ def classify(rel_path: str) -> str:
     return "other"
 
 
+def read_policy_for(path: Path) -> tuple[str, bool, str]:
+    ext = path.suffix.lower()
+    if ext in DIRECT_TEXT_EXTS:
+        return ("direct_text", False, "Safe to read as UTF-8/HTML text if size is reasonable.")
+    if ext in DOCUMENT_EXTRACT_EXTS:
+        return ("document_extract", False, "Use a dedicated document/PDF extractor or renderer; do not read raw bytes.")
+    if ext in VISUAL_EXTS:
+        return ("visual_asset", False, "Use image/vision inspection; do not read raw bytes as text.")
+    if ext in LEGACY_WORD_EXTS:
+        return (
+            "legacy_word_conversion_required",
+            True,
+            "Legacy .doc binary: inventory only. Convert to .docx, PDF, or TXT before semantic extraction; do not use strings/cat/raw reads.",
+        )
+    if ext in BINARY_INDEX_ONLY_EXTS:
+        return ("binary_index_only", False, "Binary/CAD asset: record path/hash only unless a dedicated parser exists.")
+    return ("unknown_index_only", False, "Unknown extension: record path/hash only until a reader is explicitly chosen.")
+
+
 def iter_input_files(project_dir: Path) -> list[FileRecord]:
     records: list[FileRecord] = []
     for input_dir in INPUT_DIRS:
@@ -69,12 +97,17 @@ def iter_input_files(project_dir: Path) -> list[FileRecord]:
             if not path.is_file() or path.name == ".gitkeep":
                 continue
             rel = path.relative_to(project_dir).as_posix()
+            read_policy, requires_conversion, agent_note = read_policy_for(path)
             records.append(
                 FileRecord(
                     path=rel,
                     size_bytes=path.stat().st_size,
                     sha1=sha1_file(path),
                     bucket=classify(rel),
+                    ext=path.suffix.lower(),
+                    read_policy=read_policy,
+                    requires_conversion=requires_conversion,
+                    agent_note=agent_note,
                 )
             )
     return sorted(records, key=lambda item: item.path)
@@ -120,14 +153,24 @@ def main() -> int:
 
     records = iter_input_files(project_dir)
     s0_ready = has_location_map(records)
+    conversion_required = [record.path for record in records if record.requires_conversion]
+    warnings = []
+    if conversion_required:
+        warnings.append(
+            "Legacy .doc files require conversion to .docx, PDF, or TXT before semantic extraction. "
+            "Agents must not use strings/cat/raw binary reads as a fallback."
+        )
     report: dict[str, Any] = {
         "project_dir": str(project_dir),
         "project_code": project_dir.name,
         "s0_ready": s0_ready,
         "required_missing": [] if s0_ready else ["02_site/区位图/*.{png,jpg,jpeg,pdf}"],
+        "conversion_required": conversion_required,
+        "warnings": warnings,
         "files": [asdict(record) for record in records],
         "counts": {
             "total": len(records),
+            "conversion_required": len(conversion_required),
             "briefing": sum(1 for record in records if record.bucket == "briefing"),
             "location_map": sum(1 for record in records if record.bucket == "location_map"),
             "topography": sum(1 for record in records if record.bucket == "topography"),
@@ -147,6 +190,10 @@ def main() -> int:
         print(f"  s0_ready: {s0_ready}")
         if report["required_missing"]:
             print(f"  missing: {', '.join(report['required_missing'])}")
+        if conversion_required:
+            print("  conversion_required:")
+            for path in conversion_required:
+                print(f"    - {path}")
         for key, value in report["counts"].items():
             print(f"  {key}: {value}")
 

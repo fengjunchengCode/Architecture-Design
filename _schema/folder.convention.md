@@ -58,8 +58,8 @@ repo_root/                              ## 用户 clone 到哪里，哪里就是
 
 | **文件** | **扩展名** | **数量** | **必填** | **说明** |
 | --- | --- | --- | --- | --- |
-| `brief.{ext}` | docx / pdf / md | 0—1 | ○ 推荐 | 任务书主文件。没有 brief 时允许从聊天记录或补充说明启动，S0 会提 pending_question |
-| `supplement_*.{ext}` | txt / md / docx / jpg / png | 0—n | ○ 可选 | 补充说明，文件名用下划线 + 英文描述，如 `supplement_classroom_size.jpg` |
+| `brief.{ext}` | doc / docx / pdf / md / txt | 0—1 | ○ 推荐 | 任务书主文件。`.doc` 只登记文件事实，正文需先转换为 docx / pdf / txt 再解析。没有 brief 时允许从聊天记录或补充说明启动，S0 会提 pending_question |
+| `supplement_*.{ext}` | txt / md / doc / docx / jpg / png | 0—n | ○ 可选 | 补充说明，文件名用下划线 + 英文描述，如 `supplement_classroom_size.jpg`。`.doc` 同样需转换后解析正文 |
 
 ### 3.2 `02_site/区位图/` · 区位类
 
@@ -152,12 +152,12 @@ folders:
     required: true                  ## 本文件夹本身需要存在
     items:
       - pattern: "brief.*"
-        ext: [docx, pdf, md]
+        ext: [doc, docx, pdf, md, txt]
         min: 0                      ## 极简启动 OK；S0 会补 pending_question
         max: 1
         required: false             ## 软必填·助手中显示为“推荐”
       - pattern: "supplement_*.*"
-        ext: [txt, md, docx, jpg, png]
+        ext: [txt, md, doc, docx, jpg, png]
         min: 0
         max: 999
         required: false
