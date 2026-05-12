@@ -62,6 +62,8 @@ def run_checks() -> list[Check]:
         check_file("_tools/init_project/scaffold.py"),
         check_file("_tools/validate_record.py"),
         check_file("_tools/inventory.py"),
+        check_file("_tools/uploader/server.py"),
+        check_file("_tools/uploader/static/index.html"),
         check_file("skills/S0_project_intake/SKILL.md"),
     ]
     (REPO_ROOT / "projects").mkdir(exist_ok=True)
@@ -71,6 +73,7 @@ def run_checks() -> list[Check]:
             check_compile("_tools/init_project/scaffold.py"),
             check_compile("_tools/validate_record.py"),
             check_compile("_tools/inventory.py"),
+            check_compile("_tools/uploader/server.py"),
         ]
     )
     return checks

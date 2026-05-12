@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Architecture Intake</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="mast">
+        <div>
+          <p class="eyebrow">Architecture Design Workflow</p>
+          <h1>项目资料投递台</h1>
+        </div>
+        <div class="status-pill" id="serverStatus">Localhost</div>
+      </section>
+
+      <section class="panel setup-panel">
+        <div class="panel-title">
+          <h2>项目</h2>
+          <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
+        </div>
+        <div class="form-grid">
+          <label>
+            <span>项目代号</span>
+            <input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off">
+          </label>
+          <label>
+            <span>项目名称</span>
+            <input id="projectName" placeholder="深圳南山某小学" autocomplete="off">
+          </label>
+          <label>
+            <span>项目类型</span>
+            <select id="projectType">
+              <option value="school">school</option>
+              <option value="residential">residential</option>
+              <option value="commercial">commercial</option>
+              <option value="park">park</option>
+              <option value="street_scape">street_scape</option>
+              <option value="renovation">renovation</option>
+              <option value="hospital">hospital</option>
+              <option value="cultural">cultural</option>
+              <option value="industrial">industrial</option>
+              <option value="cultural_tourism">cultural_tourism</option>
+              <option value="unknown">unknown</option>
+            </select>
+          </label>
+          <button id="createProject" class="primary">创建/打开项目</button>
+        </div>
+        <div class="project-list" id="projectList"></div>
+      </section>
+
+      <section class="grid" id="dropGrid">
+        <article class="bucket" data-bucket="briefing">
+          <div class="bucket-head"><b>需求类</b><span>brief / supplement</span></div>
+          <input type="file" multiple>
+          <button>上传文件</button>
+        </article>
+        <article class="bucket required" data-bucket="location_map">
+          <div class="bucket-head"><b>区位图</b><span>S0 必选</span></div>
+          <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
+          <button>上传文件</button>
+        </article>
+        <article class="bucket" data-bucket="topography">
+          <div class="bucket-head"><b>地形图</b><span>DWG / PDF / 红线图</span></div>
+          <input type="file" multiple>
+          <button>上传文件</button>
+        </article>
+        <article class="bucket" data-bucket="site_photo">
+          <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
+          <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
+          <button>上传文件</button>
+        </article>
+        <article class="bucket" data-bucket="reference">
+          <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
+          <input type="file" multiple>
+          <button>上传文件</button>
+        </article>
+        <article class="bucket" data-bucket="chat">
+          <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
+          <input type="file" accept=".txt,.html,.md" multiple>
+          <button>上传文件</button>
+        </article>
+      </section>
+
+      <section class="panel action-panel">
+        <div class="action-row">
+          <button id="runInventory" class="primary">运行 Inventory</button>
+          <button id="runValidate">校验 Record</button>
+          <div class="gate" id="gateStatus">等待项目</div>
+        </div>
+        <pre id="output">准备就绪。</pre>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

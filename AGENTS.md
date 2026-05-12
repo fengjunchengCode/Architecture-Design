@@ -62,6 +62,14 @@ projects/{项目代号}/02_site/区位图/
 python _tools/inventory.py 26-SZ-NSXX --require-s0-ready
 ```
 
+也可以启动本地上传 UI 完成资料投递：
+
+```powershell
+python _tools/uploader/server.py
+```
+
+默认访问 `http://127.0.0.1:8765`。
+
 4. 执行 S0 skill：读取 inventory、原始资料和 schema，由 agent 更新 `record.md` 与 `parse_log.md`。无法确认的信息进入 `pending_questions`；已有值但不确定的信息进入 `low_confidence_fields`。
 
 5. 写入后校验：

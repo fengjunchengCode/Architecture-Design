@@ -32,7 +32,10 @@ python _tools/selfcheck.py
 
 ```powershell
 python _tools/init_project/scaffold.py 26-SZ-NSXX --type school --name "深圳南山某小学"
+python _tools/uploader/server.py
 python _tools/inventory.py 26-SZ-NSXX --require-s0-ready
 ```
 
 如果 inventory 报告缺少区位图，agent 应停止 S0 解析并要求用户放入区位图。不要用空地址绕过 S0。
+
+上传 UI 默认运行在 `http://127.0.0.1:8765`，用于把资料投递到标准目录并触发 inventory / validate。
