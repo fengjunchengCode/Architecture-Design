@@ -5,6 +5,7 @@
   --line: #d8d1c4;
   --paper: #f7f3ea;
   --panel: #fffdf7;
+  --disabled: #e9e2d6;
   --accent: #1f6f5b;
   --accent-2: #b94b2f;
   --shadow: 0 18px 50px rgba(46, 37, 20, 0.12);
@@ -79,6 +80,59 @@ h2 {
   white-space: nowrap;
 }
 
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.step {
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.84);
+  padding: 12px;
+  min-height: 94px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.step span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 13px;
+}
+
+.step b {
+  font-size: 15px;
+}
+
+.step em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.step.active {
+  border-color: var(--accent);
+  box-shadow: 0 10px 28px rgba(31, 111, 91, 0.12);
+}
+
+.step.done {
+  border-color: rgba(31, 111, 91, 0.45);
+  background: rgba(31, 111, 91, 0.08);
+}
+
+.step.locked {
+  color: #9d968b;
+  background: rgba(255, 253, 247, 0.48);
+}
+
 .panel,
 .bucket {
   border: 1px solid var(--line);
@@ -97,6 +151,15 @@ h2 {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.panel-title p,
+.section-heading p,
+.active-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .form-grid {
@@ -139,6 +202,15 @@ button:hover {
   border-color: var(--ink);
 }
 
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  color: #9a9284;
+  border-color: var(--disabled);
+  background: #f1ece3;
+}
+
 .primary {
   border-color: var(--accent);
   background: var(--accent);
@@ -155,6 +227,24 @@ button:hover {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
+}
+
+.empty-projects {
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  padding: 9px 12px;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  margin: 20px 0 12px;
+}
+
+.section-heading h2 {
+  font-size: 18px;
 }
 
 .project-chip {
@@ -188,12 +278,29 @@ button:hover {
 }
 
 .bucket.required::before {
-  content: "required";
+  content: "S0 必选";
   position: absolute;
   right: 12px;
   top: 12px;
   color: var(--accent-2);
   font-size: 12px;
+}
+
+.bucket.locked {
+  opacity: 0.62;
+  box-shadow: none;
+}
+
+.bucket.locked::after {
+  content: "先完成第 1 步";
+  position: absolute;
+  inset: auto 12px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bucket.has-files {
+  border-color: rgba(31, 111, 91, 0.5);
 }
 
 .bucket-head b {
@@ -210,6 +317,12 @@ button:hover {
 .bucket input {
   border-style: dashed;
   background: rgba(31, 111, 91, 0.04);
+}
+
+.bucket-state {
+  min-height: 24px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 pre {
@@ -233,7 +346,8 @@ pre {
   }
 
   .form-grid,
-  .grid {
+  .grid,
+  .steps {
     grid-template-columns: 1fr;
   }
 }

@@ -13,12 +13,38 @@
           <p class="eyebrow">Architecture Design Workflow</p>
           <h1>项目资料投递台</h1>
         </div>
-        <div class="status-pill" id="serverStatus">Localhost</div>
+        <div class="status-pill" id="activeProject">未选择项目</div>
+      </section>
+
+      <section class="steps" aria-label="工作流步骤">
+        <div class="step active" id="stepProject">
+          <span>1</span>
+          <b>创建或选择项目</b>
+          <em>先确定资料要进入哪个项目</em>
+        </div>
+        <div class="step locked" id="stepUpload">
+          <span>2</span>
+          <b>上传资料</b>
+          <em>区位图是 S0 必选</em>
+        </div>
+        <div class="step locked" id="stepCheck">
+          <span>3</span>
+          <b>检查准入</b>
+          <em>运行 inventory / validate</em>
+        </div>
+        <div class="step locked" id="stepAgent">
+          <span>4</span>
+          <b>交给 Agent 解析</b>
+          <em>S0 写入 record.md</em>
+        </div>
       </section>
 
       <section class="panel setup-panel">
         <div class="panel-title">
-          <h2>项目</h2>
+          <div>
+            <h2>第 1 步：创建或选择项目</h2>
+            <p>未创建/选择项目之前，下面的上传区会锁定，避免文件被误认为已经上传。</p>
+          </div>
           <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
         </div>
         <div class="form-grid">
@@ -33,58 +59,78 @@
           <label>
             <span>项目类型</span>
             <select id="projectType">
-              <option value="school">school</option>
-              <option value="residential">residential</option>
-              <option value="commercial">commercial</option>
-              <option value="park">park</option>
-              <option value="street_scape">street_scape</option>
-              <option value="renovation">renovation</option>
-              <option value="hospital">hospital</option>
-              <option value="cultural">cultural</option>
-              <option value="industrial">industrial</option>
-              <option value="cultural_tourism">cultural_tourism</option>
-              <option value="unknown">unknown</option>
+              <option value="school">学校 / 教育建筑</option>
+              <option value="residential">住宅</option>
+              <option value="commercial">商业 / 办公</option>
+              <option value="park">公园 / 景观</option>
+              <option value="street_scape">街角 / 街道更新</option>
+              <option value="renovation">改造 / 更新</option>
+              <option value="hospital">医院 / 医疗</option>
+              <option value="cultural">文化建筑</option>
+              <option value="industrial">产业 / 工业</option>
+              <option value="cultural_tourism">文旅 / 多节点项目</option>
+              <option value="unknown">暂不确定</option>
             </select>
           </label>
           <button id="createProject" class="primary">创建/打开项目</button>
         </div>
+        <p class="active-note" id="projectHint">请先创建新项目，或从下方已有项目中选择一个。</p>
         <div class="project-list" id="projectList"></div>
+      </section>
+
+      <section class="section-heading">
+        <div>
+          <h2>第 2 步：上传资料到当前项目</h2>
+          <p id="uploadHint">等待项目创建或选择。选择文件不会自动上传，必须点击“上传到当前项目”。</p>
+        </div>
       </section>
 
       <section class="grid" id="dropGrid">
         <article class="bucket" data-bucket="briefing">
           <div class="bucket-head"><b>需求类</b><span>brief / supplement</span></div>
           <input type="file" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
         <article class="bucket required" data-bucket="location_map">
           <div class="bucket-head"><b>区位图</b><span>S0 必选</span></div>
           <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
         <article class="bucket" data-bucket="topography">
           <div class="bucket-head"><b>地形图</b><span>DWG / PDF / 红线图</span></div>
           <input type="file" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
         <article class="bucket" data-bucket="site_photo">
           <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
           <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
         <article class="bucket" data-bucket="reference">
           <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
           <input type="file" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
         <article class="bucket" data-bucket="chat">
           <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
           <input type="file" accept=".txt,.html,.md" multiple>
-          <button>上传文件</button>
+          <div class="bucket-state">未选择文件</div>
+          <button>上传到当前项目</button>
         </article>
       </section>
 
       <section class="panel action-panel">
+        <div class="panel-title">
+          <div>
+            <h2>第 3 步：检查是否可以进入 S0</h2>
+            <p>Inventory 只检查资料和区位图 gate；Validate 只校验 record.md 结构。</p>
+          </div>
+        </div>
         <div class="action-row">
           <button id="runInventory" class="primary">运行 Inventory</button>
           <button id="runValidate">校验 Record</button>
