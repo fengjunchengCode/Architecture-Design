@@ -55,7 +55,7 @@ description: 建筑设计项目的总协议与主路由 skill。用于用户要�
 
 - `direct_text`：可作为文本读取，但仍需控制大小。
 - `document_extract`：只能用明确的文档/PDF 提取器或渲染器，不读取原始二进制。
-- `visual_asset`：先运行 `python _tools/vision_route.py {code} --write`，由工具自动路由到 `VISION_MODEL`；不要让用户手动切换 API 模型。未配置视觉模型时，读取 `05_output/vision/*.json` 的降级结果并写入 pending/low confidence。
+- `visual_asset`：先运行 `python _tools/vision_route.py {code} --write`，由工具自动路由到配置的视觉模型；不要让用户手动切换 API 模型。未配置视觉模型时，读取 `05_output/vision/*.json` 的降级结果并写入 pending/low confidence。
 - `legacy_word_conversion_required`：老 `.doc` 二进制文件只登记路径/hash。必须先转换为 `.docx`、PDF 或 TXT，才能进入语义抽取。
 - `binary_index_only` / `unknown_index_only`：只登记路径、hash、文件名；没有专用解析器时不得推断正文。
 
@@ -67,7 +67,13 @@ description: 建筑设计项目的总协议与主路由 skill。用于用户要�
 python _tools/vision_route.py {项目代号} --write
 ```
 
-该工具根据环境变量 `VISION_MODEL` 自动调用视觉模型并把结果写入 `05_output/vision/`。如果 `OPENAI_API_KEY` 或 `VISION_MODEL` 未配置，工具会写入降级 sidecar，S0 应继续推进并把地址、坐标、红线等缺口进入 `pending_questions`，而不是要求用户切换模型。
+该工具支持多种视觉模型 provider（OpenAI、Anthropic、Google），根据环境变量自动选择或由 `VISION_PROVIDER` 指定。如果视觉模型未配置，工具会写入降级 sidecar，S0 应继续推进并把地址、坐标、红线等缺口进入 `pending_questions`，而不是要求用户切换模型。
+
+查看可用 provider 状态：
+
+```powershell
+python _tools/vision_route.py --list-providers
+```
 
 禁止把 `strings`、裸 `cat`、裸 `Read`、临时 `textract` 探测作为 `.doc` 的兜底解析流程。若 `01_briefing/` 里只有 `.doc`，S0 可以从文件名和其他资料提取有限信息，并把“任务书正文需转换”写入 `pending_questions` 或 `parse_log.md`。
 
