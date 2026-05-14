@@ -83,6 +83,7 @@ def run_checks() -> list[Check]:
         check_file("_tools/validate_record.py"),
         check_file("_tools/inventory.py"),
         check_file("_tools/extract_text.py"),
+        check_file("_tools/vision_route.py"),
         check_file("_tools/uploader/server.py"),
         check_file("_tools/uploader/static/index.html"),
         check_file("SKILL.md"),
@@ -92,6 +93,7 @@ def run_checks() -> list[Check]:
         check_file("skills/_shared/confidence_contract.md"),
         check_file("skills/_shared/output_style.md"),
         check_file("skills/S0_project_intake/SKILL.md"),
+        check_file("skills/S0_project_intake/user_guidance.md"),
         check_file("skills/S1_site_analysis/SKILL.md"),
         check_file("skills/S2_dwg_parse/SKILL.md"),
         check_file("skills/S3_area_and_massing/SKILL.md"),
@@ -116,6 +118,7 @@ def run_checks() -> list[Check]:
             check_compile("_tools/validate_record.py"),
             check_compile("_tools/inventory.py"),
             check_compile("_tools/extract_text.py"),
+            check_compile("_tools/vision_route.py"),
             check_compile("_tools/uploader/server.py"),
         ]
     )

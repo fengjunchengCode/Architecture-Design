@@ -33,6 +33,7 @@ projects/{code}/
 python _tools/init_project/scaffold.py {code} --type {type} --name "{name}"
 python _tools/uploader/server.py
 python _tools/inventory.py {code} --require-s0-ready --write
+python _tools/vision_route.py {code} --write
 python _tools/validate_record.py {code}
 ```
 
@@ -46,7 +47,7 @@ python _tools/validate_record.py {code}
 
 - `.doc` 老 Word 二进制文件是 `legacy_word_conversion_required`，只能登记路径/hash/文件名，先转换再解析正文。
 - DWG、SKP、PSD、HEIC 等是 `binary_index_only`，没有专用工具时只登记事实。
-- 图片按视觉资料处理，PDF/DOCX 按专用提取器或渲染器处理。
+- 图片按视觉资料处理，先走 `_tools/vision_route.py` 自动路由到视觉模型；PDF/DOCX 按专用提取器或渲染器处理。
 - 不要用 `strings`、裸 `cat`、裸 `Read` 或临时依赖探测作为二进制解析兜底。
 
 需要抽取正文时，优先运行：
@@ -54,3 +55,11 @@ python _tools/validate_record.py {code}
 ```powershell
 python _tools/extract_text.py {文件路径}
 ```
+
+需要解析区位图、现场照片、参考图时，优先运行：
+
+```powershell
+python _tools/vision_route.py {项目代号} --write
+```
+
+该工具读取 `OPENAI_API_KEY` 和 `VISION_MODEL`。未配置时仍会写入 `05_output/vision/*.json`，提醒 S0 自动降级为待确认问题；不要让普通用户手动切换 API 模型。

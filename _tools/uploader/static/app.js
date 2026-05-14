@@ -1,5 +1,6 @@
 const state = {
   project: "",
+  pendingUrlProject: new URLSearchParams(window.location.search).get("project") || "",
   projects: [],
   inventory: null,
 };
@@ -26,7 +27,11 @@ function typedProjectCode() {
 }
 
 function activeProject() {
+  const typed = typedProjectCode();
   if (!state.project) throw new Error("请先完成第 1 步：创建或选择项目");
+  if (typed && typed !== state.project) {
+    throw new Error(`当前输入为 ${typed}，但尚未打开该项目。请先点击“创建/打开项目”。`);
+  }
   return state.project;
 }
 
@@ -51,14 +56,63 @@ function clearFileInputs() {
   });
 }
 
+function syncUrlProject(code) {
+  const url = new URL(window.location.href);
+  if (code) {
+    url.searchParams.set("project", code);
+  } else {
+    url.searchParams.delete("project");
+  }
+  window.history.replaceState({}, "", url);
+}
+
+function renderProjectList() {
+  const list = $("#projectList");
+  list.innerHTML = "";
+  if (!state.projects.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-projects";
+    empty.textContent = "还没有项目。请填写上方信息并点击“创建/打开项目”。";
+    list.appendChild(empty);
+    return;
+  }
+  state.projects.forEach((project) => {
+    const chip = document.createElement("button");
+    chip.className = `project-chip ${project.code === state.project ? "active" : ""}`;
+    chip.textContent = project.code;
+    chip.addEventListener("click", () => {
+      setActiveProject(project.code);
+      runInventory().catch((err) => writeOutput(err.message));
+    });
+    list.appendChild(chip);
+  });
+}
+
+function setActiveProject(code, options = {}) {
+  const { syncUrl = true, clearFiles = true, resetInventory = true } = options;
+  state.project = code;
+  if (resetInventory) state.inventory = null;
+  if (code) $("#projectCode").value = code;
+  if (clearFiles) clearFileInputs();
+  if (syncUrl) syncUrlProject(code);
+  renderProjectList();
+  setControls();
+}
+
 function setControls() {
-  const hasProject = Boolean(state.project);
-  $("#activeProject").textContent = hasProject ? `当前项目：${state.project}` : "未选择项目";
-  $("#projectHint").textContent = hasProject
-    ? `已打开 ${state.project}。现在可以上传资料。`
-    : "请先创建新项目，或从下方已有项目中选择一个。";
+  const typed = typedProjectCode();
+  const mismatch = Boolean(state.project && typed && typed !== state.project);
+  const hasProject = Boolean(state.project && !mismatch);
+  $("#activeProject").textContent = state.project ? `当前项目：${state.project}` : "未选择项目";
+  if (mismatch) {
+    $("#projectHint").textContent = `当前输入为 ${typed}，但打开的项目仍是 ${state.project}。请先点击“创建/打开项目”。`;
+  } else {
+    $("#projectHint").textContent = hasProject
+      ? `已打开 ${state.project}。上传、Inventory 和 Validate 都会指向这个项目。`
+      : "请先创建新项目，或从下方已有项目中选择一个。";
+  }
   $("#uploadHint").textContent = hasProject
-    ? "选择文件后还没有上传，必须点击对应卡片里的“上传到当前项目”。"
+    ? `选择文件后必须点击对应卡片里的“上传到当前项目”，文件会进入 ${state.project}。`
     : "等待项目创建或选择。上传区已锁定。";
 
   document.querySelectorAll(".bucket").forEach((bucketEl) => {
@@ -100,32 +154,24 @@ function updateBucketStates() {
 async function loadProjects() {
   const data = await api("/api/projects");
   state.projects = data.projects;
-  const list = $("#projectList");
-  list.innerHTML = "";
-  if (!data.projects.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-projects";
-    empty.textContent = "还没有项目。请填写上方信息并点击“创建/打开项目”。";
-    list.appendChild(empty);
-    setControls();
-    return;
-  }
-  data.projects.forEach((project) => {
-    const chip = document.createElement("button");
-    chip.className = `project-chip ${project.code === state.project ? "active" : ""}`;
-    chip.textContent = project.code;
-    chip.addEventListener("click", () => {
-      state.project = project.code;
+  let shouldRunInventory = false;
+  if (state.pendingUrlProject) {
+    const requested = state.pendingUrlProject;
+    state.pendingUrlProject = "";
+    if (state.projects.some((project) => project.code === requested)) {
+      state.project = requested;
+      $("#projectCode").value = requested;
       state.inventory = null;
-      $("#projectCode").value = project.code;
       clearFileInputs();
-      setControls();
-      loadProjects();
-      runInventory();
-    });
-    list.appendChild(chip);
-  });
+      shouldRunInventory = true;
+    } else {
+      writeOutput(`URL 中的项目 ${requested} 不存在。请先创建/打开项目。`);
+      syncUrlProject("");
+    }
+  }
+  renderProjectList();
   setControls();
+  if (shouldRunInventory) await runInventory();
 }
 
 async function createProject() {
@@ -141,11 +187,9 @@ async function createProject() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  state.project = code;
-  state.inventory = null;
-  clearFileInputs();
   writeOutput(data);
   await loadProjects();
+  setActiveProject(code, { clearFiles: true, resetInventory: true });
   await runInventory();
 }
 
@@ -187,11 +231,8 @@ function bind() {
   $("#runValidate").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
   $("#projectCode").addEventListener("input", () => {
     if ($("#projectCode").value.trim() !== state.project) {
-      state.project = "";
-      state.inventory = null;
-      clearFileInputs();
+      setActiveProject("", { syncUrl: true, clearFiles: true, resetInventory: true });
       setControls();
-      loadProjects().catch((err) => writeOutput(err.message));
     }
   });
 

@@ -4,6 +4,8 @@
 
 `inventory.py` 会为每个输入文件标注 `read_policy`。正文提取优先走 `python _tools/extract_text.py {文件路径}`。老 `.doc` 文件不会被直接读取正文，必须先转换为 `.docx`、PDF 或 TXT；agent 只能先记录其路径、hash 和文件名。
 
+JPG/PNG 区位图、现场照片等视觉资料由 `python _tools/vision_route.py {项目代号} --write` 自动路由到 `VISION_MODEL`。普通用户不需要手动切换 API 模型；未配置视觉模型时，工具会生成降级 sidecar，S0 继续以待确认问题推进。
+
 当前 skill 系统采用“根 skill router + 阶段子 skill + shared 协议库”的结构：
 
 - `SKILL.md`：总协议与路由器。
@@ -23,6 +25,7 @@ python _tools/selfcheck.py
 python _tools/init_project/scaffold.py 26-SZ-NSXX --type school --name "深圳南山某小学"
 python _tools/uploader/server.py
 python _tools/inventory.py 26-SZ-NSXX --require-s0-ready
+python _tools/vision_route.py 26-SZ-NSXX --write
 python _tools/validate_record.py 26-SZ-NSXX
 ```
 
