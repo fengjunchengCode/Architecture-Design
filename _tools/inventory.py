@@ -75,7 +75,11 @@ def read_policy_for(path: Path) -> tuple[str, bool, str]:
     if ext in DOCUMENT_EXTRACT_EXTS:
         return ("document_extract", False, "Use a dedicated document/PDF extractor or renderer; do not read raw bytes.")
     if ext in VISUAL_EXTS:
-        return ("visual_asset", False, "Use image/vision inspection; do not read raw bytes as text.")
+        return (
+            "visual_asset",
+            False,
+            "Route through _tools/vision_route.py or an agent vision tool; do not ask the user to switch models.",
+        )
     if ext in LEGACY_WORD_EXTS:
         return (
             "legacy_word_conversion_required",

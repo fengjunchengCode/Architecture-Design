@@ -25,6 +25,7 @@ repo_root/                              ## 用户 clone 到哪里，哪里就是
 ├── _tools/                              ## 脚本区
 │   ├── selfcheck.py                     ## agent 自检
 │   ├── inventory.py                     ## 项目文件盘点
+│   ├── vision_route.py                  ## 图片资料自动路由到视觉模型
 │   ├── validate_record.py               ## 校验脚本
 │   └── init_project/
 │       └── scaffold.py                  ## 项目脚手架
@@ -43,6 +44,7 @@ repo_root/                              ## 用户 clone 到哪里，哪里就是
         └── 05_output/
             ├── record.md                ## 真相文件
             ├── parse_log.md             ## S0 解析日志
+            ├── vision/                  ## 图片视觉解析 sidecar
             └── 汇报文档.md              ## S9 产出
 ```
 
@@ -66,6 +68,8 @@ repo_root/                              ## 用户 clone 到哪里，哪里就是
 | **文件名范例** | **扩展名** | **数量** | **必填** | **说明** |
 | --- | --- | --- | --- | --- |
 | `location_*.{ext}` | png / jpg / jpeg / pdf | 1—n | ✅ 至少 1 张 | 区位图是 S0 硬门槛。原始投递可宽松命名，归档推荐改为 `location_1km.png` / `location_500m.png` 等 |
+
+JPG/PNG/WEBP 区位图上传后不要求用户切换 API 模型。S0 运行时由 agent 调用 `python _tools/vision_route.py {项目代号} --write`，工具自动读取 `OPENAI_API_KEY` 和 `VISION_MODEL` 做视觉解析；未配置时写入降级 sidecar，后续由 S0 把地址、坐标、红线等缺口列入待确认问题。
 
 ### 3.3 `02_site/地形图/` · 地形类
 
@@ -99,6 +103,8 @@ repo_root/                              ## 用户 clone 到哪里，哪里就是
 | --- | --- | --- |
 | `record.md` | S0 创建；S1/S2/S3/S4/S9 patch | 真相文件，见 `_schema/record.schema.md` |
 | `parse_log.md` | S0 追写 | 解析摘要、文件 hash、⚠️ 字段详单 |
+| `vision/*.vision.json` | `vision_route.py` | 图片识别 sidecar；配置视觉模型时写识别结果，未配置时写降级提示 |
+| `vision/index.json` | `vision_route.py` | 当前图片识别结果索引 |
 | `汇报文档.md` | S9 | 6 段式汇报初稿 |
 | `assets/` | 各 skill | 高德截图、生成示意图、中间产物 |
 

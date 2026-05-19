@@ -19,6 +19,7 @@ description: 建筑设计工作流 S0 项目档案初始化。用于用户要求
 - `skills/_shared/folder_contract.md`
 - `skills/_shared/confidence_contract.md`
 - `skills/_shared/output_style.md`
+- `skills/S0_project_intake/user_guidance.md`
 
 如本文与共享协议冲突，以共享协议和 `_schema/record.schema.md` 为准。
 
@@ -41,11 +42,14 @@ description: 建筑设计工作流 S0 项目档案初始化。用于用户要求
 
 ```powershell
 python _tools/inventory.py {项目代号} --require-s0-ready --write
+python _tools/vision_route.py {项目代号} --write
 ```
 
 ## Agent 职责
 
+- 按 `skills/S0_project_intake/user_guidance.md` 使用标准用户引导流程，不临场自由发挥 S0 操作话术。
 - 阅读 inventory 输出和原始资料。
+- 对 `visual_asset` 文件先运行 `_tools/vision_route.py`，用 `VISION_MODEL` 自动处理图片；如果视觉模型未配置，则读取降级 sidecar 并把缺口写入 pending，不要求用户手动切换模型。
 - 判断文件属于任务书、区位图、地形图、现场照片、参考案例还是聊天记录。
 - 从资料中抽取项目名称、甲方、类型、规模、地址、风格偏好、功能需求。
 - 判断字段置信度。
@@ -61,6 +65,7 @@ S0 必须先看 `inventory.json` 中每个文件的 `read_policy`：
 - `direct_text` 文件可以读取文本内容。
 - `document_extract` 文件只能通过明确的 PDF/DOCX 提取器或渲染器读取。
 - `visual_asset` 文件用视觉方式理解，不做二进制文本探测。
+- `visual_asset` 文件必须优先通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到视觉模型。工具使用 `OPENAI_API_KEY` 和 `VISION_MODEL`；未配置时会写入降级结果，S0 继续生成待确认问题。
 - `legacy_word_conversion_required` 的 `.doc` 文件不得直接读取、不得用 `strings`/裸 `cat`/临时 `textract` 兜底。只记录路径、hash、文件名，并要求转换为 `.docx`、PDF 或 TXT 后再抽取正文。
 - `binary_index_only` 和 `unknown_index_only` 只作为文件事实登记，不能推断正文。
 
@@ -72,6 +77,7 @@ S0 必须先看 `inventory.json` 中每个文件的 `read_policy`：
 
 - `scaffold.py`：创建目录与空 `record.md`。
 - `inventory.py`：扫描文件、计算 hash、判断区位图门槛、标注文件读取策略和转换需求。
+- `vision_route.py`：把区位图、现场照片、参考图自动路由到配置的视觉模型，并把结果写入 `05_output/vision/`；未配置时生成降级 sidecar。
 - `extract_text.py`：安全提取文本和 `.docx` 正文；遇到 `.doc` 时明确要求转换。
 - `validate_record.py`：校验 frontmatter、marker、枚举和项目文件夹一致性。
 
@@ -82,6 +88,19 @@ Python 不负责建筑语义判断，不强制要求用户文件名完全标准�
 - `projects/{项目代号}/05_output/record.md`
 - `projects/{项目代号}/05_output/parse_log.md`
 - 可选：`projects/{项目代号}/05_output/inventory.json`
+
+## 用户引导输出
+
+执行 S0 的对话必须覆盖以下信息：
+
+1. 当前处于 S0 项目档案初始化。
+2. 区位图是 S0 硬门槛。
+3. 用户上传资料后要运行 Inventory 和 Validate。
+4. JPG/PNG 区位图会自动走视觉模型路由；用户不需要手动切换 API 模型。
+5. `.doc` 旧版 Word 只登记文件事实，需 PDF/DOCX/TXT 才能语义解析。
+6. S0 完成后要说明已确认事实、待问问题和推荐下一步。
+
+具体话术使用 `skills/S0_project_intake/user_guidance.md`，不得另起一套口径。
 
 ## 写入规则
 

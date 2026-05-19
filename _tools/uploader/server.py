@@ -244,7 +244,16 @@ class UploaderHandler(BaseHTTPRequestHandler):
                         break
                     handle.write(chunk)
             saved.append(str(out.relative_to(proj)).replace("\\", "/"))
-        self.send_json({"ok": True, "saved": saved, "count": len(saved)})
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "bucket": bucket,
+                "target_dir": BUCKETS[bucket],
+                "saved": saved,
+                "count": len(saved),
+            }
+        )
 
     def handle_inventory(self, query: str) -> None:
         params = parse_qs(query)

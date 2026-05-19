@@ -10,6 +10,8 @@ Python 脚本只做确定性工作：初始化目录、扫描文件、计算 has
 
 文件读取必须遵守 `inventory.json` 的 `read_policy`。正文提取优先使用 `python _tools/extract_text.py {文件路径}`。老 `.doc` 二进制文件只登记路径/hash/文件名，必须先转换为 `.docx`、PDF 或 TXT 后再做语义解析；不得用 `strings`、裸 `cat`、裸 `Read` 或临时 `textract` 探测作为兜底。
 
+图片资料（`visual_asset`，如 JPG/PNG 区位图、现场照片）必须通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到配置的视觉模型。支持多种 provider（OpenAI、Anthropic、Google），通过 `VISION_PROVIDER` 环境变量选择。不得要求用户手动切换 API 模型；若视觉模型未配置，则读取 `05_output/vision/` 降级 sidecar，并把地址、坐标、红线等缺口写入 `pending_questions` 或 `low_confidence_fields`。
+
 ## 上下文边界
 
 默认只读取以下权威入口：

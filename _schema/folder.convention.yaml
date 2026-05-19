@@ -78,6 +78,16 @@ folders:
     required: true
     items: []
 
+vision_route:
+  output_dir: 05_output/vision
+  provider_env: VISION_PROVIDER
+  default_provider: openai
+  api_key_env: OPENAI_API_KEY
+  model_env: VISION_MODEL
+  fallback: write_sidecar_and_pending_questions
+  buckets: [location_map, site_photo, reference]
+  ext: [png, jpg, jpeg, webp]
+
 s0_ready_gate:
   required:
     - path: 02_site/区位图
