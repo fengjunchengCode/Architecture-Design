@@ -6,6 +6,17 @@
 
 JPG/PNG 区位图、现场照片等视觉资料由 `python _tools/vision_route.py {项目代号} --write` 自动路由到 `VISION_MODEL`。普通用户不需要手动切换 API 模型；未配置视觉模型时，工具会生成降级 sidecar，S0 继续以待确认问题推进。
 
+视觉模型配置放在仓库根目录 `.env` 中，可从 `.env.example` 复制。至少配置一种 provider：
+
+```powershell
+Copy-Item .env.example .env
+python _tools/vision_route.py --list-providers
+```
+
+如果 provider 未配置、API 报错或模型不存在，agent 不得改用当前对话模型直接读图；应读取 `05_output/vision/` 的 sidecar，并把图片中的地址、坐标、红线和现场条件列为待确认问题。
+
+DWG/DXF 地形资料由 `python _tools/dwg_probe.py {项目代号} --json --write` 进入 S2。该工具会自动检测 `ezdxf` 与 ODA File Converter，能转换就先把 DWG 转为 DXF 并提取确定性几何事实；缺工具时会输出 `install_guidance`，agent 应先按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案。
+
 当前 skill 系统采用“根 skill router + 阶段子 skill + shared 协议库”的结构：
 
 - `SKILL.md`：总协议与路由器。
@@ -26,6 +37,7 @@ python _tools/init_project/scaffold.py 26-SZ-NSXX --type school --name "深圳�
 python _tools/uploader/server.py
 python _tools/inventory.py 26-SZ-NSXX --require-s0-ready
 python _tools/vision_route.py 26-SZ-NSXX --write
+python _tools/dwg_probe.py 26-SZ-NSXX --json --write
 python _tools/validate_record.py 26-SZ-NSXX
 ```
 

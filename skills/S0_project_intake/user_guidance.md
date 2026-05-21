@@ -152,6 +152,17 @@ PDF 已经上传并被识别为任务书资料。
 后续只要管理员配置视觉模型（支持 OpenAI、Anthropic、Google），同一张图可以重新跑视觉解析。
 ```
 
+管理员配置入口：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，至少填写一种 provider 的 API key 和模型
+python _tools/vision_route.py --list-providers
+python _tools/vision_route.py {code} --json --write
+```
+
+执行规则：如果 Vision Route 返回未配置、API 错误或模型不存在，agent 不得继续用当前对话模型直接读取图片，也不得提示用户 `/model` 切换模型；只能把图片事实登记下来，并把图中地址、坐标、红线、现场条件等列入待确认问题。
+
 ## S0 完成后的标准交付
 
 S0 写入并校验通过后，使用：

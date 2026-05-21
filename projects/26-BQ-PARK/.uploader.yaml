@@ -1,0 +1,13 @@
+## 项目级投递助手配置；仅 S0 读它作为就绪检查。人工可改。
+project_code: "26-BQ-PARK"
+project_type: "park"
+s0_ready_gate:
+  ## 区位图是 S0 硬门槛；缺失时 agent 只做收件检查，不进入解析。
+  required:
+    - "02_site/区位图/**/*"
+  ## 以下路径推荐但不是硬门槛。
+  recommended:
+    - "01_briefing/**/*"
+    - "02_site/现场照片/**/*"
+    - "04_chat/**/*"
+port: 8765

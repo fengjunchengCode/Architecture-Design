@@ -50,6 +50,7 @@ python _tools/vision_route.py {项目代号} --write
 - 按 `skills/S0_project_intake/user_guidance.md` 使用标准用户引导流程，不临场自由发挥 S0 操作话术。
 - 阅读 inventory 输出和原始资料。
 - 对 `visual_asset` 文件先运行 `_tools/vision_route.py`，用 `VISION_MODEL` 自动处理图片；如果视觉模型未配置，则读取降级 sidecar 并把缺口写入 pending，不要求用户手动切换模型。
+- 如果 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，必须停止图片语义读取：不得再用当前对话模型、内置 `Read`、截图查看或 `/model` 切换来补读图片；只能记录图片存在、读取 sidecar、生成待确认问题。
 - 判断文件属于任务书、区位图、地形图、现场照片、参考案例还是聊天记录。
 - 从资料中抽取项目名称、甲方、类型、规模、地址、风格偏好、功能需求。
 - 判断字段置信度。
@@ -66,6 +67,7 @@ S0 必须先看 `inventory.json` 中每个文件的 `read_policy`：
 - `document_extract` 文件只能通过明确的 PDF/DOCX 提取器或渲染器读取。
 - `visual_asset` 文件用视觉方式理解，不做二进制文本探测。
 - `visual_asset` 文件必须优先通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到视觉模型。工具使用 `OPENAI_API_KEY` 和 `VISION_MODEL`；未配置时会写入降级结果，S0 继续生成待确认问题。
+- `visual_asset` 的降级结果不是“请 agent 自己看图”的许可。降级后图片语义一律视为未知，地址、坐标、红线、现场条件、周边道路等都必须进入 pending 或 low confidence。
 - `legacy_word_conversion_required` 的 `.doc` 文件不得直接读取、不得用 `strings`/裸 `cat`/临时 `textract` 兜底。只记录路径、hash、文件名，并要求转换为 `.docx`、PDF 或 TXT 后再抽取正文。
 - `binary_index_only` 和 `unknown_index_only` 只作为文件事实登记，不能推断正文。
 

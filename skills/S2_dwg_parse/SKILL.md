@@ -30,11 +30,23 @@ description: 建筑设计工作流 S2 DWG、红线、地形和几何解析。用
 
 `02_site/地形图/` 中至少有 DWG、PDF、红线图或可读地形资料。只有 `.dwl` / `.dwl2` 锁文件不算有效输入。
 
+## 确定性工具链
+
+S2 解析 DWG/DXF 时必须先运行：
+
+```powershell
+python _tools/dwg_probe.py {code} --json --write
+```
+
+该脚本会自动检测 `ezdxf` 与 ODA File Converter。若工具已存在，优先使用 ODA 将 DWG 转为 DXF，再由 `ezdxf` 提取图层、实体统计、闭合多段线候选、文字标注和边界范围等机器事实。若 `ezdxf` 或 ODA 不存在，脚本会返回 `install_guidance`，agent 应按指引安装或配置工具后重跑；手动 CAD 导出 DXF 只作为自动转换失败后的降级方案。
+
+不得裸读 DWG 二进制内容，也不得因为缺少 ODA 就跳过工具检测直接要求用户手动导出。
+
 ## Agent 职责
 
 1. 列出可用地形/红线文件及 hash。
-2. 区分可由脚本确定的几何事实和仅能人工判断的图面语义。
-3. 如已有或后续有 DWG 解析脚本，优先使用脚本结果，不手算复杂几何。
+2. 读取 `05_output/dwg_probe.json`，区分可由脚本确定的几何事实和仅能人工判断的图面语义。
+3. 优先使用 `dwg_probe.py` 结果，不手算复杂几何。
 4. 可确认时更新 `site.area_sqm`、`site.boundary_shape`、`site.has_elevation_diff` 等字段。
 5. 不确定的面积、坐标、高差进入 pending 或 low confidence。
 6. 只改写 `s2_dwg_parse` marker。
@@ -60,6 +72,7 @@ description: 建筑设计工作流 S2 DWG、红线、地形和几何解析。用
 - 不从现场照片或区位图估算正式地块面积。
 - 不把 DWG 锁文件当成设计资料。
 - 不在没有脚本或明确图面标注时输出高精度坐标/面积。
+- 不绕过 `dwg_probe.py` 直接读取或猜测 DWG 内容。
 
 ## 校验
 

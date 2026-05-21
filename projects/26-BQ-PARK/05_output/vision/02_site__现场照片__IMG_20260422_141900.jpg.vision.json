@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:18:41+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_141900.jpg",
+    "size_bytes": 4415371,
+    "sha1": "13b003e1b7d8e3129bee934763ece8cb7f9a1344",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "现场照片显示一个开阔的土地区域，前景有绿色金属围栏，中景为裸露土地、电线杆和远处挖掘机，背景是山丘，天空晴朗有云。",
+    "visible_site_conditions": [
+      "裸露的泥土地面",
+      "绿色金属网围栏",
+      "多个电线杆及架空电线",
+      "施工挖掘机（黄色）",
+      "背景山丘地形",
+      "红色临时结构（带国旗）",
+      "晴朗天气，阳光充足"
+    ],
+    "constraints": [
+      "地面不平整，需工程处理",
+      "现有电线杆可能妨碍建筑布局",
+      "围栏限制部分区域进入",
+      "地形有坡度，可能影响基础设计"
+    ],
+    "opportunities": [
+      "场地开阔，提供较大设计自由度",
+      "自然山景可融入设计",
+      "已有施工设备，便于开发",
+      "良好日照条件"
+    ],
+    "confidence": "high",
+    "needs_review": [
+      "确认土地用途和规划要求",
+      "检查地下管线和设施",
+      "评估土壤承载力",
+      "核实红线和边界（照片中不可见）"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "7e6b9a015e9941e98df155afa079f6cd"
+}

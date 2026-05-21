@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:17:29+0800",
+  "source": {
+    "path": "02_site/区位图/中.png",
+    "size_bytes": 2352929,
+    "sha1": "f034c5a2a2a9b4a6a82e27986c2d96e0adc15b55",
+    "bucket": "location_map",
+    "ext": ".png",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "该图像为西藏自治区巴青县县城区域的卫星遥感图。画面显示了一个位于高原山谷地带的城镇，城镇主要沿G317国道和一条河流呈条带状分布。四周为高大的、呈灰褐色的山脉，山谷底部相对平坦，用于建设。图中有两个醒目的人工红色矩形标记框。",
+    "detected_text": [
+      "巴青县人民政府",
+      "巴青县公安局",
+      "巴青县人民检察院",
+      "拉西镇政府",
+      "达尔塘路",
+      "G317",
+      "人民路",
+      "幸福便民警务站",
+      "达尔塘路便民警务站",
+      "人民路便民警务站",
+      "2021",
+      "2024",
+      "扎拉",
+      "崩波舍",
+      "珠确达村",
+      "贡朗勒",
+      "影像拍摄日期：2020/12/30",
+      "世纪空间",
+      "数据来自二十一世纪空间技术应用股份有限公司 GS京(2023)0226号"
+    ],
+    "location_clues": [
+      "西藏自治区巴青县",
+      "G317国道沿线",
+      "高原河谷地貌",
+      "县城行政中心（标有巴青县人民政府）"
+    ],
+    "roads_or_landmarks": [
+      "G317国道",
+      "达尔塘路",
+      "人民路",
+      "巴青县人民政府",
+      "拉西镇政府",
+      "巴青县公安局",
+      "巴青县人民检察院"
+    ],
+    "site_marker_description": "图中有两个明显的红色矩形边框标记。1. 位于画面中左上方，G317国道北侧，圈出了一小片靠近道路的建筑群，其东侧为“拉西镇政府”标注点。2. 位于画面中下方偏右，圈出了一大片区域，核心为“巴青县人民政府”及其周边建筑群。",
+    "confidence": "high",
+    "needs_review": [
+      "红色标记框的具体用途与项目用地关系不明确，需人工确认其是否为本项目用地范围或重点关注区域。",
+      "影像拍摄日期为2020年底，地面现状可能已有变化，需复核最新情况。",
+      "项目用地（如有）与图中标记区域的具体空间关系、距离需现场踏勘确认。"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "14168a345d8c40d38d93c3bde85caff4"
+}

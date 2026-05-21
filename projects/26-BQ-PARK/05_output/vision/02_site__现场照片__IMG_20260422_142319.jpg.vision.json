@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:20:56+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_142319.jpg",
+    "size_bytes": 4688636,
+    "sha1": "4c7c642a43a96a5e5908c64e4e8d2a85338b02e9",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "山脚下的一处开阔场地，前景为碎石地面，中景有土堆和排水沟渠，远处可见山体、输电塔及少量临时建筑，天气晴朗。",
+    "visible_site_conditions": [
+      "地面覆盖碎石与少量杂草，局部有建筑垃圾",
+      "中景存在土堆和混凝土排水沟渠结构",
+      "背景为植被稀疏的山地，山坡有明显冲刷痕迹",
+      "场地周边分布多座高压输电塔及电线杆",
+      "远端可见临时板房、车辆及施工相关设施"
+    ],
+    "constraints": [
+      "山地地形，场地可能存在坡度，需考虑排水与稳定性",
+      "高压输电塔临近场地，可能影响建筑布局与高度限制",
+      "地面碎石覆盖，可能需清理或处理以满足建设要求",
+      "排水沟渠状态未知，需确认其功能与是否可利用或需改造"
+    ],
+    "opportunities": [
+      "远端山地景观可作为设计借景资源",
+      "已存在的排水沟渠若功能完好，可纳入场地排水系统规划",
+      "场地开阔，具备一定的建设空间"
+    ],
+    "confidence": "medium",
+    "needs_review": [
+      "确认地面碎石下方土层承载力与稳定性",
+      "核实高压输电塔的保护范围与安全距离要求",
+      "了解现有排水沟渠的设计标准与使用状况",
+      "调查临时建筑及车辆的用途，是否为施工遗留需清理"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "5dcafe04fabc476b95683dc420319ca5"
+}

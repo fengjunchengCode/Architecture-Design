@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:19:32+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_142054.jpg",
+    "size_bytes": 4519341,
+    "sha1": "61afe276efeacc6d40ab3060591ffd93ea7f3e02",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "高原山地环境中的停车场与宗教建筑（佛塔），背景为连绵山脉，地面未铺装，存在施工机械与临时围栏。",
+    "visible_site_conditions": [
+      "未铺装的碎石/土质地面",
+      "沥青路面的停车场与道路",
+      "交通锥与临时通道",
+      "铁丝网围栏",
+      "色彩鲜艳的藏式佛塔（金色顶部，带图案基座）",
+      "远处山脉（部分有积雪）",
+      "施工挖掘机",
+      "停放的车辆",
+      "少量行人",
+      "电力线缆",
+      "远处道路与桥梁结构"
+    ],
+    "constraints": [
+      "高海拔环境可能影响施工工艺与材料耐候性",
+      "地形存在起伏，背景山脉可能影响场地平整",
+      "现有宗教建筑（佛塔）需考虑保护或视觉协调",
+      "未铺装地面可能需处理平整与排水",
+      "现有道路与停车场布局可能限制建筑位置",
+      "临时围栏暗示现场管理或安全要求",
+      "强日照与多风气候条件（基于高原特征推断）"
+    ],
+    "opportunities": [
+      "利用山脉作为背景景观资源",
+      "佛塔可作为文化特色融入设计",
+      "开阔场地具备开发灵活性",
+      "现有道路可作为交通接入基础",
+      "停车场区域可重新规划或与建筑功能结合",
+      "自然地形可塑造景观层次",
+      "高原光照充足，可考虑自然采光设计"
+    ],
+    "confidence": "high",
+    "needs_review": [
+      "佛塔的保护范围或文化敏感性要求",
+      "施工机械对应的工程性质与阶段",
+      "围栏的具体用途（临时施工/永久管理）",
+      "场地高程数据与排水走向",
+      "当地高海拔建筑材料与工艺限制",
+      "道路与停车场的规划属性（是否允许调整）",
+      "周边区域的具体管控要求（如风景名胜区）"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "6522d5ad524d45d39d196ae7399dad8b"
+}

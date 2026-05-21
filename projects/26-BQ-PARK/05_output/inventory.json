@@ -1,0 +1,230 @@
+{
+  "project_dir": "D:\\MyProject\\Architecture-Design\\projects\\26-BQ-PARK",
+  "project_code": "26-BQ-PARK",
+  "s0_ready": true,
+  "required_missing": [],
+  "conversion_required": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "01_briefing/2026-04-22巴青县城西口袋公园建设项目.docx",
+      "size_bytes": 14152,
+      "sha1": "24f91e9be3a7102a7dd5db96d4a2951b41743f80",
+      "bucket": "briefing",
+      "ext": ".docx",
+      "read_policy": "document_extract",
+      "requires_conversion": false,
+      "agent_note": "Use a dedicated document/PDF extractor or renderer; do not read raw bytes."
+    },
+    {
+      "path": "02_site/区位图/中.png",
+      "size_bytes": 2352929,
+      "sha1": "f034c5a2a2a9b4a6a82e27986c2d96e0adc15b55",
+      "bucket": "location_map",
+      "ext": ".png",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/区位图/大.png",
+      "size_bytes": 3196543,
+      "sha1": "b681cf5e0f81b524c00bf97980e1c77f95d8eea6",
+      "bucket": "location_map",
+      "ext": ".png",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/区位图/小.png",
+      "size_bytes": 1817328,
+      "sha1": "7e7aef2ea9577a6ea335b1a337a093fac1a50e41",
+      "bucket": "location_map",
+      "ext": ".png",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/地形图/口袋公园.dwg",
+      "size_bytes": 242281,
+      "sha1": "adfe6e63cffc269159735f19ede142b49d7fc925",
+      "bucket": "topography",
+      "ext": ".dwg",
+      "read_policy": "binary_index_only",
+      "requires_conversion": false,
+      "agent_note": "Binary/CAD asset: record path/hash only. For S2 DWG/DXF facts, use _tools/dwg_probe.py; do not read raw bytes."
+    },
+    {
+      "path": "02_site/地形图/口袋公园_t8.dwg",
+      "size_bytes": 205499,
+      "sha1": "a51e1bb62ceac321717b4ddff5c0ee6a9941fcef",
+      "bucket": "topography",
+      "ext": ".dwg",
+      "read_policy": "binary_index_only",
+      "requires_conversion": false,
+      "agent_note": "Binary/CAD asset: record path/hash only. For S2 DWG/DXF facts, use _tools/dwg_probe.py; do not read raw bytes."
+    },
+    {
+      "path": "02_site/地形图/口袋公园_t8.dwl",
+      "size_bytes": 39,
+      "sha1": "ac7baae0e5a7b092d62f4e117bb8ad5c2cd57020",
+      "bucket": "topography",
+      "ext": ".dwl",
+      "read_policy": "unknown_index_only",
+      "requires_conversion": false,
+      "agent_note": "Unknown extension: record path/hash only until a reader is explicitly chosen."
+    },
+    {
+      "path": "02_site/地形图/口袋公园_t8.dwl2",
+      "size_bytes": 196,
+      "sha1": "2d3d7244a90b9d5680026c26c1f165fabb8718ce",
+      "bucket": "topography",
+      "ext": ".dwl2",
+      "read_policy": "unknown_index_only",
+      "requires_conversion": false,
+      "agent_note": "Unknown extension: record path/hash only until a reader is explicitly chosen."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_141900.jpg",
+      "size_bytes": 4415371,
+      "sha1": "13b003e1b7d8e3129bee934763ece8cb7f9a1344",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_141927.jpg",
+      "size_bytes": 4082440,
+      "sha1": "ec435b3e17c494b62e8ebb343f0264af7d61f207",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142054.jpg",
+      "size_bytes": 4519341,
+      "sha1": "61afe276efeacc6d40ab3060591ffd93ea7f3e02",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142114.jpg",
+      "size_bytes": 5196496,
+      "sha1": "1a8af9f5eadc0a632834787b9523c2ccd356bdd9",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142315.jpg",
+      "size_bytes": 3954823,
+      "sha1": "94dc37ba76a4609c2eb9dfc91947e24dce56e280",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142319.jpg",
+      "size_bytes": 4688636,
+      "sha1": "4c7c642a43a96a5e5908c64e4e8d2a85338b02e9",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142636.jpg",
+      "size_bytes": 3927572,
+      "sha1": "16e23bbea0286e5f0b02b85b694bb53975891cf9",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142640.jpg",
+      "size_bytes": 5021668,
+      "sha1": "5e6826952880d7788f41bf924066d28def0928f1",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142717.jpg",
+      "size_bytes": 5154235,
+      "sha1": "31a2930fde25cff19a96e3d8e6700abbbe247697",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142720.jpg",
+      "size_bytes": 4077893,
+      "sha1": "1f394d33979f573d855e3b9b4f7669bfc3d6865f",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142726.jpg",
+      "size_bytes": 5317077,
+      "sha1": "d6e0a0688c2e493f2abb5d457e44f5869bd89c66",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142738.jpg",
+      "size_bytes": 5320897,
+      "sha1": "997b2d581bc324a9d29211a6c75ea52733a256f5",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142741.jpg",
+      "size_bytes": 5151324,
+      "sha1": "23775c725f11e713174dd2311da23f4144acb1ab",
+      "bucket": "site_photo",
+      "ext": ".jpg",
+      "read_policy": "visual_asset",
+      "requires_conversion": false,
+      "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+    }
+  ],
+  "counts": {
+    "total": 21,
+    "conversion_required": 0,
+    "briefing": 1,
+    "location_map": 3,
+    "topography": 4,
+    "site_photo": 13,
+    "reference": 0,
+    "chat": 0
+  }
+}

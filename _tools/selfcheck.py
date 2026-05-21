@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import py_compile
+import shutil
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -37,6 +39,51 @@ def check_python() -> Check:
 def check_module(module: str) -> Check:
     spec = importlib.util.find_spec(module)
     return Check(f"module:{module}", spec is not None, "installed" if spec else "missing")
+
+
+def check_optional_module(module: str, purpose: str) -> Check:
+    spec = importlib.util.find_spec(module)
+    detail = "installed" if spec else f"missing optional dependency for {purpose}"
+    return Check(f"optional-module:{module}", True, detail)
+
+
+def check_optional_oda_file_converter() -> Check:
+    candidates: list[Path] = []
+    for env_name in ("ODA_FILE_CONVERTER", "ODAFC_PATH", "ODA_FILE_CONVERTER_EXE"):
+        value = os.environ.get(env_name)
+        if value:
+            candidates.append(Path(value.strip().strip('"')).expanduser())
+    found = shutil.which("ODAFileConverter") or shutil.which("ODAFileConverter.exe")
+    if found:
+        candidates.append(Path(found))
+    try:
+        import ezdxf
+        from ezdxf.addons import odafc
+
+        candidates.append(Path(odafc.get_win_exec_path()))
+    except Exception:
+        pass
+    for env_name in ("LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
+        value = os.environ.get(env_name)
+        if not value:
+            continue
+        root = Path(value)
+        if not root.exists():
+            continue
+        for pattern in (
+            "ODAFC*/ODAFileConverter.exe",
+            "ODA/ODAFileConverter*/ODAFileConverter.exe",
+            "ODAFileConverter*/ODAFileConverter.exe",
+        ):
+            candidates.extend(root.glob(pattern))
+    for candidate in candidates:
+        if candidate.is_file():
+            return Check("optional-tool:ODAFileConverter", True, str(candidate))
+    return Check(
+        "optional-tool:ODAFileConverter",
+        True,
+        "missing optional tool for S2 DWG conversion; install ODA File Converter or run _tools/dwg_probe.py for guidance",
+    )
 
 
 def check_compile(path: str) -> Check:
@@ -84,6 +131,7 @@ def run_checks() -> list[Check]:
         check_file("_tools/inventory.py"),
         check_file("_tools/extract_text.py"),
         check_file("_tools/vision_route.py"),
+        check_file("_tools/dwg_probe.py"),
         check_file("_tools/uploader/server.py"),
         check_file("_tools/uploader/static/index.html"),
         check_file("SKILL.md"),
@@ -119,7 +167,14 @@ def run_checks() -> list[Check]:
             check_compile("_tools/inventory.py"),
             check_compile("_tools/extract_text.py"),
             check_compile("_tools/vision_route.py"),
+            check_compile("_tools/dwg_probe.py"),
             check_compile("_tools/uploader/server.py"),
+        ]
+    )
+    checks.extend(
+        [
+            check_optional_module("ezdxf", "S2 DWG/DXF parsing"),
+            check_optional_oda_file_converter(),
         ]
     )
     return checks

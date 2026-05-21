@@ -61,11 +61,21 @@ description: 建筑设计项目的总协议与主路由 skill。用于用户要�
 
 正文提取优先使用 `python _tools/extract_text.py {文件路径}`。该工具会安全读取文本和 `.docx`，并对 `.doc` 明确返回 `conversion_required`。
 
+DWG/DXF 地形资料进入 S2 时，先使用确定性 CAD 工具链：
+
+```powershell
+python _tools/dwg_probe.py {项目代号} --json --write
+```
+
+该工具会自动检测 `ezdxf` 与 ODA File Converter；缺少依赖时返回 `install_guidance`，agent 应先按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案。
+
 视觉资料解析优先使用：
 
 ```powershell
 python _tools/vision_route.py {项目代号} --write
 ```
+
+硬规则：如果 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，agent 必须把图片语义视为未知，只读取 `05_output/vision/*.json` 降级 sidecar，并把地址、坐标、红线、现场条件等写入 `pending_questions` / `low_confidence_fields`。不得再用当前对话模型、内置 `Read`、截图查看或要求用户 `/model` 切换来补读图片。
 
 该工具支持多种视觉模型 provider（OpenAI、Anthropic、Google），根据环境变量自动选择或由 `VISION_PROVIDER` 指定。如果视觉模型未配置，工具会写入降级 sidecar，S0 应继续推进并把地址、坐标、红线等缺口进入 `pending_questions`，而不是要求用户切换模型。
 

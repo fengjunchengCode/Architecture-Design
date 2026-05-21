@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:23:18+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_142738.jpg",
+    "size_bytes": 5320897,
+    "sha1": "997b2d581bc324a9d29211a6c75ea52733a256f5",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "这是一张高原乡村河岸施工现场的照片，展示了施工机械、新建混凝土桥墩/挡墙、平整后的土地，以及前景中挂有经幡的木桥和河流，背景为山坡上的村庄建筑。",
+    "visible_site_conditions": [
+      "施工现场正在进行土方平整和基础设施建设",
+      "有挖掘机、自卸卡车等重型施工机械",
+      "河道上已新建混凝土桥墩或挡墙结构",
+      "前景有横跨河流的木质桥梁，桥上悬挂大量经幡",
+      "河流流量较小，水质浑浊",
+      "场地及周边地面主要为裸露的泥土和碎石",
+      "背景山坡有密集的乡村建筑群",
+      "场地内有临时道路、围栏和施工标志"
+    ],
+    "constraints": [
+      "场地为河岸地形，存在一定高差和临水风险",
+      "施工活动已部分展开，新的设计需与现有在建结构（如混凝土桥墩）协调",
+      "场地地面土质松散，可能影响地基稳定性",
+      "周边有现存乡村建筑和道路，需考虑施工与居民生活的相互影响",
+      "位于高原环境，可能需要考虑高海拔施工的特殊要求"
+    ],
+    "opportunities": [
+      "河岸景观和经幡桥具有独特的地域文化特色，可作为设计资源",
+      "场地已完成初步平整，为后续建设提供了基础",
+      "河流及桥梁可作为重要的景观元素加以利用",
+      "靠近现有村庄，便于利用已有基础设施和社区资源"
+    ],
+    "confidence": "high",
+    "needs_review": [
+      "确认在建混凝土结构的具体功能、设计规格和审批状态",
+      "核实河流的水文信息（如常水位、洪水位）及防洪要求",
+      "确认场地的具体规划条件、用地红线和建设许可范围",
+      "了解当地对经幡等文化元素的保护或规划要求",
+      "评估高海拔气候对建筑材料和施工工艺的具体影响"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "b321eaae84634c93a0caf6ee2f67f674"
+}

@@ -26,6 +26,7 @@
 3. 定义 S1 给 S2 的机器可读接口。
 4. 说明没有 CAD-地图控制点时如何做语义叠合。
 5. 建议 S2 输入如何调整，以便读取 S1 外部关系并生成合成底图。
+6. 定义 S0 如何提前收集详细坐标、地图链接和控制点，避免 S1 只能粗略定位。
 
 ## 2. 高德官方 Skill 的角色分工
 
@@ -81,7 +82,61 @@ registration:
 - 3 个及以上共同点：可做仿射变换。
 - 推荐控制点：桥头、道路交叉口、建筑角点、红线角点、明显硬化边界角点。
 
-## 4. S1 执行输入
+## 4. 定位策略：区位图优先，高德交叉验证
+
+本修订明确：S1 不能默认通过高德搜索项目名或地址来定位地块。口袋公园、乡镇边缘地块、未命名建设用地通常无法被 POI 精确检索到。S1 应先从区位图识别地块标记，再用高德验证周边道路、水系和地名。
+
+定位优先级：
+
+1. 区位图视觉标记：红框、红点、箭头、截图中心、标注文字、道路/河流/桥梁/行政节点关系。
+2. 现场照片 sidecar：道路、桥梁、河流、经幡、佛塔、硬化场地、施工便道等相对关系。
+3. 高德 LBS 检索：验证区位图中的道路、水系、地名、POI 和到达路径。
+4. 用户补充：当视觉标记和高德结果无法定位到地块时，必须询问用户提供地块中心点、红线拐点或地图分享链接。
+
+S1 应生成 `site_marker_candidates`，示例：
+
+```yaml
+location_strategy:
+  primary_source: location_map_visual_marker
+  secondary_source: amap_cross_check
+  fallback: ask_user_for_coordinates
+
+site_marker_candidates:
+  - source_image: "02_site/区位图/小.png"
+    marker_type: red_rectangle
+    marker_bbox_px: null
+    visual_relation:
+      - "位于河流拐弯内侧"
+      - "靠近 G317 / 索巴二线"
+      - "临近桥梁或现状道路"
+    confidence: medium
+    needs_review: true
+
+amap_cross_check:
+  purpose: "验证区位图中的道路、水系、行政节点，不直接确认红线"
+  search_targets:
+    - "G317 巴青县 拉西镇"
+    - "索巴二线 巴青县"
+    - "盐曲 巴青县"
+    - "巴青县人民政府"
+
+coordinate_request_gate:
+  ask_user_when:
+    - "区位图没有清晰红框/标记"
+    - "视觉识别只能定位到县城/乡镇，不能定位到地块"
+    - "高德结果与区位图关系冲突"
+    - "需要把 S1 地图和 S2 CAD 精确套合"
+  requested_inputs:
+    - "地块中心点经纬度"
+    - "高德地图位置分享链接"
+    - "红线拐点坐标表"
+    - "CAD 坐标系说明"
+    - "可识别控制点：桥头、道路交叉口、建筑角点"
+```
+
+高德结果只能提升或降低区位图候选的置信度，不得单独把一个 POI 搜索结果当作地块红线或场地中心。
+
+## 5. S1 执行输入
 
 S1 agent 接手前应读取：
 
@@ -103,19 +158,33 @@ projects/{code}/05_output/dwg_probe.json
 - 现场照片 sidecar：识别到道路、桥梁、河流、经幡、佛塔/藏式建筑、电线杆/高压线、施工场地、硬化停车或道路空间。
 - S2 候选红线：`handle 1306`，但尚未人工确认。
 
-## 5. S1 使用高德的推荐流程
+## 6. S1 使用区位图与高德的推荐流程
 
-### 5.1 地理编码
+### 6.1 区位图视觉定位
 
-目的：获取项目中心的大致地图坐标、行政区划编码和匹配级别。
+目的：优先从用户提供的区位图识别实际地块标记，避免高德搜索只能定位到县城、乡镇或行政 POI。
 
-建议查询组合：
+S1 应读取 `05_output/vision/` 中的区位图 sidecar，并提取：
+
+- 红框、红点、箭头、圈注、截图中心等标记类型。
+- 标记与道路、河流、桥梁、行政节点、村落的相对关系。
+- 视觉模型对标记含义的置信度和待复核说明。
+- 多张区位图之间是否指向同一位置。
+
+如果 sidecar 没有像素级 bbox，S1 仍应记录文字级关系；如果后续工具支持视觉 bbox，再把 `marker_bbox_px` 补齐为机器可读字段。
+
+### 6.2 高德地理编码交叉验证
+
+目的：验证区位图中的行政区划、道路、水系和地名，不把搜索结果直接当成地块坐标。
+
+建议查询组合应来自区位图和现场照片识别出的实体，而不是只搜项目名：
 
 ```text
-西藏自治区那曲市巴青县拉西镇 巴青县城西口袋公园
-巴青县城西口袋公园
-巴青县人民政府 拉西镇
 G317 巴青县 拉西镇
+索巴二线 巴青县
+盐曲 巴青县
+巴青县人民政府 拉西镇
+区位图中识别到的桥梁/道路/行政节点名称
 ```
 
 S1 应记录：
@@ -125,10 +194,10 @@ S1 应记录：
 - `adcode`
 - `citycode`
 - `level`
-- 置信度
-- 选择该结果的原因
+- 该结果验证了哪一个区位图线索
+- 是否能帮助锁定地块；若不能，应明确写 `cannot_locate_parcel`
 
-### 5.2 逆地理编码
+### 6.3 逆地理编码
 
 目的：从场地中心坐标获取附近道路、POI、AOI 和道路交叉口。
 
@@ -147,7 +216,7 @@ S1 应提取：
 - AOI 或行政/地名线索
 - 与视觉 sidecar 的一致/冲突点
 
-### 5.3 周边搜索
+### 6.4 周边搜索
 
 目的：建立场地外部功能与交通关系。
 
@@ -184,7 +253,7 @@ G317
 - 居住或村落节点
 - 水系和桥梁节点
 
-### 5.4 路径规划
+### 6.5 路径规划
 
 目的：判断主要来向和可达性，不是生成总平面精确入口。
 
@@ -203,7 +272,7 @@ G317
 - 主要来向
 - 对主入口/次入口候选的影响
 
-## 6. S1 写入 `record.md` 的推荐结构
+## 7. S1 写入 `record.md` 的推荐结构
 
 S1 只允许改写：
 
@@ -219,6 +288,7 @@ S1 只允许改写：
 ## S1 区位与外部关系分析
 
 ### S1 输入与数据源
+### 区位图标记识别
 ### 高德定位与行政区划
 ### 周边道路与到达关系
 ### 水系、桥梁与文化节点
@@ -231,12 +301,28 @@ S1 只允许改写：
 
 其中 `S1 -> S2 合成底图接口` 必须出现，并包含一个短 YAML 块，供后续 agent 稳定抽取。
 
-## 7. `record.md` 中的 S1 -> S2 接口格式
+## 8. `record.md` 中的 S1 -> S2 接口格式
 
 建议写入如下 YAML 代码块：
 
 ```yaml
 s1_map_context:
+  location_strategy:
+    primary_source: location_map_visual_marker
+    secondary_source: amap_cross_check
+    fallback: ask_user_for_coordinates
+
+  site_marker_candidates:
+    - source_image: "02_site/区位图/小.png"
+      marker_type: red_rectangle
+      marker_bbox_px: null
+      visual_relation:
+        - "位于河流拐弯内侧"
+        - "靠近 G317 / 索巴二线"
+        - "临近桥梁或现状道路"
+      confidence: medium
+      needs_review: true
+
   location_fix:
     query: "西藏自治区那曲市巴青县拉西镇 巴青县城西口袋公园"
     coords_gcj02: [null, null]
@@ -246,7 +332,8 @@ s1_map_context:
     source: amap_geocode
     confidence: low
     evidence:
-      - "高德地理编码结果"
+      - "区位图视觉标记"
+      - "高德地理编码交叉验证"
       - "区位图视觉 sidecar"
 
   registration:
@@ -292,11 +379,23 @@ s1_map_context:
     control_points_needed:
       - "CAD 红线角点对应的高德地图可识别点"
       - "桥头、道路交叉口、建筑角点等至少 2-3 个共同点"
+
+  coordinate_request_gate:
+    ask_user_when:
+      - "区位图无法识别清晰地块标记"
+      - "高德结果只能定位到县城/乡镇/行政 POI"
+      - "高德结果与区位图视觉关系冲突"
+      - "需要把 S1 地图和 S2 CAD 精确套合"
+    requested_inputs:
+      - "地块中心点经纬度或高德地图位置分享链接"
+      - "红线拐点坐标表"
+      - "CAD 坐标系说明"
+      - "桥头、道路交叉口、建筑角点等共同控制点"
 ```
 
 执行 agent 应把 `null` 替换为实际高德返回值；若高德没有可信结果，应保留 `null` 并说明原因，不得编造。
 
-## 8. 派生 JSON 文件建议
+## 9. 派生 JSON 文件建议
 
 `record.md` 是核心真相，但不适合存放全部高德原始返回。
 
@@ -321,7 +420,75 @@ S1 marker 中应引用：
 机器可读地图上下文投影见：`05_output/amap/s1_map_context.json`
 ```
 
-## 9. 建议调整 S2 输入
+## 10. S0 修改步骤
+
+本修订建议同步调整 S0 和上传/建档提示。目的不是把坐标设为 S0 硬门槛，而是在资料投递时尽早发现“只有粗区位、没有地块定位”的问题，避免 S1 执行时才发现高德无法定位到具体地块。
+
+### 10.1 S0 用户提示
+
+S0 上传或初始化时，应在区位图硬门槛之外，增加强推荐资料清单：
+
+```text
+如已有，请同时提供以下任一项：
+- 地块中心点经纬度
+- 高德地图位置分享链接
+- 红线拐点坐标表
+- CAD 坐标系说明
+- 可识别控制点：桥头、道路交叉口、建筑角点、硬化边界角点
+```
+
+若用户没有这些资料，S0 仍可继续建档，但必须把缺口写入 `pending_questions`，不能等到 S1/S2 才隐性阻塞。
+
+### 10.2 S0 `pending_questions` 建议
+
+如果缺少精确定位资料，S0 应生成或保留类似问题：
+
+```yaml
+pending_questions:
+  - field: site.coords
+    question: "请提供地块中心点经纬度，或高德地图位置分享链接。"
+    raised_by: S0
+    status: 待问
+  - field: site.boundary_control_points
+    question: "如需将区位图/高德地图与 CAD 红线精确套合，请提供 2-3 个共同控制点（桥头、道路交叉口、建筑角点等）。"
+    raised_by: S0
+    status: 待问
+```
+
+如果当前 schema 暂无 `site.boundary_control_points` 字段，可先把 `field` 设为 `site.coords` 或 `null`，不要擅自新增 schema 字段。是否新增字段应单独审核。
+
+### 10.3 S0 `low_confidence_fields` 建议
+
+若地址或坐标来自区位图推断，而不是明确文本或用户提供，应写入低置信：
+
+```yaml
+low_confidence_fields:
+  - field: site.address
+    reason: "地址来自区位图/视觉识别推断，尚未由用户或正式资料确认。"
+  - field: site.coords
+    reason: "尚未提供地块中心点或地图分享链接，不能精确定位到红线范围。"
+```
+
+### 10.4 S0 工具与文档建议
+
+审核通过后，建议修改：
+
+- `skills/S0_project_intake/SKILL.md`：加入“详细坐标/地图链接/控制点为强推荐输入”的提示。
+- `skills/S0_project_intake/user_guidance.md`：在给用户的话术中增加坐标与控制点说明。
+- `_tools/inventory.py` 或上传 UI 文案：如果检测到区位图存在但没有坐标类补充文件，可输出 warning，不作为 fatal。
+- `_schema/record.schema.md`：暂不建议立即新增字段；若后续多项目都需要控制点，可再增加可选字段或独立派生投影。
+
+### 10.5 S0 验收标准
+
+S0 修订通过的最低标准：
+
+1. 区位图仍是 S0 硬门槛。
+2. 坐标、地图链接、控制点是强推荐输入，不阻塞 S0。
+3. 缺少精确定位资料时，必须产生 pending question。
+4. S0 不把区位图视觉推断坐标写成确定坐标。
+5. S1 能从 S0 的 pending/low confidence 中知道是否需要先问用户补坐标。
+
+## 11. 建议调整 S2 输入
 
 当前 S2 输入主要是：
 
@@ -357,7 +524,7 @@ S2 合成底图的输入分工：
 高德坐标与 CAD 坐标未配准
 ```
 
-## 10. S2 工具建议
+## 12. S2 工具建议
 
 为让 S1/S2 更顺，建议后续改造 `_tools/dwg_probe.py` 或新增 CAD 可视化工具：
 
@@ -378,20 +545,22 @@ S2 合成底图的输入分工：
 
 注意：高程点和等高线语义不明时，只输出候选和待复核，不要强行写最大高差。
 
-## 11. 验收标准
+## 13. 验收标准
 
 S1 实现可通过审核的最低标准：
 
 1. `record.md` 的 `s1_site_analysis` marker 已写入，不再是 `_pending`。
-2. S1 记录高德查询来源、坐标来源、行政区划、匹配级别和置信度。
-3. S1 明确输出 `registration.mode`，默认应为 `semantic_only`。
-4. S1 输出道路、水系、桥梁、文化节点和入口候选。
-5. S1 有固定小节 `S1 -> S2 合成底图接口`。
-6. S1 不伪造 CAD-地图精确坐标转换。
-7. S2 能读取 S1 接口，生成候选红线 + 外部关系箭头/标签的合成底图。
-8. 所有不确定项进入低置信或待复核说明。
+2. S1 优先从区位图视觉标记生成 `site_marker_candidates`。
+3. 高德检索只作为地名、道路、水系、行政节点和来向的交叉验证。
+4. S1 记录高德查询来源、坐标来源、行政区划、匹配级别和置信度。
+5. S1 明确输出 `registration.mode`，默认应为 `semantic_only`。
+6. S1 输出道路、水系、桥梁、文化节点和入口候选。
+7. S1 有固定小节 `S1 -> S2 合成底图接口`。
+8. S1 不伪造 CAD-地图精确坐标转换。
+9. S2 能读取 S1 接口，生成候选红线 + 外部关系箭头/标签的合成底图。
+10. 所有不确定项进入低置信或待复核说明。
 
-## 12. 给审核 agent 的重点问题
+## 14. 给审核 agent 的重点问题
 
 请审核以下点：
 
@@ -399,16 +568,17 @@ S1 实现可通过审核的最低标准：
 2. `record.md` 中放短 YAML、派生 JSON 中放原始响应的分工是否合适。
 3. `semantic_only` 是否应作为无控制点时的强制默认。
 4. S2 是否应强制读取 S1 marker 后再生成合成底图。
-5. 是否需要新增 `_tools/amap_context.py`，把高德查询变成确定性脚本，而不是完全交给 agent 手动调用 Skill。
-6. 是否需要把 `s1_map_context` 纳入 schema，还是先保持为 marker 内机器可读块。
+5. S0 是否应把坐标/高德链接/控制点纳入上传引导和 pending question。
+6. 是否需要新增 `_tools/amap_context.py`，把高德查询变成确定性脚本，而不是完全交给 agent 手动调用 Skill。
+7. 是否需要把 `s1_map_context` 纳入 schema，还是先保持为 marker 内机器可读块。
 
-## 13. 推荐实施顺序
+## 15. 推荐实施顺序
 
 1. 审核本交接文档。
-2. 更新 `skills/S1_site_analysis/SKILL.md`：加入高德 Skill 流程和固定输出结构。
-3. 更新 `skills/S2_dwg_parse/SKILL.md`：加入读取 S1 接口和合成底图要求。
-4. 可选新增 `_tools/amap_context.py`：统一调用高德 Web Service 并生成原始 JSON。
-5. 可选增强 `_tools/dwg_probe.py`：导出完整顶点、高程摘要和红线候选角色。
-6. 对 `26-BQ-PARK` 执行 S1。
-7. 生成 S1/S2 合成底图第一版：候选红线 + 道路/河流/入口方向箭头。
-
+2. 更新 `skills/S0_project_intake/SKILL.md` 和 `user_guidance.md`：加入详细坐标、地图链接和控制点的强推荐输入提示。
+3. 更新 `skills/S1_site_analysis/SKILL.md`：加入区位图优先、高德交叉验证和固定输出结构。
+4. 更新 `skills/S2_dwg_parse/SKILL.md`：加入读取 S1 接口和合成底图要求。
+5. 可选新增 `_tools/amap_context.py`：统一调用高德 Web Service 并生成原始 JSON。
+6. 可选增强 `_tools/dwg_probe.py`：导出完整顶点、高程摘要和红线候选角色。
+7. 对 `26-BQ-PARK` 执行 S1。
+8. 生成 S1/S2 合成底图第一版：候选红线 + 道路/河流/入口方向箭头。

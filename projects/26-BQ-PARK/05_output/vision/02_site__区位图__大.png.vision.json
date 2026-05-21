@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:17:48+0800",
+  "source": {
+    "path": "02_site/区位图/大.png",
+    "size_bytes": 3196543,
+    "sha1": "b681cf5e0f81b524c00bf97980e1c77f95d8eea6",
+    "bucket": "location_map",
+    "ext": ".png",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "卫星图像显示一个广阔的山地区域，有积雪覆盖的山脉、河流和道路网络。图中有多处地名标注和红色方框标记，指示可能的场地位置，整体呈现高原地形特征。",
+    "detected_text": [
+      "2021",
+      "2024",
+      "G109",
+      "G345",
+      "G317",
+      "G558",
+      "G6",
+      "那曲市",
+      "东县",
+      "巴青",
+      "玛荣乡",
+      "安多县",
+      "扎仁镇",
+      "孔马镇",
+      "扎玛乡",
+      "尼玛乡",
+      "杂色镇",
+      "色孔镇",
+      "甘岩乡",
+      "江达乡",
+      "沙丁乡",
+      "当堆乡",
+      "俄西乡",
+      "新荣乡",
+      "20公里",
+      "21世纪空间",
+      "数据来自二十一世纪空间技术应用股份有限公司 GS京(2023)0226号"
+    ],
+    "location_clues": [
+      "地名使用中文，指示中国区域",
+      "道路编号如G109、G345等为中国国道",
+      "地形显示为高原山地，可能位于青藏高原",
+      "那曲市是西藏自治区的地级市，其他地名如巴青、东县可能为县级或乡镇级"
+    ],
+    "roads_or_landmarks": [
+      "国道G109",
+      "国道G345",
+      "国道G317",
+      "国道G558",
+      "国道G6",
+      "那曲市",
+      "巴青",
+      "东县",
+      "安多县",
+      "扎仁镇",
+      "山脉",
+      "河流"
+    ],
+    "site_marker_description": "红色方框标记了三个位置：左下角的那曲市，以及中间偏右的东县和巴青，可能表示项目相关场地或关注区域。",
+    "confidence": "medium",
+    "needs_review": [
+      "需要人工复核场地精确坐标和红线范围，避免编造",
+      "需要验证地名与实际行政区划的对应关系",
+      "需要确认道路网络细节和地标准确性",
+      "需要补充场地具体用途或边界信息"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "f14114d3b40440ed84f90ac40e7d88b1"
+}

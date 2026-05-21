@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import warnings
-
-warnings.filterwarnings("ignore", message="'cgi' is deprecated.*", category=DeprecationWarning)
-
-import cgi
 import json
 import mimetypes
+import os
 import re
 import subprocess
 import sys
@@ -17,7 +13,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote_to_bytes, urlparse
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -85,13 +81,82 @@ def unique_path(directory: Path, filename: str) -> Path:
         index += 1
 
 
+def parse_header_params(value: str) -> dict[str, str]:
+    params: dict[str, str] = {}
+    parts = value.split(";")
+    params[""] = parts[0].strip().lower() if parts else ""
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        raw_value = raw_value.strip()
+        if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] == '"':
+            raw_value = raw_value[1:-1].replace(r"\"", '"').replace(r"\\", "\\")
+        params[key.strip().lower()] = raw_value
+    return params
+
+
+def decode_header_bytes(value: bytes) -> str:
+    for encoding in ("utf-8", "gb18030", "latin-1"):
+        try:
+            return value.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return value.decode("utf-8", errors="replace")
+
+
+def decode_filename(disposition_params: dict[str, str]) -> str | None:
+    encoded = disposition_params.get("filename*")
+    if encoded:
+        try:
+            charset, _, quoted = encoded.split("'", 2)
+            return unquote_to_bytes(quoted).decode(charset or "utf-8")
+        except (LookupError, UnicodeDecodeError, ValueError):
+            pass
+    return disposition_params.get("filename")
+
+
+def iter_multipart_files(content_type: str, body: bytes) -> list[tuple[str, bytes]]:
+    boundary = parse_header_params(content_type).get("boundary")
+    if not boundary:
+        return []
+    delimiter = b"--" + boundary.encode("ascii", errors="ignore")
+    files: list[tuple[str, bytes]] = []
+    for part in body.split(delimiter):
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
+            continue
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+        headers_raw, sep, payload = part.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        headers: dict[str, bytes] = {}
+        for line in headers_raw.split(b"\r\n"):
+            name, colon, value = line.partition(b":")
+            if colon:
+                headers[name.decode("ascii", errors="ignore").strip().lower()] = value.strip()
+        disposition = headers.get("content-disposition")
+        if not disposition:
+            continue
+        filename = decode_filename(parse_header_params(decode_header_bytes(disposition)))
+        if filename:
+            files.append((filename, payload))
+    return files
+
+
 def run_tool(args: list[str]) -> tuple[int, str, str]:
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     completed = subprocess.run(
         [sys.executable, *args],
         cwd=REPO_ROOT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=False,
+        env=env,
     )
     return completed.returncode, completed.stdout, completed.stderr
 
@@ -219,31 +284,18 @@ class UploaderHandler(BaseHTTPRequestHandler):
         if not target_dir.exists():
             target_dir.mkdir(parents=True, exist_ok=True)
 
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": self.headers.get("Content-Type", ""),
-            },
-        )
-        items = form["files"] if "files" in form else []
-        if not isinstance(items, list):
-            items = [items]
+        content_type = self.headers.get("Content-Type", "")
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length) if length > 0 else b""
 
         saved = []
-        for item in items:
-            if not getattr(item, "filename", None):
-                continue
-            filename = sanitize_filename(item.filename)
-            out = unique_path(target_dir, filename)
-            with out.open("wb") as handle:
-                while True:
-                    chunk = item.file.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-            saved.append(str(out.relative_to(proj)).replace("\\", "/"))
+        if "multipart/form-data" in content_type:
+            for fname, payload in iter_multipart_files(content_type, body):
+                filename = sanitize_filename(fname)
+                out = unique_path(target_dir, filename)
+                out.write_bytes(payload)
+                saved.append(str(out.relative_to(proj)).replace("\\", "/"))
+
         self.send_json(
             {
                 "ok": True,

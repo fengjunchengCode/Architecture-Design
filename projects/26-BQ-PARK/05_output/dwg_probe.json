@@ -1,0 +1,2593 @@
+{
+  "project_dir": "D:\\MyProject\\Architecture-Design\\projects\\26-BQ-PARK",
+  "project_code": "26-BQ-PARK",
+  "status": "ok",
+  "tools": {
+    "ezdxf": "installed",
+    "oda_file_converter": "installed",
+    "oda_path": "C:\\Users\\fjc\\AppData\\Local\\ODAFC271Extract\\ODAFileConverter.exe"
+  },
+  "install_guidance": {
+    "ezdxf": "python -m pip install ezdxf",
+    "oda_file_converter": {
+      "official_download": "https://www.opendesign.com/guestfiles/oda_file_converter",
+      "windows_note": "Install the ODA File Converter MSI as administrator, or extract it to a user-writable folder.",
+      "user_extract_example": [
+        "$msi = Join-Path $env:TEMP 'ODAFileConverter_QT6_vc16_amd64dll_27.1.msi'",
+        "$target = Join-Path $env:LOCALAPPDATA 'ODAFC271Extract'",
+        "New-Item -ItemType Directory -Force -Path $target | Out-Null",
+        "Start-Process msiexec.exe -ArgumentList @('/a', $msi, '/qn', \"TARGETDIR=$target\") -Wait -WindowStyle Hidden"
+      ],
+      "env_var": "Set ODA_FILE_CONVERTER to the full ODAFileConverter.exe path when using a nonstandard install path.",
+      "detected_path": "C:\\Users\\fjc\\AppData\\Local\\ODAFC271Extract\\ODAFileConverter.exe",
+      "set_user_env": "[Environment]::SetEnvironmentVariable('ODA_FILE_CONVERTER', 'C:\\Users\\fjc\\AppData\\Local\\ODAFC271Extract\\ODAFileConverter.exe', 'User')"
+    }
+  },
+  "files": [
+    {
+      "path": "02_site/地形图/口袋公园.dwg",
+      "size_bytes": 242281,
+      "sha1": "adfe6e63cffc269159735f19ede142b49d7fc925",
+      "ext": ".dwg",
+      "conversion": {
+        "status": "ok",
+        "dxf_path": "05_output/cad/02_site/地形图/口袋公园.dxf"
+      },
+      "parse": {
+        "status": "ok",
+        "dxf_version": "AC1032",
+        "units": {
+          "code": 0,
+          "name": "unitless"
+        },
+        "entity_counts": {
+          "CIRCLE": 1,
+          "HATCH": 6,
+          "INSERT": 1476,
+          "LINE": 252,
+          "LWPOLYLINE": 92,
+          "POLYLINE": 5,
+          "TEXT": 48
+        },
+        "layers": [
+          {
+            "name": "GCD",
+            "color": 1,
+            "linetype": "CONTINUOUS",
+            "is_off": true,
+            "is_frozen": false,
+            "entity_count": 1386
+          },
+          {
+            "name": "TK",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 270
+          },
+          {
+            "name": "GXYZ",
+            "color": 2,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 76
+          },
+          {
+            "name": "JMD",
+            "color": 6,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 74
+          },
+          {
+            "name": "DLSS",
+            "color": 4,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 33
+          },
+          {
+            "name": "DMTZ",
+            "color": 3,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 12
+          },
+          {
+            "name": "ASSIST",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 11
+          },
+          {
+            "name": "DLDW",
+            "color": 11,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 6
+          },
+          {
+            "name": "SXSS",
+            "color": 5,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 6
+          },
+          {
+            "name": "0",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 4
+          },
+          {
+            "name": "ZJ",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 2
+          },
+          {
+            "name": "Defpoints",
+            "color": 7,
+            "linetype": "",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 0
+          }
+        ],
+        "bbox": {
+          "min": [
+            597218.1949863003,
+            3534031.994446071,
+            0.0
+          ],
+          "max": [
+            598007.7227922223,
+            3534587.542643055,
+            4122.248
+          ],
+          "size": [
+            789.5278059219709,
+            555.5481969839893,
+            4122.248
+          ]
+        },
+        "closed_polyline_candidates": [
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 212044.92333984375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1311",
+            "perimeter_xy": 1853.5726323677227,
+            "bbox_xy": {
+              "min": [
+                597235.775879401,
+                3534152.56598412
+              ],
+              "max": [
+                597751.017813307,
+                3534564.110366398
+              ],
+              "size": [
+                515.2419339059852,
+                411.54438227787614
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.396846354,
+              3534358.338175259
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 201567.10986328125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1309",
+            "perimeter_xy": 1807.5739990277928,
+            "bbox_xy": {
+              "min": [
+                597241.5258794005,
+                3534158.31598412
+              ],
+              "max": [
+                597745.2678133065,
+                3534559.287907272
+              ],
+              "size": [
+                503.7419339059852,
+                400.9719231519848
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.1648201646,
+              3534358.5700604776
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 201519.130859375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1312",
+            "perimeter_xy": 1807.5726323677227,
+            "bbox_xy": {
+              "min": [
+                597241.525879401,
+                3534158.31598412
+              ],
+              "max": [
+                597745.267813307,
+                3534558.360366398
+              ],
+              "size": [
+                503.7419339059852,
+                400.04438227787614
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.396846354,
+              3534358.338175259
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "0",
+            "closed": true,
+            "vertex_count": 29,
+            "area_xy": 15052.5751953125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1306",
+            "perimeter_xy": 509.7500809073129,
+            "bbox_xy": {
+              "min": [
+                597408.2011118163,
+                3534240.603434482
+              ],
+              "max": [
+                597602.4128721136,
+                3534370.659750258
+              ],
+              "size": [
+                194.21176029730123,
+                130.05631577596068
+              ]
+            },
+            "centroid_xy_vertices": [
+              597507.8100228125,
+              3534311.0523270364
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 423.586669921875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A6",
+            "perimeter_xy": 86.20576986581345,
+            "bbox_xy": {
+              "min": [
+                597430.8342698024,
+                3534366.212165435
+              ],
+              "max": [
+                597461.2006899001,
+                3534385.845811413
+              ],
+              "size": [
+                30.366420097649097,
+                19.633645978290588
+              ]
+            },
+            "centroid_xy_vertices": [
+              597443.5259175231,
+              3534377.9296287247
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "ASSIST",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 318.0926513671875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "15E",
+            "perimeter_xy": 78.51033315154325,
+            "bbox_xy": {
+              "min": [
+                597479.8950001993,
+                3534367.782273283
+              ],
+              "max": [
+                597509.7021791242,
+                3534390.624227377
+              ],
+              "size": [
+                29.80717892490793,
+                22.841954093892127
+              ]
+            },
+            "centroid_xy_vertices": [
+              597494.8160765662,
+              3534379.241561326
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 8,
+            "area_xy": 176.2572021484375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "AC",
+            "perimeter_xy": 60.45770165492717,
+            "bbox_xy": {
+              "min": [
+                597356.2887670076,
+                3534324.436727718
+              ],
+              "max": [
+                597377.1840507725,
+                3534335.859570652
+              ],
+              "size": [
+                20.8952837648103,
+                11.422842933796346
+              ]
+            },
+            "centroid_xy_vertices": [
+              597366.5255886447,
+              3534328.319015754
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 9,
+            "area_xy": 107.85107421875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "32",
+            "perimeter_xy": 48.000337584408456,
+            "bbox_xy": {
+              "min": [
+                597415.3034882407,
+                3534379.398942868
+              ],
+              "max": [
+                597432.1922967044,
+                3534389.215999856
+              ],
+              "size": [
+                16.888808463700116,
+                9.817056987900287
+              ]
+            },
+            "centroid_xy_vertices": [
+              597422.6082982778,
+              3534383.4178335182
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 104.52001953125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "71",
+            "perimeter_xy": 45.23406762517227,
+            "bbox_xy": {
+              "min": [
+                597389.514196071,
+                3534356.645522846
+              ],
+              "max": [
+                597406.5232973574,
+                3534365.239750833
+              ],
+              "size": [
+                17.00910128641408,
+                8.594227986875921
+              ]
+            },
+            "centroid_xy_vertices": [
+              597397.9999439772,
+              3534360.9568030187
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 103.150146484375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "6E",
+            "perimeter_xy": 45.04966276820342,
+            "bbox_xy": {
+              "min": [
+                597391.7757057607,
+                3534370.891436564
+              ],
+              "max": [
+                597408.6211970109,
+                3534379.790051152
+              ],
+              "size": [
+                16.845491250162013,
+                8.898614588193595
+              ]
+            },
+            "centroid_xy_vertices": [
+              597400.2156822676,
+              3534375.2229071227
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 85.6392822265625,
+            "area_note": "shoelace_from_vertices",
+            "handle": "11D",
+            "perimeter_xy": 37.030161235987734,
+            "bbox_xy": {
+              "min": [
+                597573.3936471598,
+                3534347.679654967
+              ],
+              "max": [
+                597584.4919161075,
+                3534358.806152393
+              ],
+              "size": [
+                11.09826894768048,
+                11.126497426070273
+              ]
+            },
+            "centroid_xy_vertices": [
+              597578.920466371,
+              3534353.343928774
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "DLSS",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 81.41064453125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "15B",
+            "perimeter_xy": 42.283036881014326,
+            "bbox_xy": {
+              "min": [
+                597485.3761794702,
+                3534260.257230546
+              ],
+              "max": [
+                597502.1783601805,
+                3534270.966885769
+              ],
+              "size": [
+                16.80218071024865,
+                10.70965522294864
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.645112331,
+              3534265.606257018
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 75.2269287109375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A3",
+            "perimeter_xy": 38.18504314378312,
+            "bbox_xy": {
+              "min": [
+                597411.9843160481,
+                3534358.433239817
+              ],
+              "max": [
+                597419.9213314207,
+                3534372.755101504
+              ],
+              "size": [
+                7.937015372561291,
+                14.321861686650664
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.9528237343,
+              3534365.5941706607
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 74.7554931640625,
+            "area_note": "shoelace_from_vertices",
+            "handle": "6B",
+            "perimeter_xy": 51.33653236616104,
+            "bbox_xy": {
+              "min": [
+                597365.7858654293,
+                3534350.308062748
+              ],
+              "max": [
+                597388.3344840417,
+                3534356.015490069
+              ],
+              "size": [
+                22.548618612345308,
+                5.707427321001887
+              ]
+            },
+            "centroid_xy_vertices": [
+              597377.0601747355,
+              3534353.1617764086
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 26.0430908203125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "3B",
+            "perimeter_xy": 22.389974448538744,
+            "bbox_xy": {
+              "min": [
+                597421.1571804553,
+                3534369.617145495
+              ],
+              "max": [
+                597429.601548319,
+                3534374.644496042
+              ],
+              "size": [
+                8.444367863703519,
+                5.0273505467921495
+              ]
+            },
+            "centroid_xy_vertices": [
+              597425.3793643871,
+              3534372.130820769
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 21.8607177734375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A9",
+            "perimeter_xy": 21.459134386378913,
+            "bbox_xy": {
+              "min": [
+                597433.6308104616,
+                3534384.433230873
+              ],
+              "max": [
+                597442.1103471835,
+                3534388.455761517
+              ],
+              "size": [
+                8.479536721948534,
+                4.022530643735081
+              ]
+            },
+            "centroid_xy_vertices": [
+              597437.1960755643,
+              3534386.871936413
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 20.5858154296875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "38",
+            "perimeter_xy": 18.27287430167119,
+            "bbox_xy": {
+              "min": [
+                597412.9883251596,
+                3534372.372159736
+              ],
+              "max": [
+                597418.0822780392,
+                3534378.231139669
+              ],
+              "size": [
+                5.093952879542485,
+                5.858979932963848
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.2496724277,
+              3534375.893292334
+            ]
+          },
+          {
+            "type": "POLYLINE",
+            "layer": "DMTZ",
+            "closed": false,
+            "vertex_count": 18,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "16",
+            "perimeter_xy": 308.67885572523346,
+            "bbox_xy": {
+              "min": [
+                597408.2011118163,
+                3534266.756729639
+              ],
+              "max": [
+                597496.8955774541,
+                3534370.22282841
+              ],
+              "size": [
+                88.69446563778911,
+                103.46609877096489
+              ]
+            },
+            "centroid_xy_vertices": [
+              597449.6285668076,
+              3534310.136781875
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "3E",
+            "perimeter_xy": 8.695200249350926,
+            "bbox_xy": {
+              "min": [
+                597416.9986346937,
+                3534371.81308595
+              ],
+              "max": [
+                597421.2465423299,
+                3534372.738778965
+              ],
+              "size": [
+                4.247907636221498,
+                0.9256930151022971
+              ]
+            },
+            "centroid_xy_vertices": [
+              597419.1225885118,
+              3534372.2759324573
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "41",
+            "perimeter_xy": 8.695200249350926,
+            "bbox_xy": {
+              "min": [
+                597416.934758556,
+                3534371.51996509
+              ],
+              "max": [
+                597421.1826661922,
+                3534372.445658105
+              ],
+              "size": [
+                4.247907636221498,
+                0.9256930151022971
+              ]
+            },
+            "centroid_xy_vertices": [
+              597419.0587123741,
+              3534371.982811597
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "5D",
+            "perimeter_xy": 14.673541477724603,
+            "bbox_xy": {
+              "min": [
+                597429.601548319,
+                3534372.826260519
+              ],
+              "max": [
+                597430.9590366432,
+                3534380.036352774
+              ],
+              "size": [
+                1.3574883241672069,
+                7.210092254914343
+              ]
+            },
+            "centroid_xy_vertices": [
+              597430.2802924811,
+              3534376.4313066467
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "60",
+            "perimeter_xy": 14.67354147955509,
+            "bbox_xy": {
+              "min": [
+                597429.3067281926,
+                3534372.881768113
+              ],
+              "max": [
+                597430.6642165168,
+                3534380.091860369
+              ],
+              "size": [
+                1.3574883241672069,
+                7.210092255845666
+              ]
+            },
+            "centroid_xy_vertices": [
+              597429.9854723547,
+              3534376.486814241
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "64",
+            "perimeter_xy": 10.06885286077517,
+            "bbox_xy": {
+              "min": [
+                597414.1326110429,
+                3534378.231139669
+              ],
+              "max": [
+                597415.3034882407,
+                3534383.127515479
+              ],
+              "size": [
+                1.1708771977573633,
+                4.8963758097961545
+              ]
+            },
+            "centroid_xy_vertices": [
+              597414.7180496418,
+              3534380.679327574
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "67",
+            "perimeter_xy": 10.06885286077517,
+            "bbox_xy": {
+              "min": [
+                597414.4243846468,
+                3534378.161367439
+              ],
+              "max": [
+                597415.5952618446,
+                3534383.057743249
+              ],
+              "size": [
+                1.1708771977573633,
+                4.8963758097961545
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.0098232457,
+              3534380.609555344
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 4,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "74",
+            "perimeter_xy": 48.50394278200481,
+            "bbox_xy": {
+              "min": [
+                597388.0531964746,
+                3534348.41633433
+              ],
+              "max": [
+                597405.4655748188,
+                3534358.871272601
+              ],
+              "size": [
+                17.412378344219178,
+                10.454938271082938
+              ]
+            },
+            "centroid_xy_vertices": [
+              597396.5634068563,
+              3534353.5905459546
+            ]
+          }
+        ],
+        "text_samples": [
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597443.0095847596,
+              3534376.69241694
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597423.2541144494,
+              3534384.698495468
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597398.633913156,
+              3534374.972590853
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597380.6450871016,
+              3534365.954499164
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597397.2948437599,
+              3534360.451467087
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597376.6497808362,
+              3534352.274779326
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597362.7365723714,
+              3534354.560220081
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "棚",
+            "insert_xy": [
+              597414.6939672776,
+              3534374.563254503
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "棚",
+            "insert_xy": [
+              597415.1714873024,
+              3534365.692196549
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597424.8040834883,
+              3534371.625202791
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.16",
+            "insert_xy": [
+              597236.525879401,
+              3534158.71598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597237.5044508296,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "24",
+            "insert_xy": [
+              597241.725879401,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.16",
+            "insert_xy": [
+              597743.0106704498,
+              3534158.71598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597741.2463847356,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "75",
+            "insert_xy": [
+              597745.467813307,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.56",
+            "insert_xy": [
+              597743.0106704498,
+              3534558.760366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597741.2463847356,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "75",
+            "insert_xy": [
+              597745.467813307,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.56",
+            "insert_xy": [
+              597236.525879401,
+              3534558.760366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597237.5044508296,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "24",
+            "insert_xy": [
+              597241.725879401,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "m",
+            "insert_xy": [
+              597467.0587511159,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "10",
+            "insert_xy": [
+              597468.0754177825,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "5",
+            "insert_xy": [
+              597473.3801796873,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "0",
+            "insert_xy": [
+              597478.1301796873,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "10",
+            "insert_xy": [
+              597487.8254177825,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "20",
+            "insert_xy": [
+              597497.7492273063,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "30",
+            "insert_xy": [
+              597507.7492273063,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "40",
+            "insert_xy": [
+              597517.7492273063,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "m",
+            "insert_xy": [
+              597519.146846354,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597484.2897034968,
+              3534566.860366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597472.2539892112,
+              3534571.860366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597745.267813307,
+              3534134.06598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597739.4463847355,
+              3534137.06598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597220.3830222582,
+              3534586.110366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597214.5615936868,
+              3534582.160366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "附注：",
+            "insert_xy": [
+              597700.267813307,
+              3534149.31598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-597.242",
+            "insert_xy": [
+              597243.6687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534571.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-597.242",
+            "insert_xy": [
+              597243.6687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534571.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "ZJ",
+            "text": "北",
+            "insert_xy": [
+              597701.428599942,
+              3534450.514590239
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "ZJ",
+            "text": "口袋公园用地红线",
+            "insert_xy": [
+              597802.2940523897,
+              3534044.44333439
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "02_site/地形图/口袋公园_t8.dwg",
+      "size_bytes": 205499,
+      "sha1": "a51e1bb62ceac321717b4ddff5c0ee6a9941fcef",
+      "ext": ".dwg",
+      "conversion": {
+        "status": "ok",
+        "dxf_path": "05_output/cad/02_site/地形图/口袋公园_t8.dxf"
+      },
+      "parse": {
+        "status": "ok",
+        "dxf_version": "AC1032",
+        "units": {
+          "code": 0,
+          "name": "unitless"
+        },
+        "entity_counts": {
+          "CIRCLE": 1,
+          "HATCH": 6,
+          "INSERT": 1476,
+          "LINE": 252,
+          "LWPOLYLINE": 92,
+          "POLYLINE": 5,
+          "TEXT": 48
+        },
+        "layers": [
+          {
+            "name": "GCD",
+            "color": 1,
+            "linetype": "CONTINUOUS",
+            "is_off": true,
+            "is_frozen": false,
+            "entity_count": 1386
+          },
+          {
+            "name": "TK",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 270
+          },
+          {
+            "name": "GXYZ",
+            "color": 2,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 76
+          },
+          {
+            "name": "JMD",
+            "color": 6,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 74
+          },
+          {
+            "name": "DLSS",
+            "color": 4,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 33
+          },
+          {
+            "name": "DMTZ",
+            "color": 3,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 12
+          },
+          {
+            "name": "ASSIST",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 11
+          },
+          {
+            "name": "DLDW",
+            "color": 11,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 6
+          },
+          {
+            "name": "SXSS",
+            "color": 5,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 6
+          },
+          {
+            "name": "0",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 4
+          },
+          {
+            "name": "ZJ",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 2
+          },
+          {
+            "name": "Defpoints",
+            "color": 7,
+            "linetype": "",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 0
+          },
+          {
+            "name": "GstarFastview4.2-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-note-layer-HCNoteLayer",
+            "color": 7,
+            "linetype": "CONTINUOUS",
+            "is_off": false,
+            "is_frozen": false,
+            "entity_count": 0
+          }
+        ],
+        "bbox": {
+          "min": [
+            597218.1949863003,
+            3534031.994446071,
+            0.0
+          ],
+          "max": [
+            598007.7227922223,
+            3534587.542643055,
+            4122.248
+          ],
+          "size": [
+            789.5278059219709,
+            555.5481969839893,
+            4122.248
+          ]
+        },
+        "closed_polyline_candidates": [
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 212044.92333984375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1311",
+            "perimeter_xy": 1853.5726323677227,
+            "bbox_xy": {
+              "min": [
+                597235.775879401,
+                3534152.56598412
+              ],
+              "max": [
+                597751.017813307,
+                3534564.110366398
+              ],
+              "size": [
+                515.2419339059852,
+                411.54438227787614
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.396846354,
+              3534358.338175259
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 201567.10986328125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1309",
+            "perimeter_xy": 1807.5739990277928,
+            "bbox_xy": {
+              "min": [
+                597241.5258794005,
+                3534158.31598412
+              ],
+              "max": [
+                597745.2678133065,
+                3534559.287907272
+              ],
+              "size": [
+                503.7419339059852,
+                400.9719231519848
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.1648201646,
+              3534358.5700604776
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "TK",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 201519.130859375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1312",
+            "perimeter_xy": 1807.5726323677227,
+            "bbox_xy": {
+              "min": [
+                597241.525879401,
+                3534158.31598412
+              ],
+              "max": [
+                597745.267813307,
+                3534558.360366398
+              ],
+              "size": [
+                503.7419339059852,
+                400.04438227787614
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.396846354,
+              3534358.338175259
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "0",
+            "closed": true,
+            "vertex_count": 29,
+            "area_xy": 15052.5751953125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "1306",
+            "perimeter_xy": 509.7500809073129,
+            "bbox_xy": {
+              "min": [
+                597408.2011118163,
+                3534240.603434482
+              ],
+              "max": [
+                597602.4128721136,
+                3534370.659750258
+              ],
+              "size": [
+                194.21176029730123,
+                130.05631577596068
+              ]
+            },
+            "centroid_xy_vertices": [
+              597507.8100228125,
+              3534311.0523270364
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 423.586669921875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A6",
+            "perimeter_xy": 86.20576986581345,
+            "bbox_xy": {
+              "min": [
+                597430.8342698024,
+                3534366.212165435
+              ],
+              "max": [
+                597461.2006899001,
+                3534385.845811413
+              ],
+              "size": [
+                30.366420097649097,
+                19.633645978290588
+              ]
+            },
+            "centroid_xy_vertices": [
+              597443.5259175231,
+              3534377.9296287247
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "ASSIST",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 318.0926513671875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "15E",
+            "perimeter_xy": 78.51033315154325,
+            "bbox_xy": {
+              "min": [
+                597479.8950001993,
+                3534367.782273283
+              ],
+              "max": [
+                597509.7021791242,
+                3534390.624227377
+              ],
+              "size": [
+                29.80717892490793,
+                22.841954093892127
+              ]
+            },
+            "centroid_xy_vertices": [
+              597494.8160765662,
+              3534379.241561326
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 8,
+            "area_xy": 176.2572021484375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "AC",
+            "perimeter_xy": 60.45770165492717,
+            "bbox_xy": {
+              "min": [
+                597356.2887670076,
+                3534324.436727718
+              ],
+              "max": [
+                597377.1840507725,
+                3534335.859570652
+              ],
+              "size": [
+                20.8952837648103,
+                11.422842933796346
+              ]
+            },
+            "centroid_xy_vertices": [
+              597366.5255886447,
+              3534328.319015754
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 9,
+            "area_xy": 107.85107421875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "32",
+            "perimeter_xy": 48.000337584408456,
+            "bbox_xy": {
+              "min": [
+                597415.3034882407,
+                3534379.398942868
+              ],
+              "max": [
+                597432.1922967044,
+                3534389.215999856
+              ],
+              "size": [
+                16.888808463700116,
+                9.817056987900287
+              ]
+            },
+            "centroid_xy_vertices": [
+              597422.6082982778,
+              3534383.4178335182
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 104.52001953125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "71",
+            "perimeter_xy": 45.23406762517227,
+            "bbox_xy": {
+              "min": [
+                597389.514196071,
+                3534356.645522846
+              ],
+              "max": [
+                597406.5232973574,
+                3534365.239750833
+              ],
+              "size": [
+                17.00910128641408,
+                8.594227986875921
+              ]
+            },
+            "centroid_xy_vertices": [
+              597397.9999439772,
+              3534360.9568030187
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 103.150146484375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "6E",
+            "perimeter_xy": 45.04966276820342,
+            "bbox_xy": {
+              "min": [
+                597391.7757057607,
+                3534370.891436564
+              ],
+              "max": [
+                597408.6211970109,
+                3534379.790051152
+              ],
+              "size": [
+                16.845491250162013,
+                8.898614588193595
+              ]
+            },
+            "centroid_xy_vertices": [
+              597400.2156822676,
+              3534375.2229071227
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 85.6392822265625,
+            "area_note": "shoelace_from_vertices",
+            "handle": "11D",
+            "perimeter_xy": 37.030161235987734,
+            "bbox_xy": {
+              "min": [
+                597573.3936471598,
+                3534347.679654967
+              ],
+              "max": [
+                597584.4919161075,
+                3534358.806152393
+              ],
+              "size": [
+                11.09826894768048,
+                11.126497426070273
+              ]
+            },
+            "centroid_xy_vertices": [
+              597578.920466371,
+              3534353.343928774
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "DLSS",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 81.41064453125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "15B",
+            "perimeter_xy": 42.283036881014326,
+            "bbox_xy": {
+              "min": [
+                597485.3761794702,
+                3534260.257230546
+              ],
+              "max": [
+                597502.1783601805,
+                3534270.966885769
+              ],
+              "size": [
+                16.80218071024865,
+                10.70965522294864
+              ]
+            },
+            "centroid_xy_vertices": [
+              597493.645112331,
+              3534265.606257018
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 75.2269287109375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A3",
+            "perimeter_xy": 38.18504314378312,
+            "bbox_xy": {
+              "min": [
+                597411.9843160481,
+                3534358.433239817
+              ],
+              "max": [
+                597419.9213314207,
+                3534372.755101504
+              ],
+              "size": [
+                7.937015372561291,
+                14.321861686650664
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.9528237343,
+              3534365.5941706607
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 74.7554931640625,
+            "area_note": "shoelace_from_vertices",
+            "handle": "6B",
+            "perimeter_xy": 51.33653236616104,
+            "bbox_xy": {
+              "min": [
+                597365.7858654293,
+                3534350.308062748
+              ],
+              "max": [
+                597388.3344840417,
+                3534356.015490069
+              ],
+              "size": [
+                22.548618612345308,
+                5.707427321001887
+              ]
+            },
+            "centroid_xy_vertices": [
+              597377.0601747355,
+              3534353.1617764086
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 4,
+            "area_xy": 26.0430908203125,
+            "area_note": "shoelace_from_vertices",
+            "handle": "3B",
+            "perimeter_xy": 22.389974448538744,
+            "bbox_xy": {
+              "min": [
+                597421.1571804553,
+                3534369.617145495
+              ],
+              "max": [
+                597429.601548319,
+                3534374.644496042
+              ],
+              "size": [
+                8.444367863703519,
+                5.0273505467921495
+              ]
+            },
+            "centroid_xy_vertices": [
+              597425.3793643871,
+              3534372.130820769
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 21.8607177734375,
+            "area_note": "shoelace_from_vertices",
+            "handle": "A9",
+            "perimeter_xy": 21.459134386378913,
+            "bbox_xy": {
+              "min": [
+                597433.6308104616,
+                3534384.433230873
+              ],
+              "max": [
+                597442.1103471835,
+                3534388.455761517
+              ],
+              "size": [
+                8.479536721948534,
+                4.022530643735081
+              ]
+            },
+            "centroid_xy_vertices": [
+              597437.1960755643,
+              3534386.871936413
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": true,
+            "vertex_count": 5,
+            "area_xy": 20.5858154296875,
+            "area_note": "shoelace_from_vertices",
+            "handle": "38",
+            "perimeter_xy": 18.27287430167119,
+            "bbox_xy": {
+              "min": [
+                597412.9883251596,
+                3534372.372159736
+              ],
+              "max": [
+                597418.0822780392,
+                3534378.231139669
+              ],
+              "size": [
+                5.093952879542485,
+                5.858979932963848
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.2496724277,
+              3534375.893292334
+            ]
+          },
+          {
+            "type": "POLYLINE",
+            "layer": "DMTZ",
+            "closed": false,
+            "vertex_count": 18,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "16",
+            "perimeter_xy": 308.67885572523346,
+            "bbox_xy": {
+              "min": [
+                597408.2011118163,
+                3534266.756729639
+              ],
+              "max": [
+                597496.8955774541,
+                3534370.22282841
+              ],
+              "size": [
+                88.69446563778911,
+                103.46609877096489
+              ]
+            },
+            "centroid_xy_vertices": [
+              597449.6285668076,
+              3534310.136781875
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "3E",
+            "perimeter_xy": 8.695200249350926,
+            "bbox_xy": {
+              "min": [
+                597416.9986346937,
+                3534371.81308595
+              ],
+              "max": [
+                597421.2465423299,
+                3534372.738778965
+              ],
+              "size": [
+                4.247907636221498,
+                0.9256930151022971
+              ]
+            },
+            "centroid_xy_vertices": [
+              597419.1225885118,
+              3534372.2759324573
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "41",
+            "perimeter_xy": 8.695200249350926,
+            "bbox_xy": {
+              "min": [
+                597416.934758556,
+                3534371.51996509
+              ],
+              "max": [
+                597421.1826661922,
+                3534372.445658105
+              ],
+              "size": [
+                4.247907636221498,
+                0.9256930151022971
+              ]
+            },
+            "centroid_xy_vertices": [
+              597419.0587123741,
+              3534371.982811597
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "5D",
+            "perimeter_xy": 14.673541477724603,
+            "bbox_xy": {
+              "min": [
+                597429.601548319,
+                3534372.826260519
+              ],
+              "max": [
+                597430.9590366432,
+                3534380.036352774
+              ],
+              "size": [
+                1.3574883241672069,
+                7.210092254914343
+              ]
+            },
+            "centroid_xy_vertices": [
+              597430.2802924811,
+              3534376.4313066467
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "60",
+            "perimeter_xy": 14.67354147955509,
+            "bbox_xy": {
+              "min": [
+                597429.3067281926,
+                3534372.881768113
+              ],
+              "max": [
+                597430.6642165168,
+                3534380.091860369
+              ],
+              "size": [
+                1.3574883241672069,
+                7.210092255845666
+              ]
+            },
+            "centroid_xy_vertices": [
+              597429.9854723547,
+              3534376.486814241
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "64",
+            "perimeter_xy": 10.06885286077517,
+            "bbox_xy": {
+              "min": [
+                597414.1326110429,
+                3534378.231139669
+              ],
+              "max": [
+                597415.3034882407,
+                3534383.127515479
+              ],
+              "size": [
+                1.1708771977573633,
+                4.8963758097961545
+              ]
+            },
+            "centroid_xy_vertices": [
+              597414.7180496418,
+              3534380.679327574
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 2,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "67",
+            "perimeter_xy": 10.06885286077517,
+            "bbox_xy": {
+              "min": [
+                597414.4243846468,
+                3534378.161367439
+              ],
+              "max": [
+                597415.5952618446,
+                3534383.057743249
+              ],
+              "size": [
+                1.1708771977573633,
+                4.8963758097961545
+              ]
+            },
+            "centroid_xy_vertices": [
+              597415.0098232457,
+              3534380.609555344
+            ]
+          },
+          {
+            "type": "LWPOLYLINE",
+            "layer": "JMD",
+            "closed": false,
+            "vertex_count": 4,
+            "area_xy": null,
+            "area_note": "shoelace_from_vertices",
+            "handle": "74",
+            "perimeter_xy": 48.50394278200481,
+            "bbox_xy": {
+              "min": [
+                597388.0531964746,
+                3534348.41633433
+              ],
+              "max": [
+                597405.4655748188,
+                3534358.871272601
+              ],
+              "size": [
+                17.412378344219178,
+                10.454938271082938
+              ]
+            },
+            "centroid_xy_vertices": [
+              597396.5634068563,
+              3534353.5905459546
+            ]
+          }
+        ],
+        "text_samples": [
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597443.0095847596,
+              3534376.69241694
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597423.2541144494,
+              3534384.698495468
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597398.633913156,
+              3534374.972590853
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597380.6450871016,
+              3534365.954499164
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597397.2948437599,
+              3534360.451467087
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597376.6497808362,
+              3534352.274779326
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597362.7365723714,
+              3534354.560220081
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "棚",
+            "insert_xy": [
+              597414.6939672776,
+              3534374.563254503
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "棚",
+            "insert_xy": [
+              597415.1714873024,
+              3534365.692196549
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "JMD",
+            "text": "砖",
+            "insert_xy": [
+              597424.8040834883,
+              3534371.625202791
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.16",
+            "insert_xy": [
+              597236.525879401,
+              3534158.71598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597237.5044508296,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "24",
+            "insert_xy": [
+              597241.725879401,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.16",
+            "insert_xy": [
+              597743.0106704498,
+              3534158.71598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597741.2463847356,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "75",
+            "insert_xy": [
+              597745.467813307,
+              3534153.09098412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.56",
+            "insert_xy": [
+              597743.0106704498,
+              3534558.760366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597741.2463847356,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "75",
+            "insert_xy": [
+              597745.467813307,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.56",
+            "insert_xy": [
+              597236.525879401,
+              3534558.760366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "597.",
+            "insert_xy": [
+              597237.5044508296,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "24",
+            "insert_xy": [
+              597241.725879401,
+              3534562.385366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "m",
+            "insert_xy": [
+              597467.0587511159,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "10",
+            "insert_xy": [
+              597468.0754177825,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "5",
+            "insert_xy": [
+              597473.3801796873,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "0",
+            "insert_xy": [
+              597478.1301796873,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "10",
+            "insert_xy": [
+              597487.8254177825,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "20",
+            "insert_xy": [
+              597497.7492273063,
+              3534144.836699033
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "30",
+            "insert_xy": [
+              597507.7492273063,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "40",
+            "insert_xy": [
+              597517.7492273063,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "m",
+            "insert_xy": [
+              597519.146846354,
+              3534144.836699032
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597484.2897034968,
+              3534566.860366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597472.2539892112,
+              3534571.860366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597745.267813307,
+              3534134.06598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597739.4463847355,
+              3534137.06598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597220.3830222582,
+              3534586.110366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.242",
+            "insert_xy": [
+              597214.5615936868,
+              3534582.160366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "附注：",
+            "insert_xy": [
+              597700.267813307,
+              3534149.31598412
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-597.242",
+            "insert_xy": [
+              597243.6687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3533.758-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534567.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534571.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-597.745",
+            "insert_xy": [
+              597251.1687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-597.242",
+            "insert_xy": [
+              597243.6687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.558-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534575.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "TK",
+            "text": "3534.158-596.738",
+            "insert_xy": [
+              597236.1687365439,
+              3534571.235366398
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "ZJ",
+            "text": "北",
+            "insert_xy": [
+              597701.428599942,
+              3534450.514590239
+            ]
+          },
+          {
+            "type": "TEXT",
+            "layer": "ZJ",
+            "text": "口袋公园用地红线",
+            "insert_xy": [
+              597802.2940523897,
+              3534044.44333439
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "warnings": []
+}

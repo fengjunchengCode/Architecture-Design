@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -24,11 +25,55 @@ from typing import Any
 from inventory import FileRecord, iter_input_files, resolve_project
 from vision_providers import get_provider, list_providers, VisionProvider
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VISION_OUTPUT_DIR = "05_output/vision"
 VISION_BUCKETS = {"location_map", "site_photo", "reference"}
 VISION_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+ENV_FILE = REPO_ROOT / ".env"
+
+
+def load_env_file(path: Path = ENV_FILE) -> list[str]:
+    """Load simple KEY=VALUE pairs from .env without overriding the process env."""
+    if not path.exists():
+        return []
+    loaded: list[str] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        os.environ[key] = value
+        loaded.append(key)
+    return loaded
+
+
+def vision_setup_hint() -> dict[str, Any]:
+    return {
+        "env_file": str(ENV_FILE),
+        "template": str(REPO_ROOT / ".env.example"),
+        "check_command": "python _tools/vision_route.py --list-providers",
+        "supported_providers": {
+            "openai": ["OPENAI_API_KEY", "VISION_MODEL or OPENAI_VISION_MODEL"],
+            "anthropic": ["ANTHROPIC_API_KEY", "ANTHROPIC_VISION_MODEL optional"],
+            "google": ["GOOGLE_API_KEY", "GOOGLE_VISION_MODEL optional"],
+        },
+        "agent_rule": (
+            "If no provider is configured, do not read image files with the active chat model. "
+            "Use the generated sidecar and write pending questions instead."
+        ),
+    }
 
 
 def visual_records(records: list[FileRecord], buckets: set[str]) -> list[FileRecord]:
@@ -74,8 +119,12 @@ def not_configured_result(record: FileRecord, provider: VisionProvider) -> dict[
         "provider": provider.get_config_info(),
         "summary": None,
         "fallback": {
-            "action": "do_not_ask_user_to_switch_model",
+            "action": "do_not_read_image_with_chat_model",
             "record_as": "visual asset uploaded but not semantically parsed",
+            "agent_instruction": (
+                "Do not open/read this image with the active conversation model. "
+                "Record the image as present and ask for human-confirmed facts."
+            ),
             "pending_questions": [
                 {
                     "field": "site.address" if record.bucket == "location_map" else None,
@@ -87,7 +136,7 @@ def not_configured_result(record: FileRecord, provider: VisionProvider) -> dict[
                 },
             ],
         },
-        "config_hint": "Set VISION_PROVIDER and corresponding API key. Supported: openai, anthropic, google.",
+        "config_hint": vision_setup_hint(),
     }
 
 
@@ -112,6 +161,19 @@ def analyze_record(project_dir: Path, record: FileRecord, provider: VisionProvid
     try:
         prompt = prompt_for(record)
         result = provider.analyze_image(path, prompt, timeout)
+        if result.get("status") == "error":
+            result.setdefault(
+                "fallback",
+                {
+                    "action": "continue_without_user_model_switch_or_image_read",
+                    "record_as": "visual asset uploaded but vision parsing failed",
+                    "agent_instruction": (
+                        "Do not retry by reading this image with the active conversation model. "
+                        "Fix provider/model configuration, then rerun vision_route.py."
+                    ),
+                },
+            )
+            result.setdefault("config_hint", vision_setup_hint())
         base.update(result)
     except Exception as exc:
         base.update({
@@ -120,9 +182,14 @@ def analyze_record(project_dir: Path, record: FileRecord, provider: VisionProvid
             "summary": None,
             "error": str(exc),
             "fallback": {
-                "action": "continue_without_user_model_switch",
+                "action": "continue_without_user_model_switch_or_image_read",
                 "record_as": "visual asset uploaded but vision parsing failed",
+                "agent_instruction": (
+                    "Do not retry by reading this image with the active conversation model. "
+                    "Use pending questions or fix provider configuration, then rerun vision_route.py."
+                ),
             },
+            "config_hint": vision_setup_hint(),
         })
 
     return base
@@ -165,20 +232,24 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    loaded_env = load_env_file()
 
     # 列出 providers
     if args.list_providers:
         providers = list_providers()
         if args.json:
-            print(json.dumps(providers, ensure_ascii=False, indent=2))
+            print(json.dumps({"env_loaded": loaded_env, "setup": vision_setup_hint(), "providers": providers}, ensure_ascii=False, indent=2))
         else:
             print("== Available vision providers ==")
+            print(f"  .env: {ENV_FILE} ({'loaded' if loaded_env else 'not found or no new keys'})")
             for p in providers:
                 status = "configured" if p["configured"] else "not configured"
                 print(f"  {p['name']}: {status}")
                 for k, v in p["config_info"].items():
                     if k not in ("provider", "configured"):
                         print(f"    {k}: {v}")
+            if not any(p["configured"] for p in providers):
+                print("  setup: copy .env.example to .env, fill one provider API key/model, then rerun this command")
         return 0
 
     project_dir = resolve_project(args.project)
@@ -194,6 +265,8 @@ def main() -> int:
         "project_dir": str(project_dir),
         "project_code": project_dir.name,
         "provider": provider.get_config_info(),
+        "env_loaded": loaded_env,
+        "setup": vision_setup_hint() if not provider.is_configured() else None,
         "visual_asset_count": len(records),
         "results": results,
     }
@@ -207,6 +280,8 @@ def main() -> int:
         print(f"== vision_route :: {project_dir}")
         print(f"  provider: {provider.get_provider_name()}")
         print(f"  configured: {provider.is_configured()}")
+        if not provider.is_configured():
+            print(f"  setup: configure {ENV_FILE} from .env.example, then rerun vision_route.py")
         print(f"  visual assets: {len(records)}")
         for result in results:
             print(f"  - {result['source']['path']}: {result['status']}")

@@ -10,6 +10,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROJECTS_DIR = REPO_ROOT / "projects"
@@ -78,7 +83,7 @@ def read_policy_for(path: Path) -> tuple[str, bool, str]:
         return (
             "visual_asset",
             False,
-            "Route through _tools/vision_route.py or an agent vision tool; do not ask the user to switch models.",
+            "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models.",
         )
     if ext in LEGACY_WORD_EXTS:
         return (
@@ -87,7 +92,11 @@ def read_policy_for(path: Path) -> tuple[str, bool, str]:
             "Legacy .doc binary: inventory only. Convert to .docx, PDF, or TXT before semantic extraction; do not use strings/cat/raw reads.",
         )
     if ext in BINARY_INDEX_ONLY_EXTS:
-        return ("binary_index_only", False, "Binary/CAD asset: record path/hash only unless a dedicated parser exists.")
+        return (
+            "binary_index_only",
+            False,
+            "Binary/CAD asset: record path/hash only. For S2 DWG/DXF facts, use _tools/dwg_probe.py; do not read raw bytes.",
+        )
     return ("unknown_index_only", False, "Unknown extension: record path/hash only until a reader is explicitly chosen.")
 
 

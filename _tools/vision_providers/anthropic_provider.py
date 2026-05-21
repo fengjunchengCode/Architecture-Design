@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from .base import VisionProvider
+from .base import VisionProvider, has_real_config_value
 
 DEFAULT_API_BASE = "https://api.anthropic.com"
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
@@ -25,7 +25,7 @@ class AnthropicProvider(VisionProvider):
         self.api_base = os.environ.get("ANTHROPIC_API_BASE", DEFAULT_API_BASE).rstrip("/")
 
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        return has_real_config_value(self.api_key)
 
     def get_config_info(self) -> dict[str, Any]:
         return {

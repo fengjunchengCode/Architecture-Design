@@ -5,6 +5,15 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+PLACEHOLDER_VALUES = {"", "xxx", "sk-xxx", "sk-ant-xxx", "your-api-key", "your_api_key"}
+
+
+def has_real_config_value(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = value.strip()
+    return bool(normalized) and normalized.lower() not in PLACEHOLDER_VALUES
+
 
 class VisionProvider(ABC):
     """视觉模型 Provider 抽象基类"""

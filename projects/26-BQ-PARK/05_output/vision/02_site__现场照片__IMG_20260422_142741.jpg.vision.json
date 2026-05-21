@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:23:41+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_142741.jpg",
+    "size_bytes": 5151324,
+    "sha1": "23775c725f11e713174dd2311da23f4144acb1ab",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "高原河畔宗教与居民混合场景，前景为河流及悬挂经幡的简易过河设施，对岸有带藏文经文的红色建筑、金色佛塔及居民区，场地周边架空电线密集，地面以土质地貌为主。",
+    "visible_site_conditions": [
+      "河流（前景贯穿场地）",
+      "悬挂彩色经幡的简易木质过河设施",
+      "土质河岸及裸露泥土地",
+      "对岸红色藏文经文建筑",
+      "金色佛塔（宗教构筑物）",
+      "背景低矮居民区建筑",
+      "架空电线杆及密集电线",
+      "多辆停放的汽车",
+      "建筑周边的围栏",
+      "少量行人（在宗教建筑附近活动）"
+    ],
+    "constraints": [
+      "河流分隔场地，现有过河设施功能简陋",
+      "密集架空电线限制建筑高度与布局",
+      "周边宗教建筑需考虑风貌协调性",
+      "场地地形存在明显高差",
+      "可能受宗教文化保护相关规定约束"
+    ],
+    "opportunities": [
+      "可利用河流景观资源打造滨水空间",
+      "依托宗教建筑发展文化旅游相关功能",
+      "结合周边居民区需求配套服务设施",
+      "高原特色地貌可塑造独特场地风貌"
+    ],
+    "confidence": "high",
+    "needs_review": [
+      "河流水文特征（水量季节变化、流速等）",
+      "宗教建筑的保护范围及规划管控要求",
+      "场地地质条件（如冻土、承载力等）",
+      "简易过河设施的功能性与改造可行性",
+      "周边居民区的人口规模与生活配套需求"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "dfa7b42dc0254c75b26d2d2d594236f3"
+}

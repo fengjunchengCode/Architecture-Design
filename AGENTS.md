@@ -12,6 +12,10 @@ Python 脚本只做确定性工作：初始化目录、扫描文件、计算 has
 
 图片资料（`visual_asset`，如 JPG/PNG 区位图、现场照片）必须通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到配置的视觉模型。支持多种 provider（OpenAI、Anthropic、Google），通过 `VISION_PROVIDER` 环境变量选择。不得要求用户手动切换 API 模型；若视觉模型未配置，则读取 `05_output/vision/` 降级 sidecar，并把地址、坐标、红线等缺口写入 `pending_questions` 或 `low_confidence_fields`。
 
+若 `vision_route.py` 返回未配置、API 错误或模型不存在，agent 不得再用当前对话模型、内置图片 Read、截图查看等方式直接读图；只能记录图片已存在、引用 sidecar，并向甲方/用户列出待确认问题。视觉模型配置入口是仓库根目录 `.env`（可从 `.env.example` 复制），配置后运行 `python _tools/vision_route.py --list-providers` 检查。
+
+DWG/DXF 地形资料进入 S2 时必须优先运行 `python _tools/dwg_probe.py {项目代号} --json --write`。该工具会自动检测 `ezdxf` 与 ODA File Converter，缺少依赖时输出 `install_guidance`；agent 应按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案，不得裸读 DWG 二进制内容。
+
 ## 上下文边界
 
 默认只读取以下权威入口：

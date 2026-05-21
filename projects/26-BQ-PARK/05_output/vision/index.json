@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-19T23:24:07+0800",
+  "results": [
+    {
+      "path": "02_site/区位图/中.png",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__区位图__中.png.vision.json"
+    },
+    {
+      "path": "02_site/区位图/大.png",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__区位图__大.png.vision.json"
+    },
+    {
+      "path": "02_site/区位图/小.png",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__区位图__小.png.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_141900.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_141900.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_141927.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_141927.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142054.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142054.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142114.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142114.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142315.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142315.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142319.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142319.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142636.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142636.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142640.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142640.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142717.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142717.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142720.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142720.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142726.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142726.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142738.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142738.jpg.vision.json"
+    },
+    {
+      "path": "02_site/现场照片/IMG_20260422_142741.jpg",
+      "status": "ok",
+      "sidecar": "05_output/vision/02_site__现场照片__IMG_20260422_142741.jpg.vision.json"
+    }
+  ]
+}

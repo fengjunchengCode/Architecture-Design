@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-05-19T23:19:06+0800",
+  "source": {
+    "path": "02_site/现场照片/IMG_20260422_141927.jpg",
+    "size_bytes": 4082440,
+    "sha1": "ec435b3e17c494b62e8ebb343f0264af7d61f207",
+    "bucket": "site_photo",
+    "ext": ".jpg",
+    "read_policy": "visual_asset",
+    "requires_conversion": false,
+    "agent_note": "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models."
+  },
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "status": "ok",
+  "model": "mimo-v2.5",
+  "summary": {
+    "visual_summary": "这是一个晴朗天气下的开阔场地，地面为裸露黄土，背景有山脉，右侧有彩色的藏式建筑及道路设施，左侧有电线杆，整体环境显得干旱且处于开发或维护状态。",
+    "visible_site_conditions": [
+      "地面为裸露的、不平整的黄褐色土质，伴有少量碎石。",
+      "右侧存在一条铺设道路及停放的车辆。",
+      "左侧及中部有多根电线杆及横穿场地的架空电线。",
+      "背景为植被稀疏的连绵山脉。",
+      "右侧有一座色彩鲜艳的藏式风格建筑或构筑物。",
+      "远景中可见疑似施工机械（黄色）。"
+    ],
+    "constraints": [
+      "场地现状不平整，需要进行场地平整和土方工程。",
+      "场地内存在架空电线，可能影响建筑布局或需要迁改。",
+      "场地整体植被稀少，土壤条件可能较差（干旱、贫瘠）。",
+      "临近现有道路，需考虑出入口设置、交通组织及可能的噪音影响。"
+    ],
+    "opportunities": [
+      "天气晴好，光照条件充足，有利于建筑采光设计。",
+      "背景山体可作为景观资源，在建筑布局中可考虑借景。",
+      "右侧的特色建筑/构筑物可作为场地的文化地标或设计元素参考。",
+      "场地相对开阔，为建筑布局提供了较大的灵活性。"
+    ],
+    "confidence": "medium",
+    "needs_review": [
+      "需核实远景中黄色机械的性质（是施工中还是停放）。",
+      "需了解右侧藏式建筑的具体功能及与拟建项目的关系。",
+      "需确认场地内及周边的地下管线情况（仅见架空线）。",
+      "需了解场地土质的具体承载力和地下水位情况（从图片无法判断）。"
+    ]
+  },
+  "raw_text": null,
+  "response_id": "1d24e125ec934f5f95718296549ee471"
+}
