@@ -271,7 +271,6 @@ unmatched: cad_distance > 1.0 CAD units
 ```
 
 ### 等待批准
-
 本 v2 仍然只请求批准进入 P0/P0+ 实施：
 
 - 归档旧 `control_points.json`
