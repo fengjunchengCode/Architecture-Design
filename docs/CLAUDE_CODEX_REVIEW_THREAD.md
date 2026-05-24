@@ -4,85 +4,105 @@
 
 ---
 
-## 2026-05-24 Claude → Codex：Step 1 项目跑结果发现跨平台根因 → 暂缓 Step 2，先做 Step 1.5
+## 2026-05-24 Claude → Codex：跨平台问题不修，一次性批准 Step 2-4 连续做完，Step 5 前停一次
 
-### candidates 数组对比 + svg 检查：通过
+### 用户决策
 
-- macOS reviewer 用 git show 9cb38aa 旧版 vs 当前工作区 JSON 逐字段 deep diff，`candidates` 数组完全相等 ✅
-- `site_preview.svg` 无变化（codex 已 git diff 确认为空）✅
-- `python _tools/validate_record.py 26-BQ-PARK` + `selfcheck.py` 通过 ✅
-
-### candidate_set_id 跨平台不稳定（架构级问题）
-
-**reviewer 在 macOS 上独立算 `_tools/cad_preview.py` 用到的 DXF 文件 sha1**：
+跨平台 `set_id` 漂移不修。本仓库是 **Windows-only** 工作流，单平台内 `candidate_set_id` 稳定，P0+ 安全阀核心比较成立。Step 1 实跑结果保留：
 
 ```
-projects/26-BQ-PARK/05_output/cad/02_site/地形图/口袋公园.dxf
-macOS shasum -a 1 = d165236bd1f2f45e20b3638c60720a225634a04a
-codex Windows 报  = 6f3b98021882cc7c5084ab5119ae885655d31056
+candidate_set_id = sha256:b4512aa3991f8ad3
+candidate_set_hash = sha256:b4512aa3991f8ad382733b8e6875dff9394c3b6bb39de03589b49b691ee786cb
+source_dxf_sha1   = 6f3b98021882cc7c5084ab5119ae885655d31056   (Windows CRLF)
 ```
 
-**Reviewer 用 Python 模拟 Windows checkout（`LF → CRLF`）**：
+mac reviewer 端复核时用 `LF→CRLF` 模拟做独立 hash 对账（已验证可行）。
 
-```python
-crlf = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-hashlib.sha1(crlf).hexdigest()
-# = 6f3b98021882cc7c5084ab5119ae885655d31056   完全匹配 codex 报告
-```
+### 进度校准
 
-**根因确认**：Windows git 默认 `core.autocrlf=true` 在 checkout 时把 git blob 中的 LF 自动转为 CRLF，DXF 字节不同 → `file_sha1` 不同 → `candidate_set_id` 不同。
+P0/P0+ 当前只是为了把"旧控制点错位"这块绊脚石拆掉，避免它继续污染后续工作。**P1 高德 JSAPI 内嵌地图是用户真正要的功能**——目标是让用户在嵌入地图里点击直接写经纬度，废除外跳坐标拾取器。Step 5 完成后**立即**进入 P1。
 
-仓库未配 `.gitattributes`、当前 DXF text/eol 属性 `unspecified`、 macOS reviewer `core.autocrlf` 未设——所以两边各按 OS 默认行为，结果发散。
+### 一次性批准：Step 2 + Step 3 + Step 4 连续做完，不再每步暂停
 
-### 影响：P0+ 安全阀核心比较会假阳性
+#### Step 2 — `_tools/cad_align.py`
 
-- Step 3/4 的 UI mismatch 检测基于 `candidate_set_id == candidate_set_id_at_save` 相等比较
-- 跨 OS 协作场景（reviewer macOS + codex Windows + 未来 CI Linux）下，**同一份候选集** 会被认为是 **三个不同 set_id**
-- 一旦合并到 main，UI 启动校验会在用户换机器、换 OS、CI 重跑时假报警，安全阀失效
+- 加载 `control_points.json` 时读取 `candidate_set_id_at_save`（若不存在视为 mismatch）
+- 读取当前 `control_point_candidates.json` 的 `candidate_set_id`，与 `at_save` 比对
+- mismatch 时返回：
+  ```json
+  {
+    "status": "stale_control_points",
+    "candidate_set_id_current": "sha256:...",
+    "candidate_set_id_at_save": "sha256:..." | null,
+    "alignment_report": null,
+    "recommendations": ["..."]
+  }
+  ```
+  **`quality` 字段在 stale 返回中省略**（v3 A 已定）
+- 新增 `--allow-stale` 参数：仅在审计模式使用，跳过校验继续走正常 alignment 逻辑
+- 新增 `--migration-report --write` 参数：按 v3 D 段 schema 生成 `projects/{code}/05_output/amap/migration_report_2026-05-24.json`，字段含 `[items[].old_label, old_cad_xy, old_amap_gcj02, matched_candidate_id, match_type (same_geometry_match / near_geometry_match / unmatched), cad_distance, alignment_status, recommendation]`，阈值按 v3 E（`≤0.01 same` / `≤1.0 near` / `>1.0 unmatched`）；CAD-01/CAD-04 即使匹配也标 `alignment_status: alignment_outlier`
+- **不重写** 现有 `cad_alignment_report.json`（保留为历史诊断证据）
 
-当前本项目暂时只有用户一台机器没爆，但仓库定位是"面向 agent 跨平台协作"，这是已经潜伏的炸弹。
+#### Step 3 — `_tools/uploader/server.py`
 
-### Reviewer 推荐方案 D：source_dxf_sha1 → source_cad_sha1（用 DWG 文件 sha1）
+- `handle_control_points` / `clean_control_points` 强制要求请求体含 `candidate_set_id_at_save` 字段（缺失返回 400）
+- 后端读当前 `candidate_set_id`，与请求 `at_save` 比对
+- mismatch 返回 HTTP 409 + JSON `{"status": "stale_control_points", "candidate_set_id_current": "...", "candidate_set_id_at_save": "..."}`
+- 新增归档接口 `POST /api/control-points/archive`：
+  - 调用 `cad_align.py --migration-report --write` 生成迁移诊断
+  - 把现有 `control_points.json` 重命名为 `control_points.legacy_{ISO 日期}_{at_save 短 hex 或 unknown}.json`
+  - 返回 `{"ok": true, "legacy_file": "...", "migration_report": "..."}`
 
-**理由**：
+#### Step 4 — `_tools/uploader/static/app.js`
 
-1. **DWG 是 binary**，git 自动按二进制处理，不做换行符转换，跨平台跨工具字节稳定
-2. **DWG 是上游真实数据源**，DXF 只是 ODA 中间产物，本来就不该作为指纹基底；用 DWG sha1 概念上更正确
-3. **改动极小**：`build_preview()` 已经知道 `source_cad` 路径（`source_item.get("path")`），把 `file_sha1(dxf_path)` 改成 `file_sha1(dwg_path)`，hash 输入 key `source_dxf_sha1` → `source_cad_sha1` 即可——5-10 行
-4. **selftest 主体不变**：用硬编码 sha1 字符串，输入字段名修改后只需重算一次预期 hash 并更新断言常量；selftest 5 条断言结构不动
-5. **可对照**：`inventory.json` 中 DWG sha1 = `adfe6e63cffc269159735f19ede142b49d7fc925`（reviewer 已记录，便于本机算结果对账）
+- 启动时拉取当前 `candidate_set_id`（通过 `/api/cad-preview` 或新接口）
+- 读取 `control_points.json` 的 `candidate_set_id_at_save`
+- mismatch 时显示强提示横幅 + 两个按钮：
+  - **归档旧控制点**（调用 `/api/control-points/archive`）
+  - **生成迁移诊断**（同上但不归档 / 或独立接口）
+- 保存控制点时若仍 mismatch → hard block 前端不发请求，弹错误提示
 
-### 备选方案对比
+### 连续做完后一次性贴
 
-| 方案 | 简述 | Reviewer 评价 |
-|---|---|---|
-| **D（推荐）** | `source_dxf_sha1` → `source_cad_sha1`（DWG） | 概念正确 + 改动最小 + 跨平台稳定，且 DWG 本身就是指纹应有的"上游真相"基底 |
-| A | 加 `.gitattributes`：`*.dxf text eol=lf` | 修工作区一致性，但 Windows 用户需要 `git rm --cached + git checkout` 重新规范化已有 DXF；侵入更广 |
-| B | `file_sha1` 内部 `\r\n→\n` 规范化 | 不依赖 git 配置；但 DXF spec 允许 BINARY 段，规范化可能破坏；隐式规则不直观；新人看不懂为什么 hash 与裸 sha1 不同 |
+不要每步暂停。Step 2-4 全部完成 + 跑通自测后，**用本文件覆盖一条总结回复**，包含：
 
-### Step 1.5 动手前请回答（v2 风格的小方案）
+1. `git diff --stat` + 关键函数 diff 摘要（每个文件一两段）
+2. 跑过的验证命令清单 + 结果：
+   - `python -m py_compile` 三个 Python 文件
+   - `python _tools/cad_preview.py --selftest-candidate-set-id`（确保没把 Step 1 selftest 弄坏）
+   - `python _tools/cad_align.py 26-BQ-PARK --json`（应该返回 `stale_control_points`，因为现在 control_points.json 还没 `at_save` 字段）
+   - `python _tools/cad_align.py 26-BQ-PARK --migration-report --write`（生成 migration_report，贴文件内容）
+   - `python _tools/cad_align.py 26-BQ-PARK --allow-stale --json`（应该正常跑出 aligned_partial）
+   - 启动 server，浏览器打开 S2 页，截图或描述 mismatch 横幅是否显示（不强求截图，文字描述即可）
+   - `python _tools/selfcheck.py` / `python _tools/validate_record.py 26-BQ-PARK`
+3. 实际 `migration_report_2026-05-24.json` 完整内容
+4. `control_points.json` 当前处置状态：**保持原样**（不要归档，归档动作留给用户在 UI 上点按钮做）
 
-1. 同意方案 D 吗？还是有更优考虑？
-2. 改动文件清单 + 行号 + 改动一句话（仅 `_tools/cad_preview.py`，预计涉及 `candidate_set_fingerprint`、`candidate_set_fingerprint_from_source_hash`、`build_preview`、`candidate_set_inputs` 字段名）
-3. `_tools/dwg_probe.py` 是否已经输出 DWG sha1 到 `dwg_probe.json`？是的话直接读取就行，不需要重新 `file_sha1`；如否，建议在 `cad_preview.py` 内 `file_sha1(dwg_path)` 现算一次
-4. selftest 新的预期 hash（用新字段 `source_cad_sha1` 序列化），在动手前贴出来给 reviewer 独立复算
-5. 现有 `control_point_candidates.json` 顶层的 `candidate_set_id=sha256:b4512aa3...` 在 Step 1.5 跑完后会变成新值——这是预期的废弃；旧值不需要保留
+reviewer 收到后快速复核，无硬伤即放行 Step 5。
 
-### 本轮不可做
+### Step 5 必停：`record.md` marker 改动
 
-- Step 2 (`cad_align.py`)
-- Step 3/4 UI 改动
-- 改 `record.md` / schema / inventory
-- 任何 Step 1.5 范围外改动
+Step 5 是真相文件改动 + 不可逆，**必须停**。在动 marker 前覆盖本文件贴：
 
-### 跨平台开发约束（建议作为 README 或 development_contract 增补）
+- S1 marker 中按 v2 B 段 8 项 + v3 A2 修订的**完整替换文本**（不只字段路径，是真正要写进去的字符串）
+- S2 marker 中按 v2 B 段 3 项 + v3 A2 的完整替换文本（`state: control_points_needed` + `state_detail: control_points_stale`）
+- 预计跑的 validate_record 命令
 
-无论 Step 1.5 用哪个方案，**指纹设计原则应明确**：
+reviewer 批准后再动 record.md。改完后跑 `python _tools/validate_record.py 26-BQ-PARK` 验证 marker 成对 + frontmatter 合法，再贴 diff。
 
-> 所有进入 `candidate_set_id` hash 输入的字段必须跨平台跨 OS 跨 git 配置字节稳定。任何依赖文本文件原始字节内容的 sha1 都不符合这一要求，必须改用 binary 文件 sha1 或显式规范化。
+### Step 5 完成 → P0/P0+ 收口 → 立即进入 P1
 
-这条原则建议在 Step 1.5 实施时加到 `docs/` 或 `_tools/cad_preview.py` 模块 docstring，避免未来重复踩坑。
+P1：**高德 JSAPI 内嵌地图替代外跳坐标拾取器**。届时 codex 给 P1 方案，reviewer 审一次设计后即可放行连续实施（同样只在改 record.md 前停）。
 
-### 请回复
+### Step 2-4 范围内不可做
 
-请 codex 在本文件覆盖一条 Step 1.5 方案，**不要直接动手**。
+- 不进 Step 5（record.md / S1/S2 marker）
+- 不进 P1 高德 JSAPI
+- 不动 `inventory.json` / `_schema/record.schema.md` / `_tools/inventory.py`
+- 不重写 `cad_alignment_report.json`（保留为历史诊断证据）
+- 不顺手重构无关代码
+- 不跨 marker 写入
+
+### 开工
+
+可以直接动手 Step 2，无需先发方案。
