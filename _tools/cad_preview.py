@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import math
@@ -457,6 +458,138 @@ def render_svg(
     return "\n".join(parts)
 
 
+def file_sha1(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def normalize_hash_coord(value: Any) -> str:
+    return f"{float(value):.6f}"
+
+
+def normalize_candidate_for_hash(candidate: dict[str, Any]) -> dict[str, Any]:
+    point = candidate.get("cad_point") or {}
+    return {
+        "id": candidate.get("id"),
+        "cad_point": {
+            "x": normalize_hash_coord(point["x"]),
+            "y": normalize_hash_coord(point["y"]),
+        },
+        "feature_type": candidate.get("feature_type"),
+        "source_handle": candidate.get("source_handle"),
+        "source_layer": candidate.get("source_layer"),
+    }
+
+
+def candidate_set_fingerprint_from_source_hash(
+    source_dxf_sha1: str,
+    boundary: dict[str, Any] | None,
+    candidates: list[dict[str, Any]],
+    schema_version: str = "1.0",
+) -> dict[str, Any]:
+    selected_boundary = {
+        "handle": boundary.get("handle") if boundary else None,
+        "layer": boundary.get("layer") if boundary else None,
+    }
+    normalized_candidates = [normalize_candidate_for_hash(candidate) for candidate in candidates]
+    normalized_candidates.sort(
+        key=lambda item: (
+            str(item.get("id") or ""),
+            str(item.get("source_handle") or ""),
+            str(item.get("source_layer") or ""),
+            item["cad_point"]["x"],
+            item["cad_point"]["y"],
+        )
+    )
+    hash_input = {
+        "schema_version": schema_version,
+        "source_dxf_sha1": source_dxf_sha1,
+        "selected_boundary": selected_boundary,
+        "candidates": normalized_candidates,
+    }
+    encoded = json.dumps(hash_input, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()
+    return {
+        "candidate_set_id": f"sha256:{digest[:16]}",
+        "candidate_set_hash": f"sha256:{digest}",
+        "candidate_set_inputs": {
+            "schema_version": schema_version,
+            "source_dxf_sha1": source_dxf_sha1,
+            "selected_boundary": selected_boundary,
+            "candidate_count": len(normalized_candidates),
+        },
+        "candidate_set_hash_input": hash_input,
+    }
+
+
+def candidate_set_fingerprint(
+    source_dxf: Path,
+    boundary: dict[str, Any] | None,
+    candidates: list[dict[str, Any]],
+    schema_version: str = "1.0",
+) -> dict[str, Any]:
+    return candidate_set_fingerprint_from_source_hash(file_sha1(source_dxf), boundary, candidates, schema_version)
+
+
+def selftest_candidate_set_id() -> dict[str, Any]:
+    source_hash = "0123456789abcdef0123456789abcdef01234567"
+    boundary = {"handle": "B1", "layer": "0"}
+    candidates = [
+        {
+            "id": "CAD-02",
+            "cad_point": {"x": 10.1234567, "y": 20.7654321},
+            "feature_type": "road_edge",
+            "source_handle": "H2",
+            "source_layer": "DLSS",
+        },
+        {
+            "id": "CAD-01",
+            "cad_point": {"x": 1.0, "y": 2.0},
+            "feature_type": "redline_corner",
+            "source_handle": "H1",
+            "source_layer": "0",
+        },
+    ]
+    expected_hash = "sha256:1d80924ddf340296c0baab25942e71bd3f6fff3674f45981dac20f9c0f2a91ec"
+    base = candidate_set_fingerprint_from_source_hash(source_hash, boundary, candidates)
+    if base["candidate_set_hash"] != expected_hash:
+        raise AssertionError(f"stable hash expected {expected_hash}, got {base['candidate_set_hash']}")
+
+    repeated = candidate_set_fingerprint_from_source_hash(source_hash, boundary, candidates)
+    if repeated["candidate_set_hash"] != expected_hash:
+        raise AssertionError("same input did not produce the same candidate_set_hash")
+
+    reordered = candidate_set_fingerprint_from_source_hash(source_hash, boundary, list(reversed(candidates)))
+    if reordered["candidate_set_hash"] != expected_hash:
+        raise AssertionError("candidate input order changed candidate_set_hash")
+
+    changed_x = json.loads(json.dumps(candidates))
+    changed_x[0]["cad_point"]["x"] = 10.2234567
+    if candidate_set_fingerprint_from_source_hash(source_hash, boundary, changed_x)["candidate_set_hash"] == expected_hash:
+        raise AssertionError("cad_point.x change did not change candidate_set_hash")
+
+    changed_feature = json.loads(json.dumps(candidates))
+    changed_feature[0]["feature_type"] = "water_edge"
+    if candidate_set_fingerprint_from_source_hash(source_hash, boundary, changed_feature)["candidate_set_hash"] == expected_hash:
+        raise AssertionError("feature_type change did not change candidate_set_hash")
+
+    changed_handle = json.loads(json.dumps(candidates))
+    changed_handle[0]["source_handle"] = "H2B"
+    if candidate_set_fingerprint_from_source_hash(source_hash, boundary, changed_handle)["candidate_set_hash"] == expected_hash:
+        raise AssertionError("source_handle change did not change candidate_set_hash")
+
+    return {
+        "source_dxf_sha1": source_hash,
+        "boundary": boundary,
+        "candidates": candidates,
+        "expected_candidate_set_id": base["candidate_set_id"],
+        "expected_candidate_set_hash": base["candidate_set_hash"],
+    }
+
+
 def build_preview(project_dir: Path) -> dict[str, Any]:
     try:
         import ezdxf
@@ -477,8 +610,12 @@ def build_preview(project_dir: Path) -> dict[str, Any]:
     out_dir = project_dir / "05_output" / "cad"
     svg_rel = "05_output/cad/" + PREVIEW_NAME
     candidate_rel = "05_output/cad/" + CANDIDATES_NAME
+    fingerprint = candidate_set_fingerprint(dxf_path, boundary, candidates)
     payload = {
         "schema_version": "1.0",
+        "candidate_set_id": fingerprint["candidate_set_id"],
+        "candidate_set_hash": fingerprint["candidate_set_hash"],
+        "candidate_set_inputs": fingerprint["candidate_set_inputs"],
         "status": "ok",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "project_code": project_dir.name,
@@ -511,14 +648,31 @@ def build_preview(project_dir: Path) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate S2 CAD preview and candidate control points")
-    parser.add_argument("project", help="Project code or path")
+    parser.add_argument("project", nargs="?", help="Project code or path")
     parser.add_argument("--json", action="store_true", help="Print JSON only")
     parser.add_argument("--write", action="store_true", help="Write preview SVG and candidate JSON")
+    parser.add_argument("--selftest-candidate-set-id", action="store_true", help="Run candidate_set_id selftest and exit")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.selftest_candidate_set_id:
+        try:
+            result = selftest_candidate_set_id()
+        except AssertionError as exc:
+            print(f"candidate_set_id selftest failed: {exc}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps({"status": "ok", **result}, ensure_ascii=False, indent=2))
+        else:
+            print("ok: candidate_set_id selftest passed")
+            print(f"  candidate_set_id: {result['expected_candidate_set_id']}")
+            print(f"  candidate_set_hash: {result['expected_candidate_set_hash']}")
+        return 0
+    if not args.project:
+        print("ERROR: project is required unless --selftest-candidate-set-id is used", file=sys.stderr)
+        return 3
     project_dir = resolve_project(args.project)
     if not project_dir.exists():
         print(f"ERROR: project not found: {project_dir}", file=sys.stderr)
