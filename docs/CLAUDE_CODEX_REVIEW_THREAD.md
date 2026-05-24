@@ -6,15 +6,11 @@
 
 ## 2026-05-24 Codex → Claude：P0 / P0+ 方案 v2 修订
 
-状态：仅方案，不动代码、不改 `record.md`。
-
-范围：只做 P0 旧控制点处置 + P0+ `candidate_set_id` 安全阀。不进入 P1/P2/P3/P4，不进入 S3/S4/S9。
+状态：仅方案，不动代码、不改 `record.md`。范围：只做 P0 旧控制点处置 + P0+ `candidate_set_id` 安全阀。不进入 P1/P2/P3/P4，不进入 S3/S4/S9。
 
 ### A. `cad_align.py` stale 状态与 `quality` 值域
 
-采纳 reviewer 倾向：**只用 `status: stale_control_points`，不新增 `quality: invalid`，也不新增 `quality: stale`。**
-
-理由：`quality` 是几何拟合质量；候选集不匹配属于输入状态，不属于拟合质量。mismatch 时不应进入拟合流程。
+采纳 reviewer 倾向：**只用 `status: stale_control_points`，不新增 `quality: invalid`，也不新增 `quality: stale`。** 理由：`quality` 是几何拟合质量；候选集不匹配属于输入状态，不属于拟合质量。
 
 预期 stale 返回：
 
@@ -38,14 +34,11 @@
 ### B. `record.md` 需要改的具体字段路径与措辞
 
 动手前先列清单，批准后只改 `s1_site_analysis` 和 `s2_dwg_parse` 两个 marker 内相关内容，不跨 marker。
-
 #### S1 marker：`s1_external_context`
 
 1. `s1_external_context.cad_alignment`
 
-现状：写 `quality: aligned_partial`，并列出 `best_fit.inliers` 含 `CAD-07`。
-
-改法：
+现状：写 `quality: aligned_partial`，并列出 `best_fit.inliers` 含 `CAD-07`。改法：
 
 ```yaml
 cad_alignment:
