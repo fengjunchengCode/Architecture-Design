@@ -16,6 +16,12 @@ Python 脚本只做确定性工作：初始化目录、扫描文件、计算 has
 
 DWG/DXF 地形资料进入 S2 时必须优先运行 `python _tools/dwg_probe.py {项目代号} --json --write`。该工具会自动检测 `ezdxf` 与 ODA File Converter，缺少依赖时输出 `install_guidance`；agent 应按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案，不得裸读 DWG 二进制内容。
 
+## 开发改动守则
+
+修改本仓库代码、工具、UI、schema、skill 或文档时，必须先遵守 `skills/_shared/development_contract.md`。该契约吸收 `multica-ai/andrej-karpathy-skills` 的四条核心原则：编码前澄清、简洁优先、精准修改、目标驱动验证。
+
+尤其是 UI 和 workflow 修改：先定义用户路径和验收标准，再实现；不得在需求仍有歧义时直接扩写复杂界面或新增状态机。
+
 ## 上下文边界
 
 默认只读取以下权威入口：

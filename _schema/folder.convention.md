@@ -105,6 +105,9 @@ JPG/PNG/WEBP 区位图上传后不要求用户切换 API 模型。S0 运行时�
 | `parse_log.md` | S0 追写 | 解析摘要、文件 hash、⚠️ 字段详单 |
 | `vision/*.vision.json` | `vision_route.py` | 图片识别 sidecar；配置视觉模型时写识别结果，未配置时写降级提示 |
 | `vision/index.json` | `vision_route.py` | 当前图片识别结果索引 |
+| `amap/s1_map_context.json` | `amap_context.py` / 上传 UI | S1 高德地图上下文，含中心点、逆地理编码、500m/1000m POI |
+| `amap/s1_amap_raw.json` | `amap_context.py` | 高德原始响应与请求参数（key 已脱敏） |
+| `amap/control_points.json` | 上传 UI / S2 | 用户录入的“地图点 ↔ CAD 点”控制点，用于 S2 配准 |
 | `汇报文档.md` | S9 | 6 段式汇报初稿 |
 | `assets/` | 各 skill | 高德截图、生成示意图、中间产物 |
 

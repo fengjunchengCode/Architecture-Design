@@ -16,6 +16,17 @@ description: 建筑设计项目的总协议与主路由 skill。用于用户要�
 
 不要在本 skill 内直接写 `record.md` 的阶段正文。阶段正文只能由对应子 skill 写入自己的 marker 段。
 
+## 开发改动守则
+
+当用户要求修改代码、工具、UI、schema、skill 或文档时，先读取 `skills/_shared/development_contract.md`。该契约要求：
+
+- 先澄清目标、假设和验收标准。
+- 优先最小可行改动，不添加未要求的功能。
+- 精准修改，避免顺手重构无关代码。
+- 每个改动都要有验证闭环。
+
+如果用户指出实现方向不符合要求，agent 应先暂停继续实现，回到需求和成功标准，不要沿着旧方案继续堆功能。
+
 ## 必读顺序
 
 进入任意项目工作前，按顺序读取：
@@ -69,6 +80,22 @@ python _tools/dwg_probe.py {项目代号} --json --write
 
 该工具会自动检测 `ezdxf` 与 ODA File Converter；缺少依赖时返回 `install_guidance`，agent 应先按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案。
 
+S1 区位与外部关系分析优先使用确定性高德上下文工具：
+
+```powershell
+python _tools/amap_context.py {项目代号} --write
+```
+
+如果用户已提供高德坐标拾取器坐标：
+
+```powershell
+python _tools/amap_context.py {项目代号} --location "经度,纬度" --write
+```
+
+该工具读取 `.env` 中的 `AMAP_WEBSERVICE_KEY`，调用高德 Web Service 生成 `05_output/amap/s1_map_context.json`。若 key 或定位线索缺失，S1 不得编造道路、POI、水系或入口关系，只能写阻塞和待补问题。
+
+坐标和控制点优先通过本地上传 UI 的“空间定位”面板录入。该面板提供高德坐标拾取器链接，可写入 `05_output/amap/s1_map_context.json` 和 `05_output/amap/control_points.json`；不要只把坐标留在对话历史中。
+
 视觉资料解析优先使用：
 
 ```powershell
@@ -86,6 +113,16 @@ python _tools/vision_route.py --list-providers
 ```
 
 禁止把 `strings`、裸 `cat`、裸 `Read`、临时 `textract` 探测作为 `.doc` 的兜底解析流程。若 `01_briefing/` 里只有 `.doc`，S0 可以从文件名和其他资料提取有限信息，并把“任务书正文需转换”写入 `pending_questions` 或 `parse_log.md`。
+
+## S1/S2 协作原则
+
+S1 和 S2 是两个清晰阶段，不新增 S1.5，也不拆成 a/b/c：
+
+- S1 负责外部关系：地址/坐标证据、周边道路、水系、POI、到达方向、入口候选和设计影响。
+- S2 负责场地几何：DWG/DXF/PDF 红线、边界形状、尺寸、面积、高差、图层语义和可绘制底图资产。
+- 两个阶段不强制串行。已有 S1 时，S2 可以读取 `s1_external_context`；已有 S2 时，S1 可以读取 `s2_site_geometry`。
+- 精确入口判断需要同时满足外部地图关系和 CAD 配准。只有地址或中心点时，S1 输出“入口候选”；只有 CAD 红线时，S2 输出“边界几何”；二者未配准前不得声称主入口属于某条红线边。
+- 地图与 CAD 的关系统一用 `registration_state` 表达：`no_location`、`map_located`、`cad_aligned`。这是状态，不是新阶段。
 
 ## 最小续跑机制
 
@@ -107,9 +144,9 @@ python _tools/vision_route.py --list-providers
 | 新建项目、初始化骨架、创建目录 | `S0_project_intake` | project code 合法；项目不存在或允许 resume | 只做 scaffold，不做语义解析 |
 | 上传资料、启动 UI、运行 inventory | `S0_project_intake` | 仓库自检通过 | 只做投递和确定性检查 |
 | 解析资料、建立项目档案、执行 S0 | `S0_project_intake` | `inventory --require-s0-ready` 通过 | 缺区位图时停止，列缺失项 |
-| 区位、周边、入口、500m/1000m 场地分析 | `S1_site_analysis` | 有区位图；`site.address` 或 `site.coords` 至少其一 | 缺位置时转 S4 问题清单 |
-| DWG、红线、地形、面积、形状几何解析 | `S2_dwg_parse` | `02_site/地形图/` 有 DWG/PDF/红线资料 | 缺资料时写 blocked，不伪造面积 |
-| 任务书拆解、面积测算、容积率/强排初判 | `S3_area_and_massing` | 有 `brief.summary` 或类型模板关键信息；强排需要 `site.area_sqm` | 面积缺失时只做 S3a，S3b 标阻塞 |
+| 区位、周边、到达方向、入口候选、500m/1000m 外部关系 | `S1_site_analysis` | 有区位图；至少有地址、坐标、地图链接或可识别地名/道路线索之一 | 缺定位线索时写 blocked 和待补问题 |
+| CAD、红线、地形、面积、尺寸、高差、边界资产与控制点候选 | `S2_dwg_parse` | `02_site/地形图/` 有 DWG/DXF/PDF/红线资料 | 缺资料时写 blocked，不伪造面积 |
+| 任务书拆解、面积测算、容积率/强排初判 | `S3_area_and_massing` | 有 `brief.summary` 或类型模板关键信息；强排需要 `site.area_sqm` | 面积缺失时只做已知任务拆解，并标注强排阻塞 |
 | 甲方问题清单、低置信字段归并 | `S4_questions_summary` | 无硬前置 | 任意阶段可跑，只读各阶段结果 |
 | 汇报大纲、汇报文档草稿 | `S9_report_outline` | S1/S3 至少有有效正文 | 前置不足时转 S4 或列缺口 |
 | 用户问“下一步/状态/进度” | 本 router + 只读状态检查 | 读 `record.md`、inventory、validation | 给出下一步，不直接写正文 |

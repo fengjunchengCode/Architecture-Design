@@ -88,6 +88,15 @@ vision_route:
   buckets: [location_map, site_photo, reference]
   ext: [png, jpg, jpeg, webp]
 
+amap_context:
+  output_dir: 05_output/amap
+  webservice_key_env: AMAP_WEBSERVICE_KEY
+  context_file: s1_map_context.json
+  raw_file: s1_amap_raw.json
+  control_points_file: control_points.json
+  coordinate_system: GCJ-02 / AMap
+  ui_entry: _tools/uploader/server.py
+
 s0_ready_gate:
   required:
     - path: 02_site/区位图

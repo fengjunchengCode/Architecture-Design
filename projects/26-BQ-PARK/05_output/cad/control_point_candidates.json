@@ -1,0 +1,190 @@
+{
+  "schema_version": "1.0",
+  "status": "ok",
+  "created_at": "2026-05-23T18:58:54+0800",
+  "project_code": "26-BQ-PARK",
+  "source_dxf": "05_output/cad/02_site/地形图/口袋公园.dxf",
+  "source_cad": "02_site/地形图/口袋公园.dwg",
+  "preview_svg": "05_output/cad/site_preview.svg",
+  "candidate_json": "05_output/cad/control_point_candidates.json",
+  "selected_boundary": {
+    "handle": "1306",
+    "layer": "0",
+    "area_xy": 15052.5751953125,
+    "vertex_count": 29,
+    "bbox_xy": {
+      "min": [
+        597408.2011118163,
+        3534240.603434482
+      ],
+      "max": [
+        597602.4128721136,
+        3534370.659750258
+      ],
+      "size": [
+        194.21176029730123,
+        130.05631577596068
+      ]
+    },
+    "confidence": "candidate_needs_cad_review"
+  },
+  "candidates": [
+    {
+      "id": "CAD-01",
+      "label": "CAD-01",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 16",
+      "cad_point": {
+        "x": 597408.2011118163,
+        "y": 3534296.981684564
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 16,
+      "confidence": "candidate",
+      "note": "west edge vertex; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-02",
+      "label": "CAD-02",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 22",
+      "cad_point": {
+        "x": 597485.6431031098,
+        "y": 3534267.053510857
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 22,
+      "confidence": "candidate",
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-03",
+      "label": "CAD-03",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 25",
+      "cad_point": {
+        "x": 597569.4875851987,
+        "y": 3534240.603434482
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 25,
+      "confidence": "candidate",
+      "note": "south edge vertex; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-04",
+      "label": "CAD-04",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 28",
+      "cad_point": {
+        "x": 597602.4128721136,
+        "y": 3534303.418909435
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 28,
+      "confidence": "candidate",
+      "note": "east edge vertex; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-05",
+      "label": "CAD-05",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 1",
+      "cad_point": {
+        "x": 597566.2607273574,
+        "y": 3534327.001165579
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 1,
+      "confidence": "candidate",
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-06",
+      "label": "CAD-06",
+      "kind": "boundary_vertex",
+      "feature_type": "redline_corner",
+      "purpose": "registration",
+      "feature_name": "redline handle 1306 vertex 9",
+      "cad_point": {
+        "x": 597497.527539761,
+        "y": 3534370.659750258
+      },
+      "source_handle": "1306",
+      "source_layer": "0",
+      "source_vertex_index": 9,
+      "confidence": "candidate",
+      "note": "north edge vertex; pick the matching visible map feature in AMap if it can be identified."
+    },
+    {
+      "id": "CAD-07",
+      "label": "CAD-07",
+      "kind": "road_edge_candidate",
+      "feature_type": "road_edge",
+      "purpose": "road_binding",
+      "feature_name": "DLSS handle 125A",
+      "role_label": "道路设施候选",
+      "cad_point": {
+        "x": 597488.4156019166,
+        "y": 3534244.197338932
+      },
+      "source_handle": "125A",
+      "source_layer": "DLSS",
+      "confidence": "candidate",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。"
+    },
+    {
+      "id": "CAD-08",
+      "label": "CAD-08",
+      "kind": "road_edge_candidate",
+      "feature_type": "road_edge",
+      "purpose": "road_binding",
+      "feature_name": "DLSS handle 1273",
+      "role_label": "道路设施候选",
+      "cad_point": {
+        "x": 597546.7733985137,
+        "y": 3534358.722434355
+      },
+      "source_handle": "1273",
+      "source_layer": "DLSS",
+      "confidence": "candidate",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。"
+    },
+    {
+      "id": "CAD-09",
+      "label": "CAD-09",
+      "kind": "road_edge_candidate",
+      "feature_type": "road_edge",
+      "purpose": "road_binding",
+      "feature_name": "DLSS handle 1274",
+      "role_label": "道路设施候选",
+      "cad_point": {
+        "x": 597531.3863982973,
+        "y": 3534365.451373012
+      },
+      "source_handle": "1274",
+      "source_layer": "DLSS",
+      "confidence": "candidate",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。"
+    }
+  ],
+  "notes": [
+    "CAD candidates are drawing-side points only; the user must pick the corresponding AMap GCJ-02 coordinate.",
+    "Generated preview keeps source CAD orientation; do not treat the SVG as north-up unless the source CAD is north-up."
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-23T17:52:10+0800",
+  "results": [
+    {
+      "path": "05_output/amap/s1_map_context.json",
+      "status": "ok"
+    },
+    {
+      "path": "05_output/amap/s1_amap_raw.json",
+      "status": "raw"
+    }
+  ]
+}

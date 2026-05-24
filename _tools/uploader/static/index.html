@@ -16,128 +16,260 @@
         <div class="status-pill" id="activeProject">未选择项目</div>
       </section>
 
-      <section class="steps" aria-label="工作流步骤">
-        <div class="step active" id="stepProject">
-          <span>1</span>
-          <b>创建或选择项目</b>
-          <em>先确定资料要进入哪个项目</em>
-        </div>
-        <div class="step locked" id="stepUpload">
-          <span>2</span>
-          <b>上传资料</b>
-          <em>区位图是 S0 必选</em>
-        </div>
-        <div class="step locked" id="stepCheck">
-          <span>3</span>
-          <b>检查准入</b>
-          <em>运行 inventory / validate</em>
-        </div>
-        <div class="step locked" id="stepAgent">
-          <span>4</span>
-          <b>交给 Agent 解析</b>
-          <em>S0 写入 record.md</em>
-        </div>
-      </section>
+      <div class="workspace">
+        <nav class="stage-nav" aria-label="阶段输入页面">
+          <button class="stage-tab active" id="tabProject" data-page="project">
+            <b>项目</b>
+            <span>创建 / 选择</span>
+          </button>
+          <button class="stage-tab locked" id="tabS0" data-page="s0">
+            <b>S0 建档</b>
+            <span>资料投递 / 准入</span>
+          </button>
+          <button class="stage-tab locked" id="tabS1" data-page="s1">
+            <b>S1 区位</b>
+            <span>高德中心点 / 区位图</span>
+          </button>
+          <button class="stage-tab locked" id="tabS2" data-page="s2">
+            <b>S2 地形</b>
+            <span>DWG / 控制点</span>
+          </button>
+          <button class="stage-tab locked" id="tabStatus" data-page="status">
+            <b>状态</b>
+            <span>Inventory / Validate</span>
+          </button>
+        </nav>
 
-      <section class="panel setup-panel">
-        <div class="panel-title">
-          <div>
-            <h2>第 1 步：创建或选择项目</h2>
-            <p>未创建/选择项目之前，下面的上传区会锁定，避免文件被误认为已经上传。</p>
-          </div>
-          <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
-        </div>
-        <div class="form-grid">
-          <label>
-            <span>项目代号</span>
-            <input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off">
-          </label>
-          <label>
-            <span>项目名称</span>
-            <input id="projectName" placeholder="深圳南山某小学" autocomplete="off">
-          </label>
-          <label>
-            <span>项目类型</span>
-            <select id="projectType">
-              <option value="school">学校 / 教育建筑</option>
-              <option value="residential">住宅</option>
-              <option value="commercial">商业 / 办公</option>
-              <option value="park">公园 / 景观</option>
-              <option value="street_scape">街角 / 街道更新</option>
-              <option value="renovation">改造 / 更新</option>
-              <option value="hospital">医院 / 医疗</option>
-              <option value="cultural">文化建筑</option>
-              <option value="industrial">产业 / 工业</option>
-              <option value="cultural_tourism">文旅 / 多节点项目</option>
-              <option value="unknown">暂不确定</option>
-            </select>
-          </label>
-          <button id="createProject" class="primary">创建/打开项目</button>
-        </div>
-        <p class="active-note" id="projectHint">请先创建新项目，或从下方已有项目中选择一个。</p>
-        <div class="project-list" id="projectList"></div>
-      </section>
+        <section class="page-shell">
+          <section class="page active" data-page="project">
+            <div class="page-head">
+              <div>
+                <p class="eyebrow">Project</p>
+                <h2>创建或选择项目</h2>
+                <p>先确定资料要进入哪个项目。选择项目后，可以直接进入 S0、S1 或 S2 的输入页。</p>
+              </div>
+              <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
+            </div>
 
-      <section class="section-heading">
-        <div>
-          <h2>第 2 步：上传资料到当前项目</h2>
-          <p id="uploadHint">等待项目创建或选择。选择文件不会自动上传，必须点击“上传到当前项目”。</p>
-        </div>
-      </section>
+            <section class="panel setup-panel">
+              <div class="form-grid">
+                <label>
+                  <span>项目代号</span>
+                  <input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off">
+                </label>
+                <label>
+                  <span>项目名称</span>
+                  <input id="projectName" placeholder="深圳南山某小学" autocomplete="off">
+                </label>
+                <label>
+                  <span>项目类型</span>
+                  <select id="projectType">
+                    <option value="school">学校 / 教育建筑</option>
+                    <option value="residential">住宅</option>
+                    <option value="commercial">商业 / 办公</option>
+                    <option value="park">公园 / 景观</option>
+                    <option value="street_scape">街角 / 街道更新</option>
+                    <option value="renovation">改造 / 更新</option>
+                    <option value="hospital">医院 / 医疗</option>
+                    <option value="cultural">文化建筑</option>
+                    <option value="industrial">产业 / 工业</option>
+                    <option value="cultural_tourism">文旅 / 多节点项目</option>
+                    <option value="unknown">暂不确定</option>
+                  </select>
+                </label>
+                <button id="createProject" class="primary">创建/打开项目</button>
+              </div>
+              <p class="active-note" id="projectHint">请先创建新项目，或从下方已有项目中选择一个。</p>
+              <div class="project-list" id="projectList"></div>
+            </section>
 
-      <section class="grid" id="dropGrid">
-        <article class="bucket" data-bucket="briefing">
-          <div class="bucket-head"><b>需求类</b><span>brief / supplement</span></div>
-          <input type="file" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-        <article class="bucket required" data-bucket="location_map">
-          <div class="bucket-head"><b>区位图</b><span>S0 必选</span></div>
-          <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-        <article class="bucket" data-bucket="topography">
-          <div class="bucket-head"><b>地形图</b><span>DWG / PDF / 红线图</span></div>
-          <input type="file" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-        <article class="bucket" data-bucket="site_photo">
-          <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
-          <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-        <article class="bucket" data-bucket="reference">
-          <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
-          <input type="file" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-        <article class="bucket" data-bucket="chat">
-          <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
-          <input type="file" accept=".txt,.html,.md" multiple>
-          <div class="bucket-state">未选择文件</div>
-          <button>上传到当前项目</button>
-        </article>
-      </section>
+            <div class="page-actions">
+              <span></span>
+              <button data-goto="s0" class="primary">打开 S0 输入页</button>
+            </div>
+          </section>
 
-      <section class="panel action-panel">
-        <div class="panel-title">
-          <div>
-            <h2>第 3 步：检查是否可以进入 S0</h2>
-            <p>Inventory 只检查资料和区位图 gate；Validate 只校验 record.md 结构。</p>
-          </div>
-        </div>
-        <div class="action-row">
-          <button id="runInventory" class="primary">运行 Inventory</button>
-          <button id="runValidate">校验 Record</button>
-          <div class="gate" id="gateStatus">等待项目</div>
-        </div>
-        <pre id="output">准备就绪。</pre>
-      </section>
+          <section class="page" data-page="s0">
+            <div class="page-head">
+              <div>
+                <p class="eyebrow">S0 Input</p>
+                <h2>S0 建档输入</h2>
+                <p id="s0Hint">上传 S0 需要的资料后，可以直接运行 Inventory/Validate，然后回到对话要求 agent 执行 S0。</p>
+              </div>
+              <div class="gate" id="gateStatus">等待项目</div>
+            </div>
+
+            <section class="grid stage-grid">
+              <article class="bucket" data-bucket="briefing">
+                <div class="bucket-head"><b>需求类</b><span>任务书 / 补充说明</span></div>
+                <input type="file" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+              <article class="bucket required" data-bucket="location_map">
+                <div class="bucket-head"><b>区位图</b><span>S0/S1 必选</span></div>
+                <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+              <article class="bucket" data-bucket="site_photo">
+                <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
+                <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+              <article class="bucket" data-bucket="chat">
+                <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
+                <input type="file" accept=".txt,.html,.md" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+              <article class="bucket" data-bucket="reference">
+                <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
+                <input type="file" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+            </section>
+
+            <section class="panel action-panel">
+              <div class="action-row">
+                <button id="runInventory" class="primary">运行 Inventory</button>
+                <button id="runValidate">校验 Record</button>
+              </div>
+            </section>
+
+            <div class="handoff-note">
+              S0 输入完成后，回到对话里说“执行 S0”。不需要先进入 S1 或 S2。
+            </div>
+          </section>
+
+          <section class="page" data-page="s1">
+            <div class="page-head">
+              <div>
+                <p class="eyebrow">S1 Input</p>
+                <h2>S1 区位输入</h2>
+                <p>S1 需要区位图和地块中心点。中心点来自高德拾取器，只生成地图证据包；最终区位判断由 agent 结合区位图、现场照片和 S2 几何写入 record。</p>
+              </div>
+              <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
+            </div>
+
+            <section class="spatial-grid">
+              <div class="spatial-box">
+                <div class="box-head">
+                  <b>地块中心点</b>
+                  <span id="amapStatus">等待项目</span>
+                </div>
+                <label>
+                  <span>高德坐标（GCJ-02）</span>
+                  <input id="centerLocation" placeholder="94.032582,31.92547" autocomplete="off">
+                </label>
+                <div class="inline-actions">
+                  <button id="checkAmap">检查高德 Key</button>
+                  <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
+                </div>
+              </div>
+
+              <article class="bucket required" data-bucket="location_map">
+                <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
+                <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+            </section>
+
+            <div class="handoff-note">
+              S1 输入完成后，回到对话里说“执行 S1”。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
+            </div>
+          </section>
+
+          <section class="page" data-page="s2">
+            <div class="page-head">
+              <div>
+                <p class="eyebrow">S2 Input</p>
+                <h2>S2 地形与配准输入</h2>
+                <p>S2 需要 DWG/DXF/PDF 红线资料；精确合成底图时，再录入地图点 ↔ CAD 点控制点。</p>
+              </div>
+              <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
+            </div>
+
+            <section class="s2-upload-row">
+              <article class="bucket" data-bucket="topography">
+                <div class="bucket-head"><b>地形图 / 红线图</b><span>DWG / DXF / PDF</span></div>
+                <input type="file" multiple>
+                <div class="bucket-state">未选择文件</div>
+                <button>上传到当前项目</button>
+              </article>
+            </section>
+
+            <section class="s2-workbench">
+              <section class="cad-preview-panel">
+                <div class="box-head">
+                  <div>
+                    <b>CAD 地形图与候选控制点</b>
+                    <span id="cadPreviewStatus">尚未生成 CAD 预览</span>
+                  </div>
+                  <button id="runCadPreview" class="primary">生成 CAD 预览</button>
+                </div>
+                <div class="cad-preview-layout">
+                  <div class="cad-preview-frame" id="cadPreviewFrame">
+                    <div class="control-empty">上传 DWG/DXF 后，点击“生成 CAD 预览”。</div>
+                  </div>
+                  <div class="cad-candidate-list" id="cadCandidateList">
+                    <div class="control-empty">候选 CAD 控制点会显示在这里。</div>
+                  </div>
+                </div>
+              </section>
+
+              <div class="spatial-box s2-control-panel">
+                <div class="box-head">
+                  <b>已选地图点 ↔ CAD 点</b>
+                  <span id="controlStatus">0 个控制点</span>
+                </div>
+                <div class="control-list" id="controlList"></div>
+                <div class="alignment-panel" id="alignmentPanel">
+                  <b>配准检查</b>
+                  <p>加入至少 3 个点后自动检查；允许少量偏差，但异常点会在这里说明原因。</p>
+                </div>
+                <div class="inline-actions">
+                  <span class="save-hint">保存后写入项目文件</span>
+                  <button id="saveControlPoints" class="primary">保存控制点与配准报告</button>
+                </div>
+              </div>
+            </section>
+
+            <div class="handoff-note">
+              S2 输入完成后，按候选点卡片上的建议去高德拾取坐标，粘贴后加入控制点并保存。地物类型由 agent/视觉模型预判，只有坐标需要你确认。
+            </div>
+          </section>
+
+          <section class="page" data-page="status">
+            <div class="page-head">
+              <div>
+                <p class="eyebrow">Status</p>
+                <h2>项目检查</h2>
+                <p>这里只做确定性检查，不代表必须完成所有阶段。</p>
+              </div>
+              <div class="gate" id="statusGate">等待项目</div>
+            </div>
+
+            <section class="panel action-panel">
+              <div class="action-row">
+                <button id="runInventoryStatus" class="primary">运行 Inventory</button>
+                <button id="runValidateStatus">校验 Record</button>
+              </div>
+            </section>
+          </section>
+
+          <section class="result-panel">
+            <div class="result-title">
+              <b>运行结果</b>
+              <span id="resultHint">准备就绪</span>
+            </div>
+            <div id="output" class="human-output">准备就绪。</div>
+          </section>
+        </section>
+      </div>
     </main>
     <script src="/app.js"></script>
   </body>

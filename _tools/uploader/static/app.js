@@ -1,8 +1,17 @@
+const PAGES = ["project", "s0", "s1", "s2", "status"];
+const PAGE_ALIASES = { spatial: "s1", upload: "s0", validate: "status" };
+const requestedPage = new URLSearchParams(window.location.search).get("page") || "project";
+
 const state = {
   project: "",
+  page: PAGE_ALIASES[requestedPage] || requestedPage,
   pendingUrlProject: new URLSearchParams(window.location.search).get("project") || "",
   projects: [],
   inventory: null,
+  controlPoints: [],
+  cadPreview: null,
+  alignment: null,
+  alignmentTimer: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -17,20 +26,317 @@ const BUCKET_LABELS = {
   chat: "聊天记录",
 };
 
+const CONTROL_FEATURE_TYPES = {
+  redline_corner: "红线角点",
+  road_intersection: "道路交叉口",
+  road_centerline: "道路中心线",
+  road_edge: "道路边线/路缘",
+  bridge_endpoint: "桥头/桥端",
+  bridge_center: "桥中心/桥面",
+  water_edge: "水系岸线",
+  building_corner: "建筑/构筑物角点",
+  visible_landmark: "可识别固定地物",
+  other: "其他地物",
+};
+
+const CONTROL_PURPOSES = {
+  registration: "几何配准",
+  road_binding: "道路落边",
+  entrance_check: "出入口判断",
+  water_binding: "水系/景观",
+  reference_only: "仅参考",
+};
+
+const CONTROL_CONFIDENCE = {
+  low: "低置信",
+  medium: "中置信",
+  high: "高置信",
+};
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function compactList(items, limit = 5) {
+  if (!Array.isArray(items) || !items.length) return "无";
+  const shown = items
+    .slice(0, limit)
+    .map((item) => escapeHtml(item?.name || BUCKET_LABELS[item] || item))
+    .join("、");
+  return items.length > limit ? `${shown} 等 ${items.length} 项` : shown;
+}
+
+function labelFromMap(map, value) {
+  return map[value] || value || "未标注";
+}
+
+function controlFeatureText(value) {
+  return labelFromMap(CONTROL_FEATURE_TYPES, value);
+}
+
+function controlPurposeText(value) {
+  return labelFromMap(CONTROL_PURPOSES, value);
+}
+
+function controlConfidenceText(value) {
+  return labelFromMap(CONTROL_CONFIDENCE, value);
+}
+
+function resultRow(label, value) {
+  return `<div class="result-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value ?? "无")}</b></div>`;
+}
+
+function formatMeters(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(1)}m` : "无";
+}
+
+function qualityText(value) {
+  return {
+    aligned_high: "高质量配准",
+    aligned_partial: "粗配准可用",
+    weak: "配准较弱",
+    insufficient: "点数不足",
+    failed: "配准失败",
+  }[value] || value || "未检查";
+}
+
+function directionText(east, north) {
+  const x = Number(east);
+  const y = Number(north);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return "方向未知";
+  const ew = Math.abs(x) < 1 ? "" : x > 0 ? "东" : "西";
+  const ns = Math.abs(y) < 1 ? "" : y > 0 ? "北" : "南";
+  return `${ew}${ns}` || "接近";
+}
+
+function residualByLabel(alignment, label) {
+  const rows = alignment?.best_fit?.residuals || alignment?.all_points_fit?.residuals || [];
+  return rows.find((row) => row.label === label);
+}
+
+function residualNote(alignment, label) {
+  const residual = residualByLabel(alignment, label);
+  if (!residual) return "";
+  const outliers = alignment?.best_fit?.outlier_labels || [];
+  const expected = Array.isArray(residual.expected_gcj02)
+    ? `${residual.expected_gcj02[0].toFixed(6)},${residual.expected_gcj02[1].toFixed(6)}`
+    : "";
+  const direction = directionText(residual.delta_east_m, residual.delta_north_m);
+  const prefix = outliers.includes(label) ? "需复核" : "偏差";
+  const reason = outliers.includes(label)
+    ? "可能点到了相邻边界、影像角点，或该 CAD 红线点在高德上没有清晰实体。"
+    : "小偏差可接受。";
+  return `${prefix} ${formatMeters(residual.error_m)}，反推点在${direction}侧${expected ? `，约 ${expected}` : ""}。${reason}`;
+}
+
+function detailsJson(data) {
+  return `<details class="json-details"><summary>查看 agent 原始 JSON</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+}
+
+function summarizeInventory(data) {
+  const counts = data.counts || {};
+  const missing = data.required_missing || [];
+  const warnings = data.warnings || [];
+  return `
+    <div class="summary-card ${data.s0_ready ? "ok" : "warn"}">
+      <h3>${data.s0_ready ? "S0 gate 已通过" : "S0 gate 未通过"}</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project_code)}
+        ${resultRow("文件总数", counts.total || 0)}
+        ${resultRow("区位图", counts.location_map || 0)}
+        ${resultRow("任务书", counts.briefing || 0)}
+        ${resultRow("地形图", counts.topography || 0)}
+        ${resultRow("现场照片", counts.site_photo || 0)}
+      </div>
+      ${missing.length ? `<p class="result-warning">缺少：${compactList(missing)}</p>` : ""}
+      ${warnings.length ? `<p class="result-warning">警告：${compactList(warnings)}</p>` : ""}
+      <p class="result-next">${data.s0_ready ? "可以回到对话要求 agent 执行 S0。" : "请先补齐区位图，再重新运行 Inventory。"}</p>
+    </div>
+  `;
+}
+
+function summarizeValidate(data) {
+  const stats = data.stats || {};
+  const issues = data.issues || [];
+  const fatal = issues.filter((item) => item.level === "FATAL");
+  const warn = issues.filter((item) => item.level === "WARN");
+  return `
+    <div class="summary-card ${fatal.length ? "bad" : warn.length ? "warn" : "ok"}">
+      <h3>${fatal.length ? "Record 校验失败" : warn.length ? "Record 有警告" : "Record 校验通过"}</h3>
+      <div class="result-grid">
+        ${resultRow("项目", stats.project_code)}
+        ${resultRow("类型", stats.project_type)}
+        ${resultRow("阶段", stats.stage)}
+        ${resultRow("待问问题", stats.pending_count ?? 0)}
+        ${resultRow("低置信字段", stats.low_confidence_count ?? 0)}
+        ${resultRow("可继续阶段", Array.isArray(stats.ready_for) ? stats.ready_for.join("、") : "无")}
+      </div>
+      ${issues.length ? `<p class="result-warning">${issues.map((item) => `${item.level}: ${item.msg}`).map(escapeHtml).join("<br>")}</p>` : ""}
+      <p class="result-next">${fatal.length ? "请先修复 FATAL 问题。" : "结构有效，可以继续按对应 skill 执行。"}</p>
+    </div>
+  `;
+}
+
+function summarizeAmap(data) {
+  const location = data.location || {};
+  const regeo = data.map_context?.regeo || {};
+  const seed = data.s1_external_context_seed || {};
+  const roads = seed.external_features?.primary_roads || seed.amap_context?.roads || [];
+  const water = seed.amap_context?.water || seed.external_features?.landscape_or_culture_nodes || [];
+  const controlNeeds = seed.s2_use?.required_control_points || [];
+  const poi1000 = seed.amap_context?.poi_1000m || {};
+  const poiTotal = Object.values(poi1000).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0);
+  return `
+    <div class="summary-card ${data.status === "ok" ? "ok" : "warn"}">
+      <h3>${data.status === "ok" ? "S1 地图证据包已生成" : "S1 地图证据包生成失败"}</h3>
+      <div class="result-grid">
+        ${resultRow("中心点", location.amap_gcj02)}
+        ${resultRow("逆地理地址", regeo.formatted_address)}
+        ${resultRow("配准状态", seed.registration_state)}
+        ${resultRow("入口判断", seed.entrance_judgment?.level === "candidate" ? "只能候选，未绑定 CAD 边" : seed.entrance_judgment?.level)}
+      </div>
+      <div class="result-section">
+        <b>对设计真正有用的线索</b>
+        <p>道路/到达：${compactList(roads)}</p>
+        <p>水系/桥梁/边界：${compactList(water)}</p>
+        <p>控制点需求：${compactList(controlNeeds, 2)}</p>
+      </div>
+      <div class="result-section">
+        <b>当前不能直接得出的结论</b>
+        <p>主次入口不能只靠中心点确定；道路、水系和入口必须等 S1 结合区位图/现场照片，或等 S2 控制点把地图和 CAD 红线配准后再落边。</p>
+        <p>附近 POI 共 ${escapeHtml(poiTotal)} 条已保留在原始 JSON，默认不作为设计结论展示。</p>
+      </div>
+      <p class="result-next">${data.status === "ok" ? "下一步：回到对话执行 S1；若需要精确到红线边，再到 S2 录入 2-3 个地图点 ↔ CAD 点。" : escapeHtml(data.error || "请检查 key 和坐标。")}</p>
+    </div>
+  `;
+}
+
+function summarizeSpatial(data) {
+  const context = data.amap_context || {};
+  return `
+    <div class="summary-card ${data.amap_context_exists ? "ok" : "warn"}">
+      <h3>${data.amap_context_exists ? "空间定位已读取" : "尚无空间定位"}</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project)}
+        ${resultRow("中心点", context.location?.amap_gcj02)}
+        ${resultRow("地址", context.address)}
+        ${resultRow("控制点", `${(data.control_points || []).length} 个`)}
+      </div>
+      <p class="result-next">${data.amap_context_exists ? "刷新页面会自动回填中心点。" : "请在 S1 输入页生成高德上下文。"}</p>
+    </div>
+  `;
+}
+
+function summarizeControlPoints(data) {
+  const alignment = data.alignment || {};
+  const best = alignment.best_fit || {};
+  const quality = alignment.quality || "未检查";
+  const inliers = best.inlier_labels || [];
+  const outliers = best.outlier_labels || [];
+  const points = data.control_points || [];
+  const semanticCount = points.filter((point) =>
+    ["road_intersection", "road_centerline", "road_edge", "bridge_endpoint", "bridge_center", "water_edge"].includes(point.feature_type)
+    || ["road_binding", "entrance_check", "water_binding"].includes(point.purpose)
+  ).length;
+  return `
+    <div class="summary-card ${quality === "aligned_high" ? "ok" : quality === "aligned_partial" ? "warn" : "ok"}">
+      <h3>控制点已保存</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project)}
+        ${resultRow("数量", data.count)}
+        ${resultRow("文件", data.path)}
+        ${resultRow("配准质量", qualityText(quality))}
+        ${resultRow("语义控制点", `${semanticCount} 个`)}
+      </div>
+      ${inliers.length ? `<p class="result-next">可用内点：${compactList(inliers, 8)}</p>` : ""}
+      ${outliers.length ? `<p class="result-warning">需复核：${compactList(outliers, 8)}</p>` : ""}
+      ${outliers.map((label) => `<p class="result-warning">${escapeHtml(label)}：${escapeHtml(residualNote(alignment, label))}</p>`).join("")}
+      <p class="result-next">S2 将读取这些控制点和配准报告，用于判断是否能把高德地图关系绑定到 CAD 红线边。</p>
+    </div>
+  `;
+}
+
+function summarizeCadPreview(data) {
+  const boundary = data.selected_boundary || {};
+  const candidates = data.candidates || [];
+  const semanticStatus = data.candidate_semantics_status || data.cad_semantics?.status || "未生成";
+  const locationImages = data.candidate_semantics_location_images || [];
+  const findings = data.candidate_semantics_global_findings || [];
+  const userPick = data.candidate_semantics_needs_user_pick || [];
+  return `
+    <div class="summary-card ${data.status === "ok" ? "ok" : "warn"}">
+      <h3>${data.status === "ok" ? "CAD 预览已生成" : "CAD 预览生成失败"}</h3>
+      <div class="result-grid">
+        ${resultRow("源 DXF", data.source_dxf)}
+        ${resultRow("红线候选", boundary.handle ? `${boundary.handle} / ${boundary.layer}` : "未识别")}
+        ${resultRow("候选控制点", `${candidates.length} 个`)}
+        ${resultRow("语义建议", semanticStatus)}
+        ${resultRow("综合视觉参考", locationImages.length ? `CAD + ${locationImages.length} 张区位/卫星图` : "仅 CAD")}
+        ${resultRow("预览文件", data.preview_svg)}
+      </div>
+      ${findings.length ? `<p class="result-next">${compactList(findings, 2)}</p>` : ""}
+      ${userPick.length ? `<p class="result-warning">${compactList(userPick, 2)}</p>` : ""}
+      <p class="result-next">${data.status === "ok" ? "S2 页面已加载 CAD 底图。根据每个候选点的建议去高德拾取坐标，再点击“加入/更新”。" : escapeHtml(data.error || data.stderr || "请检查 DWG/DXF 是否可转换。")}</p>
+    </div>
+  `;
+}
+
+function summarizeUpload(data) {
+  return `
+    <div class="summary-card ok">
+      <h3>上传完成</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project)}
+        ${resultRow("分类", BUCKET_LABELS[data.bucket] || data.bucket)}
+        ${resultRow("保存数量", data.count)}
+        ${resultRow("目标目录", data.target_dir)}
+      </div>
+      <p class="result-next">${data.count ? "已写入项目目录，可继续运行 Inventory。" : "没有保存文件，请确认已选择文件。"}</p>
+    </div>
+  `;
+}
+
+function summarizeGeneric(data) {
+  if (typeof data === "string") {
+    return `<div class="summary-card warn"><h3>提示</h3><p>${escapeHtml(data)}</p></div>`;
+  }
+  if (data.project_dir && "s0_ready" in data) return summarizeInventory(data);
+  if (data.stats || Array.isArray(data.issues)) return summarizeValidate(data);
+  if (data.provider?.name === "amap_webservice" && "location" in data) return summarizeAmap(data);
+  if ("amap_context_exists" in data) return summarizeSpatial(data);
+  if ("preview_svg" in data && "candidates" in data) return summarizeCadPreview(data);
+  if ("control_points" in data && "count" in data && data.path) return summarizeControlPoints(data);
+  if ("saved" in data && "bucket" in data) return summarizeUpload(data);
+  if (data.provider?.name === "amap_webservice" && !("location" in data)) {
+    return `
+      <div class="summary-card ${data.provider.configured ? "ok" : "warn"}">
+        <h3>${data.provider.configured ? "高德 Key 可用" : "高德 Key 未配置"}</h3>
+        <p class="result-next">${data.provider.configured ? `使用环境变量：${escapeHtml(data.provider.key_env)}` : "请在 .env 中配置 AMAP_WEBSERVICE_KEY。"}</p>
+      </div>
+    `;
+  }
+  return `<div class="summary-card ok"><h3>操作完成</h3><p class="result-next">详情见下方 JSON。</p></div>`;
+}
+
 function writeOutput(data) {
-  output.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  output.innerHTML = `${summarizeGeneric(data)}${typeof data === "string" ? "" : detailsJson(data)}`;
+  $("#resultHint").textContent = new Date().toLocaleTimeString();
 }
 
 function typedProjectCode() {
-  const code = $("#projectCode").value.trim();
-  return code;
+  return $("#projectCode").value.trim();
 }
 
 function activeProject() {
   const typed = typedProjectCode();
-  if (!state.project) throw new Error("请先完成第 1 步：创建或选择项目");
+  if (!state.project) throw new Error("请先创建或选择项目");
   if (typed && typed !== state.project) {
-    throw new Error(`当前输入为 ${typed}，但尚未打开该项目。请先点击“创建/打开项目”。`);
+    throw new Error(`当前输入为 ${typed}，但打开的项目仍是 ${state.project}。请先点击“创建/打开项目”。`);
   }
   return state.project;
 }
@@ -38,15 +344,32 @@ function activeProject() {
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || data.stderr || "请求失败");
-  }
+  if (!response.ok) throw new Error(data.error || data.stderr || "请求失败");
   return data;
 }
 
-function setStep(id, mode) {
+function canOpenPage(page) {
+  return page === "project" || Boolean(state.project);
+}
+
+function syncUrlState() {
+  const url = new URL(window.location.href);
+  if (state.project) url.searchParams.set("project", state.project);
+  else url.searchParams.delete("project");
+  url.searchParams.set("page", state.page);
+  window.history.replaceState({}, "", url);
+}
+
+function setPage(page, options = {}) {
+  const next = PAGES.includes(page) ? page : "project";
+  state.page = canOpenPage(next) ? next : "project";
+  if (options.syncUrl !== false) syncUrlState();
+  setControls();
+}
+
+function setTab(id, mode) {
   const el = $(id);
-  el.classList.remove("active", "done", "locked");
+  el.classList.remove("active", "ready", "locked");
   el.classList.add(mode);
 }
 
@@ -54,16 +377,6 @@ function clearFileInputs() {
   document.querySelectorAll(".bucket input").forEach((input) => {
     input.value = "";
   });
-}
-
-function syncUrlProject(code) {
-  const url = new URL(window.location.href);
-  if (code) {
-    url.searchParams.set("project", code);
-  } else {
-    url.searchParams.delete("project");
-  }
-  window.history.replaceState({}, "", url);
 }
 
 function renderProjectList() {
@@ -82,20 +395,25 @@ function renderProjectList() {
     chip.textContent = project.code;
     chip.addEventListener("click", () => {
       setActiveProject(project.code);
+      setPage("s0");
       runInventory().catch((err) => writeOutput(err.message));
+      loadSpatial().catch((err) => writeOutput(err.message));
+      loadCadPreview().catch((err) => writeOutput(err.message));
     });
     list.appendChild(chip);
   });
 }
 
 function setActiveProject(code, options = {}) {
-  const { syncUrl = true, clearFiles = true, resetInventory = true } = options;
+  const { clearFiles = true, resetInventory = true } = options;
   state.project = code;
   if (resetInventory) state.inventory = null;
+  if (resetInventory) state.cadPreview = null;
+  if (resetInventory) state.alignment = null;
   if (code) $("#projectCode").value = code;
   if (clearFiles) clearFileInputs();
-  if (syncUrl) syncUrlProject(code);
   renderProjectList();
+  syncUrlState();
   setControls();
 }
 
@@ -103,31 +421,60 @@ function setControls() {
   const typed = typedProjectCode();
   const mismatch = Boolean(state.project && typed && typed !== state.project);
   const hasProject = Boolean(state.project && !mismatch);
+  if (!hasProject && state.page !== "project") state.page = "project";
+
   $("#activeProject").textContent = state.project ? `当前项目：${state.project}` : "未选择项目";
   if (mismatch) {
     $("#projectHint").textContent = `当前输入为 ${typed}，但打开的项目仍是 ${state.project}。请先点击“创建/打开项目”。`;
   } else {
     $("#projectHint").textContent = hasProject
-      ? `已打开 ${state.project}。上传、Inventory 和 Validate 都会指向这个项目。`
+      ? `已打开 ${state.project}。可以直接进入 S0、S1 或 S2 的输入页。`
       : "请先创建新项目，或从下方已有项目中选择一个。";
   }
-  $("#uploadHint").textContent = hasProject
-    ? `选择文件后必须点击对应卡片里的“上传到当前项目”，文件会进入 ${state.project}。`
-    : "等待项目创建或选择。上传区已锁定。";
+  $("#s0Hint").textContent = hasProject
+    ? `当前 S0 输入会写入 ${state.project}。上传后可直接执行 S0。`
+    : "等待项目创建或选择。";
+
+  document.querySelectorAll(".page").forEach((pageEl) => {
+    pageEl.classList.toggle("active", pageEl.dataset.page === state.page);
+  });
+
+  document.querySelectorAll("[data-page].stage-tab").forEach((tab) => {
+    tab.disabled = !canOpenPage(tab.dataset.page);
+  });
 
   document.querySelectorAll(".bucket").forEach((bucketEl) => {
     bucketEl.classList.toggle("locked", !hasProject);
     bucketEl.querySelector("input").disabled = !hasProject;
     bucketEl.querySelector("button").disabled = !hasProject;
   });
-  $("#runInventory").disabled = !hasProject;
-  $("#runValidate").disabled = !hasProject;
 
-  setStep("#stepProject", hasProject ? "done" : "active");
-  setStep("#stepUpload", hasProject ? "active" : "locked");
-  setStep("#stepCheck", state.inventory ? "active" : hasProject ? "active" : "locked");
-  setStep("#stepAgent", state.inventory?.s0_ready ? "active" : "locked");
+  [
+    "#runInventory",
+    "#runValidate",
+    "#runInventoryStatus",
+    "#runValidateStatus",
+    "#checkAmap",
+    "#saveCenter",
+    "#runCadPreview",
+    "#saveControlPoints",
+  ].forEach((selector) => {
+    $(selector).disabled = !hasProject;
+  });
+  ["#centerLocation"].forEach((selector) => {
+    $(selector).disabled = !hasProject;
+  });
+
+  setTab("#tabProject", state.page === "project" ? "active" : hasProject ? "ready" : "active");
+  setTab("#tabS0", !hasProject ? "locked" : state.page === "s0" ? "active" : "ready");
+  setTab("#tabS1", !hasProject ? "locked" : state.page === "s1" ? "active" : "ready");
+  setTab("#tabS2", !hasProject ? "locked" : state.page === "s2" ? "active" : "ready");
+  setTab("#tabStatus", !hasProject ? "locked" : state.page === "status" ? "active" : "ready");
+
   updateBucketStates();
+  renderControlPoints();
+  renderCadPreview();
+  renderAlignment();
 }
 
 function updateBucketStates() {
@@ -139,22 +486,17 @@ function updateBucketStates() {
     const uploaded = counts[bucket] || 0;
     const selected = input.files?.length || 0;
     bucketEl.classList.toggle("has-files", uploaded > 0);
-    if (!state.project) {
-      stateEl.textContent = "先创建/选择项目";
-    } else if (selected > 0) {
-      stateEl.textContent = `已选择 ${selected} 个文件，尚未上传`;
-    } else if (uploaded > 0) {
-      stateEl.textContent = `已入库 ${uploaded} 个文件`;
-    } else {
-      stateEl.textContent = bucket === "location_map" ? "未上传，S0 会被阻塞" : "未上传";
-    }
+    if (!state.project) stateEl.textContent = "先创建/选择项目";
+    else if (selected > 0) stateEl.textContent = `已选择 ${selected} 个文件，尚未上传`;
+    else if (uploaded > 0) stateEl.textContent = `已入库 ${uploaded} 个文件`;
+    else stateEl.textContent = bucket === "location_map" ? "未上传，S0/S1 会被阻塞" : "未上传";
   });
 }
 
 async function loadProjects() {
   const data = await api("/api/projects");
   state.projects = data.projects;
-  let shouldRunInventory = false;
+  let shouldRefreshProjectData = false;
   if (state.pendingUrlProject) {
     const requested = state.pendingUrlProject;
     state.pendingUrlProject = "";
@@ -162,16 +504,23 @@ async function loadProjects() {
       state.project = requested;
       $("#projectCode").value = requested;
       state.inventory = null;
+      state.controlPoints = [];
+      state.cadPreview = null;
+      state.alignment = null;
       clearFileInputs();
-      shouldRunInventory = true;
+      shouldRefreshProjectData = true;
     } else {
       writeOutput(`URL 中的项目 ${requested} 不存在。请先创建/打开项目。`);
-      syncUrlProject("");
+      state.project = "";
+      state.page = "project";
+      syncUrlState();
     }
   }
   renderProjectList();
   setControls();
-  if (shouldRunInventory) await runInventory();
+  if (shouldRefreshProjectData) await runInventory();
+  if (shouldRefreshProjectData) await loadSpatial();
+  if (shouldRefreshProjectData) await loadCadPreview();
 }
 
 async function createProject() {
@@ -190,7 +539,10 @@ async function createProject() {
   writeOutput(data);
   await loadProjects();
   setActiveProject(code, { clearFiles: true, resetInventory: true });
+  setPage("s0");
   await runInventory();
+  await loadSpatial();
+  await loadCadPreview();
 }
 
 async function upload(bucket, input) {
@@ -206,14 +558,20 @@ async function upload(bucket, input) {
   input.value = "";
   updateBucketStates();
   await runInventory();
+  if (bucket === "topography" && data.saved?.some((path) => /\.(dwg|dxf)$/i.test(path))) {
+    await runCadPreview();
+  }
 }
 
 async function runInventory() {
   const code = activeProject();
   const data = await api(`/api/inventory?project=${encodeURIComponent(code)}`);
   state.inventory = data;
-  $("#gateStatus").textContent = data.s0_ready ? "S0 gate 已通过" : "缺少区位图";
+  const text = data.s0_ready ? "S0 gate 已通过" : "缺少区位图";
+  $("#gateStatus").textContent = text;
+  $("#statusGate").textContent = text;
   $("#gateStatus").style.color = data.s0_ready ? "#1f6f5b" : "#b94b2f";
+  $("#statusGate").style.color = data.s0_ready ? "#1f6f5b" : "#b94b2f";
   writeOutput(data);
   setControls();
 }
@@ -224,18 +582,359 @@ async function runValidate() {
   writeOutput(data);
 }
 
+function setAmapStatus(text, ok = null) {
+  const el = $("#amapStatus");
+  el.textContent = text;
+  el.style.color = ok === null ? "" : ok ? "#1f6f5b" : "#b94b2f";
+}
+
+function parseLocationInput(value) {
+  const parts = value.replace("，", ",").split(",").map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error("坐标格式应为：经度,纬度");
+  const lng = Number(parts[0]);
+  const lat = Number(parts[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+    throw new Error("坐标数值超出范围");
+  }
+  return `${lng},${lat}`;
+}
+
+async function checkAmap() {
+  activeProject();
+  const data = await api("/api/amap-check");
+  const configured = Boolean(data.provider?.configured);
+  setAmapStatus(configured ? "高德 Key 可用" : "未配置高德 Key", configured);
+  writeOutput(data);
+}
+
+async function saveCenter() {
+  const code = activeProject();
+  const location = parseLocationInput($("#centerLocation").value.trim());
+  setAmapStatus("正在生成高德上下文...", null);
+  const data = await api("/api/amap-context", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code, location }),
+  });
+  const ok = data.status === "ok";
+  setAmapStatus(ok ? "已生成高德上下文" : data.status || "生成失败", ok);
+  writeOutput(data);
+  await loadSpatial();
+}
+
+async function loadSpatial() {
+  if (!state.project) return;
+  const data = await api(`/api/spatial?project=${encodeURIComponent(state.project)}`);
+  const existing = data.control_points || [];
+  state.controlPoints = existing.map((point) => ({
+    label: point.label || "",
+    cad_x: point.cad_point?.x ?? "",
+    cad_y: point.cad_point?.y ?? "",
+    amap_location: Array.isArray(point.amap_gcj02) ? point.amap_gcj02.join(",") : "",
+    feature_type: point.feature_type || "redline_corner",
+    feature_name: point.feature_name || "",
+    purpose: point.purpose || "registration",
+    confidence: point.confidence || "medium",
+    note: point.note || "",
+  }));
+  state.alignment = data.alignment_report || null;
+  if (data.amap_context?.location?.amap_gcj02) {
+    $("#centerLocation").value = data.amap_context.location.amap_gcj02;
+    setAmapStatus(`已有上下文：${data.amap_context.location.confidence || "unknown"}`, true);
+  }
+  renderControlPoints();
+  renderAlignment();
+  if (!state.alignment && state.controlPoints.length >= 3) scheduleAlignmentCheck();
+}
+
+function alignmentPayload() {
+  return { project: activeProject(), control_points: state.controlPoints };
+}
+
+function scheduleAlignmentCheck() {
+  window.clearTimeout(state.alignmentTimer);
+  if (state.controlPoints.length < 3) {
+    state.alignment = null;
+    renderAlignment();
+    renderControlPoints();
+    return;
+  }
+  state.alignment = { status: "pending" };
+  renderAlignment();
+  state.alignmentTimer = window.setTimeout(() => {
+    checkAlignment().catch((err) => {
+      state.alignment = { status: "error", error: err.message };
+      renderAlignment();
+    });
+  }, 250);
+}
+
+async function checkAlignment() {
+  if (!state.project || state.controlPoints.length < 3) return;
+  const data = await api("/api/alignment-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(alignmentPayload()),
+  });
+  state.alignment = data;
+  renderAlignment();
+  renderControlPoints();
+}
+
+function renderAlignment() {
+  const panel = $("#alignmentPanel");
+  if (!panel) return;
+  panel.classList.remove("ok", "warn");
+  if (state.controlPoints.length < 3) {
+    panel.innerHTML = `
+      <b>配准检查</b>
+      <p>已加入 ${state.controlPoints.length} 个点。至少 3 个点后自动检查残差。</p>
+    `;
+    return;
+  }
+  const alignment = state.alignment;
+  if (!alignment || alignment.status === "pending") {
+    panel.innerHTML = `
+      <b>配准检查</b>
+      <p>正在等待自动检查...</p>
+    `;
+    return;
+  }
+  if (alignment.status === "error") {
+    panel.classList.add("warn");
+    panel.innerHTML = `
+      <b>配准检查</b>
+      <p>${escapeHtml(alignment.error || "检查失败")}</p>
+    `;
+    return;
+  }
+  const best = alignment.best_fit || {};
+  const outliers = best.outlier_labels || [];
+  const inliers = best.inlier_labels || [];
+  const ok = alignment.quality === "aligned_high" || (alignment.quality === "aligned_partial" && !outliers.length);
+  panel.classList.add(ok ? "ok" : "warn");
+  const issueRows = outliers
+    .map((label) => `<p><b>${escapeHtml(label)}</b>：${escapeHtml(residualNote(alignment, label))}</p>`)
+    .join("");
+  const duplicateRows = (alignment.duplicates || [])
+    .map((item) => `<p>重复高德坐标：${compactList(item.labels, 8)} 共用 ${escapeHtml(item.amap_gcj02?.join(",") || "")}</p>`)
+    .join("");
+  panel.innerHTML = `
+    <b>配准检查：${escapeHtml(qualityText(alignment.quality))}</b>
+    <div class="alignment-stats">
+      <div><span>控制点</span><b>${alignment.point_count || state.controlPoints.length} 个</b></div>
+      <div><span>内点</span><b>${inliers.length || 0} 个</b></div>
+      <div><span>内点 RMS</span><b>${formatMeters(best.rms_error_m)}</b></div>
+      <div><span>全点 RMS</span><b>${formatMeters(alignment.all_points_fit?.rms_error_m)}</b></div>
+    </div>
+    ${outliers.length ? `<p>需复核：${compactList(outliers, 8)}。偏差不一定致命，但不适合做高置信落边。</p>` : `<p>当前点位没有明显外点。</p>`}
+    ${issueRows}
+    ${duplicateRows}
+  `;
+}
+
+function projectFileUrl(path) {
+  return `/api/project-file?project=${encodeURIComponent(state.project)}&path=${encodeURIComponent(path)}&t=${Date.now()}`;
+}
+
+async function loadCadPreview() {
+  if (!state.project) return;
+  const data = await api(`/api/cad-preview?project=${encodeURIComponent(state.project)}`);
+  state.cadPreview = data.exists ? data : null;
+  renderCadPreview();
+}
+
+async function runCadPreview() {
+  const code = activeProject();
+  setCadPreviewStatus("正在生成 CAD 预览...", null);
+  const data = await api("/api/cad-preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code }),
+  });
+  state.cadPreview = data.status === "ok" ? data : null;
+  renderCadPreview();
+  writeOutput(data);
+}
+
+function setCadPreviewStatus(text, ok = null) {
+  const el = $("#cadPreviewStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok === null ? "" : ok ? "#1f6f5b" : "#b94b2f";
+}
+
+function renderCadPreview() {
+  const frame = $("#cadPreviewFrame");
+  const list = $("#cadCandidateList");
+  if (!frame || !list) return;
+  frame.innerHTML = "";
+  list.innerHTML = "";
+  const data = state.cadPreview;
+  if (!data?.preview_svg) {
+    setCadPreviewStatus("尚未生成 CAD 预览", null);
+    frame.innerHTML = `<div class="control-empty">上传 DWG/DXF 后，点击“生成 CAD 预览”。</div>`;
+    list.innerHTML = `<div class="control-empty">候选 CAD 控制点会显示在这里。</div>`;
+    return;
+  }
+  const semantic = data.candidate_semantics_status ? `，语义：${data.candidate_semantics_status}` : "";
+  setCadPreviewStatus(`${(data.candidates || []).length} 个候选点${semantic}`, true);
+  const image = document.createElement("img");
+  image.alt = "CAD 地形图预览和候选控制点";
+  image.src = projectFileUrl(data.preview_svg);
+  frame.appendChild(image);
+  const candidates = data.candidates || [];
+  if (!candidates.length) {
+    list.innerHTML = `<div class="control-empty">未识别到候选控制点。仍可手动填写 CAD X/Y。</div>`;
+    return;
+  }
+  candidates.forEach((candidate) => {
+    const item = document.createElement("div");
+    item.className = "candidate-item";
+    const point = candidate.cad_point || {};
+    const x = Number(point.x);
+    const y = Number(point.y);
+    const saved = state.controlPoints.find((row) => row.label === (candidate.label || candidate.id));
+    const featureType = candidate.feature_type || saved?.feature_type || "redline_corner";
+    const purpose = candidate.purpose || saved?.purpose || "registration";
+    const confidence = ["low", "medium", "high"].includes(candidate.confidence || saved?.confidence)
+      ? candidate.confidence || saved?.confidence
+      : "medium";
+    candidate.feature_type = featureType;
+    candidate.purpose = purpose;
+    candidate.confidence = confidence;
+    candidate.amap_location = candidate.amap_location || saved?.amap_location || "";
+    const role = candidate.role_label || controlFeatureText(featureType);
+    const reason = candidate.reason || candidate.note || "候选点由 CAD 几何生成；如 AI 识别不可用，先作为红线配准点使用。";
+    const sourceText = candidate.suggestion_source === "vision_model" ? "视觉识别" : "保守建议";
+    item.innerHTML = `
+      <b>${escapeHtml(candidate.label || candidate.id)}</b>
+      <span>CAD ${Number.isFinite(x) ? x.toFixed(3) : "?"}, ${Number.isFinite(y) ? y.toFixed(3) : "?"}</span>
+      <small><b>${escapeHtml(sourceText)}：</b>${escapeHtml(role)}${candidate.feature_name ? ` / ${escapeHtml(candidate.feature_name)}` : ""}</small>
+      <small>${escapeHtml(reason)}</small>
+      <div class="candidate-pick">
+        <input data-field="amap_location" placeholder="粘贴高德坐标：经度,纬度" value="${escapeHtml(candidate.amap_location || "")}">
+        <button type="button">加入/更新</button>
+      </div>
+    `;
+    const input = item.querySelector("[data-field='amap_location']");
+    input.addEventListener("input", () => {
+      candidate.amap_location = input.value;
+    });
+    item.querySelector("button").addEventListener("click", () => addCandidateControlPoint(candidate));
+    list.appendChild(item);
+  });
+}
+
+function addCandidateControlPoint(candidate) {
+  const point = candidate.cad_point || {};
+  const label = candidate.label || candidate.id || `CP${state.controlPoints.length + 1}`;
+  const controlPoint = {
+    label,
+    feature_type: candidate.feature_type || "redline_corner",
+    purpose: candidate.purpose || "registration",
+    feature_name: candidate.feature_name || "",
+    cad_x: point.x ?? "",
+    cad_y: point.y ?? "",
+    amap_location: parseLocationInput(String(candidate.amap_location || "").trim()),
+    confidence: ["low", "medium", "high"].includes(candidate.confidence) ? candidate.confidence : "medium",
+    note: candidate.reason || candidate.note || "",
+  };
+  const existingIndex = state.controlPoints.findIndex((row) => row.label === label);
+  if (existingIndex >= 0) state.controlPoints[existingIndex] = controlPoint;
+  else state.controlPoints.push(controlPoint);
+  renderControlPoints();
+  renderCadPreview();
+  scheduleAlignmentCheck();
+}
+
+function renderControlPoints() {
+  const list = $("#controlList");
+  if (!list) return;
+  list.innerHTML = "";
+  $("#controlStatus").textContent = `${state.controlPoints.length} 个控制点`;
+  if (!state.controlPoints.length) {
+    const empty = document.createElement("div");
+    empty.className = "control-empty";
+    empty.textContent = "尚未加入控制点。几何配准可用红线角点；判断道路和入口时应补桥头、道路交叉口、道路边线等语义控制点。";
+    list.appendChild(empty);
+    return;
+  }
+  state.controlPoints.forEach((point, index) => {
+    const item = document.createElement("div");
+    const outliers = state.alignment?.best_fit?.outlier_labels || [];
+    const inliers = state.alignment?.best_fit?.inlier_labels || [];
+    item.className = `control-item ${outliers.includes(point.label) ? "warn" : inliers.includes(point.label) ? "ok" : ""}`;
+    const cad = point.cad_x !== "" && point.cad_y !== "" ? `CAD ${point.cad_x}, ${point.cad_y}` : "CAD 待补";
+    const note = residualNote(state.alignment, point.label);
+    const feature = [controlFeatureText(point.feature_type), point.feature_name].filter(Boolean).join(" / ");
+    const purpose = `${controlPurposeText(point.purpose)} · ${controlConfidenceText(point.confidence)}`;
+    item.innerHTML = `
+      <b>${escapeHtml(point.label || `CP${index + 1}`)}</b>
+      <span>${escapeHtml(feature)}</span>
+      <span>${escapeHtml(cad)}</span>
+      <span>AMap ${escapeHtml(point.amap_location)}</span>
+      <small>${escapeHtml(purpose)}</small>
+      ${point.note ? `<small>${escapeHtml(point.note)}</small>` : ""}
+      ${note ? `<small>${escapeHtml(note)}</small>` : ""}
+    `;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "删除";
+    remove.addEventListener("click", () => {
+      state.controlPoints.splice(index, 1);
+      renderControlPoints();
+      scheduleAlignmentCheck();
+    });
+    item.appendChild(remove);
+    list.appendChild(item);
+  });
+}
+
+async function saveControlPoints() {
+  const code = activeProject();
+  const data = await api("/api/control-points", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code, control_points: state.controlPoints }),
+  });
+  writeOutput(data);
+  state.alignment = data.alignment || state.alignment;
+  renderAlignment();
+  renderControlPoints();
+  await loadSpatial();
+}
+
 function bind() {
   $("#createProject").addEventListener("click", () => createProject().catch((err) => writeOutput(err.message)));
   $("#refreshProjects").addEventListener("click", () => loadProjects().catch((err) => writeOutput(err.message)));
   $("#runInventory").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
   $("#runValidate").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
+  $("#runInventoryStatus").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
+  $("#runValidateStatus").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
+  $("#checkAmap").addEventListener("click", () => checkAmap().catch((err) => writeOutput(err.message)));
+  $("#runCadPreview").addEventListener("click", () => runCadPreview().catch((err) => {
+    setCadPreviewStatus("生成失败", false);
+    writeOutput(err.message);
+  }));
+  $("#saveCenter").addEventListener("click", () => saveCenter().catch((err) => {
+    setAmapStatus("生成失败", false);
+    writeOutput(err.message);
+  }));
+  $("#saveControlPoints").addEventListener("click", () => saveControlPoints().catch((err) => writeOutput(err.message)));
   $("#projectCode").addEventListener("input", () => {
     if ($("#projectCode").value.trim() !== state.project) {
-      setActiveProject("", { syncUrl: true, clearFiles: true, resetInventory: true });
-      setControls();
+      setActiveProject("", { clearFiles: true, resetInventory: true });
+      setPage("project");
     }
   });
 
+  document.querySelectorAll("[data-page].stage-tab").forEach((tab) => {
+    tab.addEventListener("click", () => setPage(tab.dataset.page));
+  });
+  document.querySelectorAll("[data-goto]").forEach((button) => {
+    button.addEventListener("click", () => setPage(button.dataset.goto));
+  });
   document.querySelectorAll(".bucket").forEach((bucketEl) => {
     const bucket = bucketEl.dataset.bucket;
     const input = bucketEl.querySelector("input");
@@ -245,6 +944,7 @@ function bind() {
   });
 }
 
+if (!PAGES.includes(state.page)) state.page = "project";
 bind();
 setControls();
 loadProjects().catch((err) => writeOutput(err.message));

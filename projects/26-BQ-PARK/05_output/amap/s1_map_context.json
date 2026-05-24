@@ -1,0 +1,488 @@
+{
+  "schema_version": "1.0",
+  "status": "ok",
+  "created_at": "2026-05-23T17:52:10+0800",
+  "project_code": "26-BQ-PARK",
+  "provider": {
+    "name": "amap_webservice",
+    "configured": true,
+    "key_env": "AMAP_WEBSERVICE_KEY",
+    "key": "***"
+  },
+  "location": {
+    "amap_gcj02": "94.032582,31.925470",
+    "source": "argument.location",
+    "source_crs": "gcj02",
+    "confidence": "high",
+    "raw": {
+      "location": "94.032582,31.92547"
+    }
+  },
+  "map_context": {
+    "coordinate_system": "GCJ-02 / AMap",
+    "regeo": {
+      "formatted_address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
+      "address_component": {
+        "city": "那曲市",
+        "province": "西藏自治区",
+        "adcode": "540628",
+        "district": "巴青县",
+        "towncode": "540628100000",
+        "streetNumber": {
+          "number": [],
+          "direction": [],
+          "distance": [],
+          "street": []
+        },
+        "country": "中国",
+        "township": "拉西镇",
+        "businessAreas": [
+          []
+        ],
+        "building": {
+          "name": [],
+          "type": []
+        },
+        "neighborhood": {
+          "name": [],
+          "type": []
+        },
+        "citycode": "0896"
+      },
+      "roads": [],
+      "road_intersections": [],
+      "nearby_pois": [
+        {
+          "name": "曲登纳桥",
+          "type": "地名地址信息;交通地名;桥",
+          "typecode": null,
+          "address": "巴青县",
+          "location": "94.032245,31.926174",
+          "distance_m": "84.4858"
+        },
+        {
+          "name": "曲丹那村",
+          "type": "地名地址信息;普通地名;村庄级地名",
+          "typecode": null,
+          "address": "巴青县",
+          "location": "94.035887,31.925108",
+          "distance_m": "314.511"
+        },
+        {
+          "name": "川邑大酒店",
+          "type": "住宿服务;宾馆酒店;宾馆酒店",
+          "typecode": null,
+          "address": "尔塘400-402号",
+          "location": "94.036059,31.924387",
+          "distance_m": "349.557"
+        },
+        {
+          "name": "巴青县客运站",
+          "type": "交通设施服务;长途汽车站;长途汽车站",
+          "typecode": null,
+          "address": "巴仓寺西南侧170米",
+          "location": "94.038647,31.923695",
+          "distance_m": "605.492"
+        },
+        {
+          "name": "巴仓寺",
+          "type": "风景名胜;风景名胜;寺庙道观",
+          "typecode": null,
+          "address": "塔杰路278号",
+          "location": "94.039642,31.924976",
+          "distance_m": "668.581"
+        },
+        {
+          "name": "罗浪木卡",
+          "type": "地名地址信息;普通地名;村庄级地名",
+          "typecode": null,
+          "address": "巴青县",
+          "location": "94.037934,31.928615",
+          "distance_m": "614.36"
+        },
+        {
+          "name": "拉西镇",
+          "type": "地名地址信息;普通地名;乡镇级地名",
+          "typecode": null,
+          "address": "巴青县",
+          "location": "94.027231,31.930612",
+          "distance_m": "762.861"
+        },
+        {
+          "name": "西藏那曲市巴青县公安局交通警察大队",
+          "type": "政府机构及社会团体;交通车辆管理;交通管理机构",
+          "typecode": null,
+          "address": "巴青县人民医院东南侧180米",
+          "location": "94.024889,31.930398",
+          "distance_m": "909.642"
+        }
+      ],
+      "aois": []
+    },
+    "poi_500m": {
+      "transport": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      },
+      "education_culture": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      },
+      "scenic_park": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      },
+      "government_public": {
+        "status": "ok",
+        "count": "1",
+        "items": [
+          {
+            "name": "棍郭社区居民委员会",
+            "type": "政府机构及社会团体;政府机关;乡镇以下级政府及事业单位",
+            "typecode": "130106",
+            "address": "317国道与650乡道交叉口东南200米",
+            "location": "94.033897,31.925318",
+            "distance_m": "125"
+          }
+        ]
+      },
+      "commercial_life": {
+        "status": "ok",
+        "count": "1",
+        "items": [
+          {
+            "name": "巴青大华超市",
+            "type": "购物服务;便民商店/便利店;便民商店/便利店",
+            "typecode": "060200",
+            "address": "317国道与650乡道交叉口东南500米",
+            "location": "94.036616,31.924090",
+            "distance_m": "410"
+          }
+        ]
+      },
+      "medical_sports": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      }
+    },
+    "poi_1000m": {
+      "transport": {
+        "status": "ok",
+        "count": "1",
+        "items": [
+          {
+            "name": "巴青县客运站",
+            "type": "交通设施服务;长途汽车站;长途汽车站",
+            "typecode": "150400",
+            "address": "巴仓寺西南侧170米",
+            "location": "94.038647,31.923695",
+            "distance_m": "606"
+          }
+        ]
+      },
+      "education_culture": {
+        "status": "ok",
+        "count": "1",
+        "items": [
+          {
+            "name": "巴青县第一小学",
+            "type": "科教文化服务;学校;小学",
+            "typecode": "141203",
+            "address": "达尔塘路3号",
+            "location": "94.041106,31.924039",
+            "distance_m": "820"
+          }
+        ]
+      },
+      "scenic_park": {
+        "status": "ok",
+        "count": "2",
+        "items": [
+          {
+            "name": "巴仓寺",
+            "type": "风景名胜;风景名胜;寺庙道观",
+            "typecode": "110205",
+            "address": "塔杰路278号",
+            "location": "94.039642,31.924976",
+            "distance_m": "669"
+          },
+          {
+            "name": "拉西镇政府广场",
+            "type": "风景名胜;公园广场;公园广场",
+            "typecode": "110100",
+            "address": "万顺建材西侧90米",
+            "location": "94.026760,31.929718",
+            "distance_m": "725"
+          }
+        ]
+      },
+      "government_public": {
+        "status": "ok",
+        "count": "4",
+        "items": [
+          {
+            "name": "棍郭社区居民委员会",
+            "type": "政府机构及社会团体;政府机关;乡镇以下级政府及事业单位",
+            "typecode": "130106",
+            "address": "317国道与650乡道交叉口东南200米",
+            "location": "94.033897,31.925318",
+            "distance_m": "125"
+          },
+          {
+            "name": "巴青县拉西镇退役军人服务站",
+            "type": "政府机构及社会团体;政府机关;乡镇级政府及事业单位",
+            "typecode": "130105",
+            "address": "拉西镇退役军人服务站",
+            "location": "94.027557,31.930752",
+            "distance_m": "755"
+          },
+          {
+            "name": "拉西镇人民政府",
+            "type": "政府机构及社会团体;政府机关;乡镇级政府及事业单位",
+            "typecode": "130105",
+            "address": "317国道附近",
+            "location": "94.027231,31.930612",
+            "distance_m": "763"
+          },
+          {
+            "name": "西藏那曲市巴青县公安局交通警察大队",
+            "type": "政府机构及社会团体;交通车辆管理;交通管理机构",
+            "typecode": "130601",
+            "address": "巴青县人民医院东南侧180米",
+            "location": "94.024889,31.930398",
+            "distance_m": "910"
+          }
+        ]
+      },
+      "commercial_life": {
+        "status": "ok",
+        "count": "39",
+        "items": [
+          {
+            "name": "巴青大华超市",
+            "type": "购物服务;便民商店/便利店;便民商店/便利店",
+            "typecode": "060200",
+            "address": "317国道与650乡道交叉口东南500米",
+            "location": "94.036616,31.924090",
+            "distance_m": "410"
+          },
+          {
+            "name": "巴青小李生活超市",
+            "type": "购物服务;超级市场;超市|购物服务;便民商店/便利店;便民商店/便利店",
+            "typecode": "060400|060200",
+            "address": "巴仓寺西侧150米",
+            "location": "94.038022,31.924566",
+            "distance_m": "523"
+          },
+          {
+            "name": "布杰康桑茶馆",
+            "type": "餐饮服务;茶艺馆;茶艺馆",
+            "typecode": "050600",
+            "address": "巴仓寺西南侧140米",
+            "location": "94.038375,31.924225",
+            "distance_m": "564"
+          },
+          {
+            "name": "简美造型",
+            "type": "生活服务;美容美发店;美容美发店",
+            "typecode": "071100",
+            "address": "巴仓寺西南侧240米",
+            "location": "94.038375,31.923025",
+            "distance_m": "611"
+          },
+          {
+            "name": "天天好生活超市",
+            "type": "购物服务;便民商店/便利店;便民商店/便利店",
+            "typecode": "060200",
+            "address": "塔杰路285号",
+            "location": "94.038999,31.924050",
+            "distance_m": "626"
+          },
+          {
+            "name": "巴青祥和生活超市",
+            "type": "购物服务;超级市场;超市",
+            "typecode": "060400",
+            "address": "巴仓寺西南侧240米",
+            "location": "94.038561,31.922955",
+            "distance_m": "630"
+          },
+          {
+            "name": "巴仓寺商店",
+            "type": "购物服务;便民商店/便利店;便民商店/便利店",
+            "typecode": "060200",
+            "address": "巴青县第一小学西侧170米",
+            "location": "94.039225,31.923975",
+            "distance_m": "649"
+          },
+          {
+            "name": "喜喀则桑朱茶馆",
+            "type": "餐饮服务;茶艺馆;茶艺馆",
+            "typecode": "050600",
+            "address": "巴仓寺南侧220米",
+            "location": "94.039725,31.922925",
+            "distance_m": "731"
+          }
+        ]
+      },
+      "medical_sports": {
+        "status": "ok",
+        "count": "4",
+        "items": [
+          {
+            "name": "云海网咖",
+            "type": "体育休闲服务;娱乐场所;网吧",
+            "typecode": "080308",
+            "address": "达尔塘路380号",
+            "location": "94.037675,31.923525",
+            "distance_m": "527"
+          },
+          {
+            "name": "高原帐篷俱乐部",
+            "type": "体育休闲服务;体育休闲服务场所;体育休闲服务场所",
+            "typecode": "080000",
+            "address": "巴青县第一小学南侧220米",
+            "location": "94.041125,31.921975",
+            "distance_m": "896"
+          },
+          {
+            "name": "那曲福运堂诊所",
+            "type": "医疗保健服务;诊所;诊所",
+            "typecode": "090300",
+            "address": "巴青县第一小学南侧250米",
+            "location": "94.041675,31.921825",
+            "distance_m": "950"
+          }
+        ]
+      }
+    },
+    "keyword_context": {
+      "河": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      },
+      "桥": {
+        "status": "ok",
+        "count": "1",
+        "items": [
+          {
+            "name": "曲登纳桥",
+            "type": "地名地址信息;交通地名;桥",
+            "typecode": "190307",
+            "address": "巴青县",
+            "location": "94.032245,31.926174",
+            "distance_m": "84"
+          }
+        ]
+      },
+      "公园": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      },
+      "公交站": {
+        "status": "ok",
+        "count": "0",
+        "items": []
+      }
+    }
+  },
+  "static_map": {
+    "url_template": "https://restapi.amap.com/v3/staticmap?location=94.032582%2C31.925470&zoom=16&size=750%2A500&scale=2&markers=mid%2C0xFF0000%2CA%3A94.032582%2C31.925470&key=%3CAMAP_WEBSERVICE_KEY%3E",
+    "note": "Replace <AMAP_WEBSERVICE_KEY> locally if a static preview image is needed."
+  },
+  "s1_external_context_seed": {
+    "registration_state": "map_located",
+    "coordinate_evidence": {
+      "address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
+      "amap_gcj02": "94.032582,31.925470",
+      "wgs84_for_record": null,
+      "source": "argument.location",
+      "confidence": "high"
+    },
+    "location_evidence": [
+      "AMap reverse geocode: 西藏自治区那曲市巴青县拉西镇曲登纳桥",
+      "AMap coordinate source: argument.location (gcj02)"
+    ],
+    "amap_context": {
+      "roads": [],
+      "water": [
+        "曲登纳桥"
+      ],
+      "poi_500m": {
+        "transport": [],
+        "education_culture": [],
+        "scenic_park": [],
+        "government_public": [
+          "棍郭社区居民委员会"
+        ],
+        "commercial_life": [
+          "巴青大华超市"
+        ],
+        "medical_sports": []
+      },
+      "poi_1000m": {
+        "transport": [
+          "巴青县客运站"
+        ],
+        "education_culture": [
+          "巴青县第一小学"
+        ],
+        "scenic_park": [
+          "巴仓寺",
+          "拉西镇政府广场"
+        ],
+        "government_public": [
+          "棍郭社区居民委员会",
+          "巴青县拉西镇退役军人服务站",
+          "拉西镇人民政府",
+          "西藏那曲市巴青县公安局交通警察大队"
+        ],
+        "commercial_life": [
+          "巴青大华超市",
+          "巴青小李生活超市",
+          "布杰康桑茶馆",
+          "简美造型",
+          "天天好生活超市",
+          "巴青祥和生活超市",
+          "巴仓寺商店",
+          "喜喀则桑朱茶馆"
+        ],
+        "medical_sports": [
+          "云海网咖",
+          "高原帐篷俱乐部",
+          "那曲福运堂诊所"
+        ]
+      },
+      "transit_or_routes": []
+    },
+    "external_features": {
+      "primary_roads": [],
+      "secondary_roads": [],
+      "barriers": [],
+      "landscape_or_culture_nodes": [
+        "曲登纳桥"
+      ]
+    },
+    "approach_vectors": [],
+    "entrance_judgment": {
+      "level": "candidate",
+      "main_entrance": null,
+      "secondary_entrance": null,
+      "reason": "Only map location is available; CAD edge binding requires control points."
+    },
+    "s2_use": {
+      "can_bind_to_cad_edges": false,
+      "required_control_points": [
+        "2-3 common points between AMap and CAD, such as bridge ends, road intersections, or redline corners"
+      ],
+      "notes": [
+        "AMap coordinates are GCJ-02 and cannot be directly overlaid on unknown CAD engineering coordinates."
+      ]
+    }
+  }
+}

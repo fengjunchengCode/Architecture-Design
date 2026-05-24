@@ -1,0 +1,259 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-23T18:59:03+0800",
+  "project": "26-BQ-PARK",
+  "status": "ok",
+  "provider": {
+    "provider": "anthropic",
+    "model": "mimo-v2.5",
+    "api_base": "https://token-plan-cn.xiaomimimo.com/anthropic",
+    "configured": true
+  },
+  "vision_image": "05_output/cad/cad_site_composite_for_vision.png",
+  "cad_vision_image": "05_output/cad/site_preview_for_vision.png",
+  "location_images": [
+    "02_site/区位图/大.png",
+    "02_site/区位图/中.png",
+    "02_site/区位图/小.png"
+  ],
+  "location_vision_context": [
+    {
+      "file": "02_site__区位图__中.png.vision.json",
+      "status": "ok",
+      "source_path": "02_site/区位图/中.png",
+      "visual_summary": "一张俯瞰式卫星图，显示了一个位于河谷地带的城镇。城镇沿河流和一条主干道呈带状发展，两侧为起伏的山地。图中有一个明显的红色矩形框标记了城镇中心的某片建筑区域，另一个较小的红色标记框位于河流上游的道路附近。图上标注了多个地点名称和道路编号，整体地貌为高原山地河谷。",
+      "detected_text": [
+        "2021",
+        "2024",
+        "巴青县公安局",
+        "特警大队",
+        "珠确达村",
+        "幸福便民警务站",
+        "贡闹勒",
+        "G317",
+        "达尔塘路",
+        "拉西镇政府",
+        "G317",
+        "巴青县人民政府"
+      ],
+      "roads_or_landmarks": [
+        "G317（317国道）",
+        "达尔塘路",
+        "人民路",
+        "巴青县人民政府（建筑群）",
+        "巴青县人民检察院",
+        "巴青县公安局",
+        "拉西镇政府",
+        "河流（未标注名称）"
+      ],
+      "site_marker_description": "图中有两个红色框线标记。一个较大的矩形框清晰地框定了城镇中心区的一片建筑密集区，内部标注为“巴青县人民政府”周边区域。另一个较小的、形状不规则的红色标记位于图像左上方河流上游的G317国道旁。",
+      "confidence": "medium",
+      "needs_review": [
+        "需确认红色框线是否为项目用地红线及其具体用途",
+        "需人工复核图中所有地名和机构名称的准确对应关系",
+        "需核实影像拍摄日期（2020/12/30）与项目当前时间点的关联性",
+        "需确认两个红框标记的具体指代（哪个是项目目标地块）"
+      ]
+    },
+    {
+      "file": "02_site__区位图__大.png.vision.json",
+      "status": "ok",
+      "source_path": "02_site/区位图/大.png",
+      "visual_summary": "该图为西藏自治区那曲市及其周边区域的卫星影像地图，显示了高海拔高原山地地貌，包含山脉、河谷、公路网络及城镇村落。图中有三个红框标记区域，分别位于西南部、中部及中部偏东位置。",
+      "detected_text": [
+        "那曲市",
+        "嘉黎县",
+        "比如县",
+        "G345",
+        "G317",
+        "G109",
+        "G558",
+        "G6",
+        "朗秋错",
+        "安多县",
+        "索县",
+        "拉孜县"
+      ],
+      "roads_or_landmarks": [
+        "国道 G345",
+        "国道 G317",
+        "国道 G109",
+        "国道 G6",
+        "省道 G558",
+        "那曲市区",
+        "朗秋错（湖泊）",
+        "嘉黎县城区区域",
+        "比如县城区区域",
+        "东部大型雪山/冰川区域"
+      ],
+      "site_marker_description": "图中有三个红色矩形框标记的区域：1. 西南部，圈定那曲市城区及周边；2. 中部，圈定嘉黎县县城区域；3. 中部偏东，圈定比如县县城区域。三者均沿G317国道或支路分布。",
+      "confidence": "medium",
+      "needs_review": [
+        "红框标记的具体含义（是否为项目选址、可用地范围或行政边界）需与设计团队或业主确认。",
+        "部分乡镇级别的文字标签可能需要进一步核实以确保准确性。",
+        "项目具体的红线范围、用地性质及建设条件无法从本图中直接获知。",
+        "图中未提供比例尺、指北针、坐标信息，需结合其他资料进行空间定位。"
+      ]
+    },
+    {
+      "file": "02_site__区位图__小.png.vision.json",
+      "status": "ok",
+      "source_path": "02_site/区位图/小.png",
+      "visual_summary": "这是一张城镇边缘地带的卫星图，图中有一条河流穿城而过，河流旁有一条铁路（索巴二线）和一条国道（G317）。图中红色方框标示出一块位于河流南岸、道路交汇处附近的不规则形状场地，该场地内包含少量建筑和大片未开发的空地。周边分布有密集的民居、部分在建工地以及跨越河流的桥梁。图幅左下角有比例尺和‘吉林一号’的标识，图面标注了拍摄日期为2024年11月7日。",
+      "detected_text": [
+        "吉林一号",
+        "遥感商城",
+        "数据来自长光卫星技术股份有限公司",
+        "CS(2025)1833号",
+        "影像拍摄日期：2024/11/07",
+        "50米",
+        "G317",
+        "吉黑",
+        "索巴二线",
+        "盐曲"
+      ],
+      "roads_or_landmarks": [
+        "G317国道",
+        "索巴铁路线",
+        "盐曲河流",
+        "跨河桥梁（至少两座，位于红框区域东西两侧）"
+      ],
+      "site_marker_description": "红色方框标示的场地内有一小片蓝色屋顶的临时或简易建筑，以及大片裸露的、呈黄褐色的土地。场地靠近河流，并与一处水利设施（可能是水闸或小型水库）相邻，地面状况显示有施工或挖掘痕迹，整体地形不平整。",
+      "confidence": "medium",
+      "needs_review": [
+        "图面上没有显示详细的县、市、镇名称，精确的地理定位需要人工复核或结合其他资料。",
+        "红色方框所标示的具体项目范围及用地红线需由项目方提供或现场确认。",
+        "场地内土地的权属、现状性质（如是耕地、林地、还是建设用地）及临时建筑的具体功能需要现场调查确认。",
+        "场地南侧的水利设施对项目可能的影响及是否需要保留/改造需专业评估。"
+      ]
+    }
+  ],
+  "vision_result": {
+    "status": "ok",
+    "model": "mimo-v2.5",
+    "response_id": "c92fd005670f469483d5d9e81abc8605",
+    "global_findings": [
+      "项目场地位于西藏自治区那曲市巴青县拉西镇附近，具体在盐曲河南岸，G317国道南侧。",
+      "CAD图中的项目红线与卫星图（小图）中红框所指区域在空间位置上基本吻合。",
+      "项目场地南侧紧邻盐曲河及一座水利设施（水闸/小型水库），北侧为G317国道及城镇建成区。",
+      "CAD图中的蓝色线条可能代表盐曲河或其支流、灌渠，红色粗线推测为项目用地红线。",
+      "CAD-07、08、09三个点来自DLSS图层，根据其位置和CAD图中的线条，更有可能绑定到具体道路或水利设施边缘，但当前置信度为中等，需要现场或更精确的底图确认。"
+    ],
+    "needs_user_pick": [
+      "请确认CAD-08和CAD-09具体对应G317国道上的哪个位置（如道路中线、边线或交叉口），以提高绑定精度。",
+      "请确认CAD-07具体对应盐曲河南侧水利设施的哪个部位（如闸门边缘、堤岸线）。"
+    ]
+  },
+  "fallback_reason": null,
+  "candidates": [
+    {
+      "id": "CAD-01",
+      "label": "CAD-01",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 16",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线西端角点。在卫星图（小图）中，红线框所指区域与该角点在空间上大致吻合，可作为平面校准的定位角点，但未能明确对应到具体可见道路、桥梁或水系的边缘。",
+      "note": "west edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-02",
+      "label": "CAD-02",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 22",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线南侧。在卫星图（小图）中，该角点大致位于红线框南侧边界附近，可能与场地边界相关，但没有明确证据表明它对应特定道路或水体边缘。",
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-03",
+      "label": "CAD-03",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 25",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线东南角。卫星图（小图）显示该区域靠近盐曲河及一座跨河设施（可能是桥或水闸），但该点未明确落在该设施的端点或边缘上，因此作为红线角点用于注册。",
+      "note": "south edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-04",
+      "label": "CAD-04",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 28",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线东端角点。卫星图（小图）中，该角点大致对应于红线框的东端，靠近一条从北向南延伸的蓝色线条（可能代表道路或水渠边缘），但对应关系不确切。",
+      "note": "east edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-05",
+      "label": "CAD-05",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 1",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线东北角。在卫星图（小图）中，该点位于场地北部，其北侧有建筑和道路痕迹，但点位本身未精确落在可见的地物特征上。",
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-06",
+      "label": "CAD-06",
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 9",
+      "purpose": "registration",
+      "confidence": "medium",
+      "role_label": "定位点",
+      "reason": "CAD点位于项目红线北端角点。卫星图（小图）中，该角点大致对应于红线框的北缘，附近有建筑群，但未直接落在G317国道或达尔塘路等已知道路上。",
+      "note": "north edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-07",
+      "label": "CAD-07",
+      "feature_type": "water_edge",
+      "feature_name": "盐曲",
+      "purpose": "water_binding",
+      "confidence": "medium",
+      "role_label": "水利设施边线绑定",
+      "reason": "CAD点位于DLSS图层，在CAD图中处于蓝色线条（推测为水系）附近。卫星图（小图）显示项目场地南侧紧邻盐曲河及一座水利设施（水闸/小型水库），该点很可能对应于该水利设施的边缘或结构角点。",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-08",
+      "label": "CAD-08",
+      "feature_type": "road_edge",
+      "feature_name": "G317",
+      "purpose": "road_binding",
+      "confidence": "medium",
+      "role_label": "道路边线绑定",
+      "reason": "CAD点位于DLSS图层，在CAD图中处于北部道路边缘。卫星图（小图）与sidecar摘要显示项目场地北侧为G317国道及附属道路（如达尔塘路）。该点很可能对应于G317或其连接道路的边线。",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。",
+      "suggestion_source": "vision_model"
+    },
+    {
+      "id": "CAD-09",
+      "label": "CAD-09",
+      "feature_type": "road_edge",
+      "feature_name": "G317",
+      "purpose": "road_binding",
+      "confidence": "medium",
+      "role_label": "道路边线绑定",
+      "reason": "CAD点位于DLSS图层，在CAD图中处于北部道路边缘。卫星图（小图）与sidecar摘要显示项目场地北侧为G317国道及附属道路（如达尔塘路）。该点很可能对应于G317或其连接道路的边线。",
+      "note": "DLSS 图层候选，可能是道路/硬质设施边线；请在高德中确认对应地物。",
+      "suggestion_source": "vision_model"
+    }
+  ],
+  "agent_note": "AI-assisted semantic suggestions for CAD-side candidate points. User still picks exact AMap coordinates."
+}

@@ -9,6 +9,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +45,28 @@ BUCKETS = {
     "reference": "03_references",
     "chat": "04_chat",
 }
+CAD_SEMANTICS_REL = Path("05_output/cad/control_point_candidate_semantics.json")
+
+CONTROL_FEATURE_TYPES = {
+    "redline_corner",
+    "road_intersection",
+    "road_centerline",
+    "road_edge",
+    "bridge_endpoint",
+    "bridge_center",
+    "water_edge",
+    "building_corner",
+    "visible_landmark",
+    "other",
+}
+CONTROL_PURPOSES = {
+    "registration",
+    "road_binding",
+    "entrance_check",
+    "water_binding",
+    "reference_only",
+}
+CONTROL_CONFIDENCE = {"low", "medium", "high"}
 
 
 def safe_project(code: str) -> str:
@@ -161,6 +185,18 @@ def run_tool(args: list[str]) -> tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
+def content_type_for(path: Path) -> str:
+    mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    if path.suffix.lower() == ".svg":
+        mime = "image/svg+xml"
+    if (
+        mime.startswith("text/")
+        or mime in {"application/javascript", "application/json", "image/svg+xml"}
+    ):
+        return f"{mime}; charset=utf-8"
+    return mime
+
+
 class UploaderHandler(BaseHTTPRequestHandler):
     server_version = "ArchitectureUploader/0.1"
 
@@ -173,6 +209,14 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_inventory(parsed.query)
             elif parsed.path == "/api/validate":
                 self.handle_validate(parsed.query)
+            elif parsed.path == "/api/amap-check":
+                self.handle_amap_check()
+            elif parsed.path == "/api/spatial":
+                self.handle_spatial(parsed.query)
+            elif parsed.path == "/api/cad-preview":
+                self.handle_cad_preview(parsed.query, run=False)
+            elif parsed.path == "/api/project-file":
+                self.serve_project_file(parsed.query)
             else:
                 self.serve_static(parsed.path)
         except Exception as exc:
@@ -185,6 +229,16 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_create_project()
             elif parsed.path == "/api/upload":
                 self.handle_upload(parsed.query)
+            elif parsed.path == "/api/amap-context":
+                self.handle_amap_context()
+            elif parsed.path == "/api/control-points":
+                self.handle_control_points()
+            elif parsed.path == "/api/cad-candidate-semantics":
+                self.handle_cad_candidate_semantics()
+            elif parsed.path == "/api/alignment-check":
+                self.handle_alignment_check()
+            elif parsed.path == "/api/cad-preview":
+                self.handle_cad_preview("", run=True)
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -220,9 +274,31 @@ class UploaderHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         content = target.read_bytes()
-        mime = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", mime)
+        self.send_header("Content-Type", content_type_for(target))
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def serve_project_file(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        rel = str(params.get("path", [""])[0]).replace("\\", "/").lstrip("/")
+        if not rel.startswith("05_output/"):
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        proj = project_dir(code)
+        target = (proj / rel).resolve()
+        output_dir = (proj / "05_output").resolve()
+        if output_dir not in target.parents and target != output_dir:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        if not target.exists() or not target.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        content = target.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type_for(target))
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -324,6 +400,360 @@ class UploaderHandler(BaseHTTPRequestHandler):
         payload = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         payload.update({"ok": rc == 0, "returncode": rc, "stderr": stderr})
         self.send_json(payload, HTTPStatus.OK if rc in (0, 2) else HTTPStatus.BAD_REQUEST)
+
+    def handle_amap_check(self) -> None:
+        args = ["_tools/amap_context.py", "--check", "--json"]
+        rc, stdout, stderr = run_tool(args)
+        payload = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        payload.update({"ok": rc == 0, "returncode": rc, "stderr": stderr})
+        self.send_json(payload, HTTPStatus.OK if rc in (0, 2) else HTTPStatus.BAD_REQUEST)
+
+    def handle_amap_context(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        location = str(payload.get("location") or "").strip()
+        address = str(payload.get("address") or "").strip()
+        args = ["_tools/amap_context.py", code, "--json", "--write"]
+        if location:
+            args.extend(["--location", location])
+        elif address:
+            args.extend(["--address", address])
+        rc, stdout, stderr = run_tool(args)
+        result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        result.update({"ok": rc == 0 and result.get("status") == "ok", "returncode": rc, "stderr": stderr})
+        self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
+
+    def handle_spatial(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        amap_dir = proj / "05_output" / "amap"
+        context_path = amap_dir / "s1_map_context.json"
+        control_path = amap_dir / "control_points.json"
+        payload: dict[str, object] = {
+            "project": code,
+            "amap_context_exists": context_path.exists(),
+            "control_points_exists": control_path.exists(),
+            "control_points": [],
+        }
+        if context_path.exists():
+            try:
+                context = json.loads(context_path.read_text(encoding="utf-8"))
+                payload["amap_context"] = {
+                    "status": context.get("status"),
+                    "location": context.get("location"),
+                    "address": (context.get("map_context") or {}).get("regeo", {}).get("formatted_address"),
+                    "path": str(context_path.relative_to(proj)).replace("\\", "/"),
+                }
+            except json.JSONDecodeError as exc:
+                payload["amap_context_error"] = str(exc)
+        if control_path.exists():
+            try:
+                saved = json.loads(control_path.read_text(encoding="utf-8"))
+                payload["control_points"] = saved.get("control_points", [])
+                payload["control_points_path"] = str(control_path.relative_to(proj)).replace("\\", "/")
+            except json.JSONDecodeError as exc:
+                payload["control_points_error"] = str(exc)
+        alignment_path = amap_dir / "cad_alignment_report.json"
+        if alignment_path.exists():
+            try:
+                payload["alignment_report"] = json.loads(alignment_path.read_text(encoding="utf-8"))
+                payload["alignment_report_path"] = str(alignment_path.relative_to(proj)).replace("\\", "/")
+            except json.JSONDecodeError as exc:
+                payload["alignment_report_error"] = str(exc)
+        self.send_json(payload)
+
+    def read_cad_preview_payload(self, proj: Path, code: str) -> dict[str, object]:
+        preview_path = proj / "05_output" / "cad" / "site_preview.svg"
+        candidate_path = proj / "05_output" / "cad" / "control_point_candidates.json"
+        semantics_path = proj / CAD_SEMANTICS_REL
+        payload: dict[str, object] = {
+            "ok": True,
+            "project": code,
+            "exists": preview_path.exists() and candidate_path.exists(),
+            "preview_svg": "05_output/cad/site_preview.svg" if preview_path.exists() else None,
+            "candidate_json": "05_output/cad/control_point_candidates.json" if candidate_path.exists() else None,
+            "candidate_semantics": str(CAD_SEMANTICS_REL).replace("\\", "/") if semantics_path.exists() else None,
+            "candidates": [],
+        }
+        if candidate_path.exists():
+            try:
+                saved = json.loads(candidate_path.read_text(encoding="utf-8"))
+                payload.update(saved)
+                payload["ok"] = saved.get("status") == "ok"
+                payload["exists"] = preview_path.exists()
+                if semantics_path.exists():
+                    semantics = json.loads(semantics_path.read_text(encoding="utf-8"))
+                    payload["candidate_semantics"] = str(CAD_SEMANTICS_REL).replace("\\", "/")
+                    payload["candidate_semantics_updated_at"] = semantics.get("updated_at")
+                    payload["candidates"] = self.merge_candidate_semantics(
+                        payload.get("candidates", []),
+                        semantics.get("candidates", []),
+                    )
+                    payload["candidate_semantics_status"] = semantics.get("status")
+                    payload["candidate_semantics_provider"] = semantics.get("provider")
+                    payload["candidate_semantics_fallback_reason"] = semantics.get("fallback_reason")
+                    payload["candidate_semantics_vision_image"] = semantics.get("vision_image")
+                    payload["candidate_semantics_cad_image"] = semantics.get("cad_vision_image")
+                    payload["candidate_semantics_location_images"] = semantics.get("location_images", [])
+                    vision_result = semantics.get("vision_result") if isinstance(semantics.get("vision_result"), dict) else {}
+                    payload["candidate_semantics_global_findings"] = vision_result.get("global_findings", [])
+                    payload["candidate_semantics_needs_user_pick"] = vision_result.get("needs_user_pick", [])
+            except json.JSONDecodeError as exc:
+                payload["ok"] = False
+                payload["error"] = str(exc)
+        return payload
+
+    def clean_candidate_semantics(self, items: object) -> list[dict[str, object]]:
+        if not isinstance(items, list):
+            raise ValueError("candidates 必须是数组")
+        cleaned = []
+        for index, raw in enumerate(items, start=1):
+            if not isinstance(raw, dict):
+                raise ValueError(f"候选点 {index} 格式错误")
+            candidate_id = str(raw.get("id") or raw.get("label") or f"CAD-{index:02d}").strip()
+            label = str(raw.get("label") or candidate_id).strip()
+            feature_type = str(raw.get("feature_type") or "redline_corner").strip()
+            feature_name = str(raw.get("feature_name") or "").strip()
+            purpose = str(raw.get("purpose") or "registration").strip()
+            confidence = str(raw.get("confidence") or "medium").strip()
+            role_label = str(raw.get("role_label") or "").strip()
+            reason = str(raw.get("reason") or "").strip()
+            suggestion_source = str(raw.get("suggestion_source") or "").strip()
+            note = str(raw.get("note") or "").strip()
+            if feature_type not in CONTROL_FEATURE_TYPES:
+                feature_type = "other"
+            if purpose not in CONTROL_PURPOSES:
+                purpose = "registration"
+            if confidence not in CONTROL_CONFIDENCE:
+                confidence = "medium"
+            cleaned.append(
+                {
+                    "id": candidate_id,
+                    "label": label,
+                    "feature_type": feature_type,
+                    "feature_name": feature_name or None,
+                    "purpose": purpose,
+                    "confidence": confidence,
+                    "role_label": role_label or None,
+                    "reason": reason or None,
+                    "suggestion_source": suggestion_source or None,
+                    "note": note or None,
+                    "source": "uploader_ui",
+                }
+            )
+        return cleaned
+
+    def merge_candidate_semantics(self, candidates: object, semantics: object) -> list[dict[str, object]]:
+        if not isinstance(candidates, list):
+            return []
+        semantic_rows = semantics if isinstance(semantics, list) else []
+        by_key = {}
+        for item in semantic_rows:
+            if not isinstance(item, dict):
+                continue
+            for key in (item.get("id"), item.get("label")):
+                if key:
+                    by_key[str(key)] = item
+        merged = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            row = dict(candidate)
+            semantic = by_key.get(str(row.get("id"))) or by_key.get(str(row.get("label")))
+            if semantic:
+                for field in ("feature_type", "feature_name", "purpose", "confidence", "note", "role_label", "reason", "suggestion_source"):
+                    if semantic.get(field) is not None:
+                        row[field] = semantic.get(field)
+            merged.append(row)
+        return merged
+
+    def handle_cad_preview(self, query: str, run: bool) -> None:
+        if run:
+            payload = self.read_json()
+            code = safe_project(str(payload.get("project", "")))
+        else:
+            params = parse_qs(query)
+            code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        if not proj.exists():
+            raise ValueError("请先创建项目，再生成 CAD 预览")
+        if not run:
+            self.send_json(self.read_cad_preview_payload(proj, code))
+            return
+
+        probe_rc, probe_stdout, probe_stderr = run_tool(["_tools/dwg_probe.py", code, "--json", "--write"])
+        probe = json.loads(probe_stdout) if probe_stdout.strip().startswith("{") else {"stdout": probe_stdout}
+        if probe_rc not in (0, 2) or probe.get("status") not in {"ok", "partial"}:
+            probe.update({"ok": False, "returncode": probe_rc, "stderr": probe_stderr})
+            self.send_json(probe, HTTPStatus.BAD_REQUEST)
+            return
+
+        rc, stdout, stderr = run_tool(["_tools/cad_preview.py", code, "--json", "--write"])
+        result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        semantic_rc = 0
+        semantic_stdout = ""
+        semantic_stderr = ""
+        semantic_payload: dict[str, object] = {}
+        if rc == 0 and result.get("status") == "ok":
+            semantic_rc, semantic_stdout, semantic_stderr = run_tool(
+                ["_tools/cad_semantics.py", code, "--json", "--write", "--timeout", "60"]
+            )
+            semantic_payload = (
+                json.loads(semantic_stdout)
+                if semantic_stdout.strip().startswith("{")
+                else {"stdout": semantic_stdout}
+            )
+        result.update(
+            {
+                "ok": rc == 0 and result.get("status") == "ok",
+                "returncode": rc,
+                "stderr": stderr,
+                "dwg_probe_status": probe.get("status"),
+                "cad_semantics": semantic_payload,
+                "cad_semantics_returncode": semantic_rc,
+                "cad_semantics_stderr": semantic_stderr,
+            }
+        )
+        if rc == 0:
+            result.update(self.read_cad_preview_payload(proj, code))
+        self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
+
+    def clean_control_points(self, points: object) -> list[dict[str, object]]:
+        if not isinstance(points, list):
+            raise ValueError("control_points 必须是数组")
+        cleaned = []
+        for index, raw in enumerate(points, start=1):
+            if not isinstance(raw, dict):
+                raise ValueError(f"控制点 {index} 格式错误")
+            label = str(raw.get("label") or f"CP{index}").strip()
+            cad_x = str(raw.get("cad_x") or "").strip()
+            cad_y = str(raw.get("cad_y") or "").strip()
+            amap_location = str(raw.get("amap_location") or "").strip()
+            feature_type = str(raw.get("feature_type") or "redline_corner").strip()
+            feature_name = str(raw.get("feature_name") or "").strip()
+            purpose = str(raw.get("purpose") or "registration").strip()
+            confidence = str(raw.get("confidence") or "medium").strip()
+            note = str(raw.get("note") or "").strip()
+            if feature_type not in CONTROL_FEATURE_TYPES:
+                feature_type = "other"
+            if purpose not in CONTROL_PURPOSES:
+                purpose = "registration"
+            if confidence not in CONTROL_CONFIDENCE:
+                confidence = "medium"
+            if not amap_location:
+                raise ValueError(f"控制点 {label} 缺少高德坐标")
+            parts = [part.strip() for part in amap_location.replace("，", ",").split(",")]
+            if len(parts) != 2:
+                raise ValueError(f"控制点 {label} 的高德坐标应为 经度,纬度")
+            lng = float(parts[0])
+            lat = float(parts[1])
+            if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+                raise ValueError(f"控制点 {label} 的高德坐标超出范围")
+            cad_point = None
+            if cad_x or cad_y:
+                if not cad_x or not cad_y:
+                    raise ValueError(f"控制点 {label} 的 CAD X/Y 需同时填写")
+                cad_point = {"x": float(cad_x), "y": float(cad_y)}
+            cleaned.append(
+                {
+                    "label": label,
+                    "cad_point": cad_point,
+                    "amap_gcj02": [lng, lat],
+                    "feature_type": feature_type,
+                    "feature_name": feature_name or None,
+                    "purpose": purpose,
+                    "confidence": confidence,
+                    "note": note or None,
+                    "source": "uploader_ui",
+                }
+            )
+        return cleaned
+
+    def handle_alignment_check(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        cleaned = self.clean_control_points(payload.get("control_points"))
+        proj = project_dir(code)
+        with tempfile.TemporaryDirectory(prefix="alignment_check_") as tmp:
+            source = Path(tmp) / "control_points.json"
+            source.write_text(
+                json.dumps({"control_points": cleaned}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            rc, stdout, stderr = run_tool(
+                ["_tools/cad_align.py", code, "--json", "--input", str(source)]
+            )
+        result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        result.update({"ok": rc == 0, "returncode": rc, "stderr": stderr, "preview": True})
+        self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
+
+    def handle_control_points(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        cleaned = self.clean_control_points(payload.get("control_points"))
+        proj = project_dir(code)
+        out_dir = proj / "05_output" / "amap"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = {
+            "schema_version": "1.0",
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "project": code,
+            "coordinate_system": {
+                "map": "GCJ-02 / AMap",
+                "cad": "project CAD units; unit and CRS must be confirmed in S2",
+            },
+            "control_points": cleaned,
+            "agent_note": (
+                "Use these points only as user-provided correspondence evidence. "
+                "S2 must still verify CAD handles/layers and transformation quality."
+            ),
+        }
+        target = out_dir / "control_points.json"
+        target.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        align_rc, align_stdout, align_stderr = run_tool(["_tools/cad_align.py", code, "--json", "--write"])
+        alignment = json.loads(align_stdout) if align_stdout.strip().startswith("{") else {"stdout": align_stdout}
+        alignment.update({"ok": align_rc == 0, "returncode": align_rc, "stderr": align_stderr})
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "count": len(cleaned),
+                "path": str(target.relative_to(proj)).replace("\\", "/"),
+                "control_points": cleaned,
+                "alignment": alignment,
+            }
+        )
+
+    def handle_cad_candidate_semantics(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        cleaned = self.clean_candidate_semantics(payload.get("candidates"))
+        proj = project_dir(code)
+        out_dir = (proj / CAD_SEMANTICS_REL).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = {
+            "schema_version": "1.0",
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "project": code,
+            "candidates": cleaned,
+            "agent_note": (
+                "Semantic annotations for CAD-side candidate points. They do not replace "
+                "AMap coordinates; use them to decide which candidate points are useful "
+                "for road, bridge, entrance, water, or registration reasoning."
+            ),
+        }
+        target = proj / CAD_SEMANTICS_REL
+        target.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "count": len(cleaned),
+                "path": str(target.relative_to(proj)).replace("\\", "/"),
+                "candidates": cleaned,
+            }
+        )
 
 
 def parse_args() -> argparse.Namespace:

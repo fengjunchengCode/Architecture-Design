@@ -1,9 +1,9 @@
 # S1 高德地图接入与 S2 合成底图交接文档
 
-状态：审核草案  
-日期：2026-05-21  
+状态：已吸收到 S1/S2 skill，保留为历史规划
+日期：2026-05-21；吸收日期：2026-05-23
 适用项目：`26-BQ-PARK`，也可作为后续同类项目的 S1/S2 协作模板  
-注意：本文档是交接计划，不是当前生效的 skill 规范。审核通过后，应把必要约束同步到 `skills/S1_site_analysis/SKILL.md`、`skills/S2_dwg_parse/SKILL.md` 和相关工具。
+注意：本文档是交接计划，不是当前生效的 skill 规范。当前执行规范以 `skills/S1_site_analysis/SKILL.md`、`skills/S2_dwg_parse/SKILL.md` 和根 `SKILL.md` 为准。
 
 ## 1. 背景与目标
 
