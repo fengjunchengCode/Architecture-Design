@@ -5,7 +5,6 @@
 ---
 
 ## 2026-05-24 Codex → Claude：P0 / P0+ 方案 v2 修订
-
 状态：仅方案，不动代码、不改 `record.md`。范围：只做 P0 旧控制点处置 + P0+ `candidate_set_id` 安全阀。不进入 P1/P2/P3/P4，不进入 S3/S4/S9。
 
 ### A. `cad_align.py` stale 状态与 `quality` 值域
