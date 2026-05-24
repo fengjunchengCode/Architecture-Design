@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Route visual project assets to a configured vision model.
+"""Route visual project assets to a configured vision provider.
 
-This tool keeps image handling out of the user's hands. S0 can run it after
-inventory: if a vision provider is configured, image summaries are written to
-05_output/vision/*.json. If not configured, the tool writes a clear sidecar
-explaining the missing configuration and the questions that should be asked instead.
+This tool is a fallback/batch sidecar generator. If the active conversation
+model can read images, the agent may use it directly under AGENTS.md. S0 can
+run this after inventory when the active model lacks vision, when repeatable
+sidecars are useful, or when UI/scripts run unattended. If no provider is
+configured, the tool writes a clear sidecar explaining the missing configuration
+and the questions that should be asked instead.
 
 Supported providers:
 - OpenAI (GPT-4o, GPT-4V)
@@ -70,8 +72,9 @@ def vision_setup_hint() -> dict[str, Any]:
             "google": ["GOOGLE_API_KEY", "GOOGLE_VISION_MODEL optional"],
         },
         "agent_rule": (
-            "If no provider is configured, do not read image files with the active chat model. "
-            "Use the generated sidecar and write pending questions instead."
+            "If the active chat model has vision capability, it may read image files directly "
+            "and record source/confidence. If the active model lacks vision and no provider is "
+            "configured, use the generated sidecar and write pending questions instead."
         ),
     }
 
@@ -119,11 +122,11 @@ def not_configured_result(record: FileRecord, provider: VisionProvider) -> dict[
         "provider": provider.get_config_info(),
         "summary": None,
         "fallback": {
-            "action": "do_not_read_image_with_chat_model",
+            "action": "use_active_vision_model_or_record_pending",
             "record_as": "visual asset uploaded but not semantically parsed",
             "agent_instruction": (
-                "Do not open/read this image with the active conversation model. "
-                "Record the image as present and ask for human-confirmed facts."
+                "If the active conversation model has vision capability, it may inspect this image. "
+                "If not, record the image as present and ask for human-confirmed facts."
             ),
             "pending_questions": [
                 {
@@ -165,11 +168,11 @@ def analyze_record(project_dir: Path, record: FileRecord, provider: VisionProvid
             result.setdefault(
                 "fallback",
                 {
-                    "action": "continue_without_user_model_switch_or_image_read",
+                    "action": "use_active_vision_model_or_continue_without_image_semantics",
                     "record_as": "visual asset uploaded but vision parsing failed",
                     "agent_instruction": (
-                        "Do not retry by reading this image with the active conversation model. "
-                        "Fix provider/model configuration, then rerun vision_route.py."
+                        "If the active conversation model has vision capability, it may inspect this image. "
+                        "Otherwise fix provider/model configuration, then rerun vision_route.py."
                     ),
                 },
             )
@@ -182,11 +185,11 @@ def analyze_record(project_dir: Path, record: FileRecord, provider: VisionProvid
             "summary": None,
             "error": str(exc),
             "fallback": {
-                "action": "continue_without_user_model_switch_or_image_read",
+                "action": "use_active_vision_model_or_continue_without_image_semantics",
                 "record_as": "visual asset uploaded but vision parsing failed",
                 "agent_instruction": (
-                    "Do not retry by reading this image with the active conversation model. "
-                    "Use pending questions or fix provider configuration, then rerun vision_route.py."
+                    "If the active conversation model has vision capability, it may inspect this image. "
+                    "Otherwise use pending questions or fix provider configuration, then rerun vision_route.py."
                 ),
             },
             "config_hint": vision_setup_hint(),

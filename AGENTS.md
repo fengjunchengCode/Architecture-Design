@@ -10,9 +10,9 @@ Python 脚本只做确定性工作：初始化目录、扫描文件、计算 has
 
 文件读取必须遵守 `inventory.json` 的 `read_policy`。正文提取优先使用 `python _tools/extract_text.py {文件路径}`。老 `.doc` 二进制文件只登记路径/hash/文件名，必须先转换为 `.docx`、PDF 或 TXT 后再做语义解析；不得用 `strings`、裸 `cat`、裸 `Read` 或临时 `textract` 探测作为兜底。
 
-图片资料（`visual_asset`，如 JPG/PNG 区位图、现场照片）必须通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到配置的视觉模型。支持多种 provider（OpenAI、Anthropic、Google），通过 `VISION_PROVIDER` 环境变量选择。不得要求用户手动切换 API 模型；若视觉模型未配置，则读取 `05_output/vision/` 降级 sidecar，并把地址、坐标、红线等缺口写入 `pending_questions` 或 `low_confidence_fields`。
+图片资料（`visual_asset`，如 JPG/PNG 区位图、现场照片）优先由当前主对话模型读取和理解，前提是当前模型/运行环境明确具备视觉输入能力，并且读取行为遵守 `inventory.json` 的 `read_policy`。主模型有视觉能力时，不需要强制调用额外视觉 provider；agent 应在 `record.md`、`parse_log.md` 或阶段 marker 中记录图像结论、来源文件和置信度。
 
-若 `vision_route.py` 返回未配置、API 错误或模型不存在，agent 不得再用当前对话模型、内置图片 Read、截图查看等方式直接读图；只能记录图片已存在、引用 sidecar，并向甲方/用户列出待确认问题。视觉模型配置入口是仓库根目录 `.env`（可从 `.env.example` 复制），配置后运行 `python _tools/vision_route.py --list-providers` 检查。
+`python _tools/vision_route.py {项目代号} --write` 是视觉能力兜底与批量 sidecar 生成工具，不是主模型有视觉能力时的硬门槛。仅当当前主模型不具备视觉能力、需要可复跑的批量 sidecar、或本地 UI/脚本无人值守运行时，才自动路由到配置的视觉模型 provider（OpenAI、Anthropic、Google）。不得要求用户手动切换 API 模型；若主模型没有视觉能力且 provider 未配置或调用失败，则只能读取 `05_output/vision/` 降级 sidecar，并把地址、坐标、红线等缺口写入 `pending_questions` 或 `low_confidence_fields`。视觉模型配置入口是仓库根目录 `.env`（可从 `.env.example` 复制），配置后运行 `python _tools/vision_route.py --list-providers` 检查。
 
 DWG/DXF 地形资料进入 S2 时必须优先运行 `python _tools/dwg_probe.py {项目代号} --json --write`。该工具会自动检测 `ezdxf` 与 ODA File Converter，缺少依赖时输出 `install_guidance`；agent 应按指引安装或配置后重跑。手动 CAD 导出 DXF 只作为自动转换失败后的降级方案，不得裸读 DWG 二进制内容。
 

@@ -42,15 +42,15 @@ description: 建筑设计工作流 S0 项目档案初始化。用于用户要求
 
 ```powershell
 python _tools/inventory.py {项目代号} --require-s0-ready --write
-python _tools/vision_route.py {项目代号} --write
+python _tools/vision_route.py {项目代号} --write  # 主模型无视觉能力或需要批量 sidecar 时
 ```
 
 ## Agent 职责
 
 - 按 `skills/S0_project_intake/user_guidance.md` 使用标准用户引导流程，不临场自由发挥 S0 操作话术。
 - 阅读 inventory 输出和原始资料。
-- 对 `visual_asset` 文件先运行 `_tools/vision_route.py`，用 `VISION_MODEL` 自动处理图片；如果视觉模型未配置，则读取降级 sidecar 并把缺口写入 pending，不要求用户手动切换模型。
-- 如果 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，必须停止图片语义读取：不得再用当前对话模型、内置 `Read`、截图查看或 `/model` 切换来补读图片；只能记录图片存在、读取 sidecar、生成待确认问题。
+- 对 `visual_asset` 文件，若当前主对话模型具备视觉输入能力，可以直接读取并理解图片，同时记录来源文件和置信度；若主模型无视觉能力或需要批量 sidecar，则运行 `_tools/vision_route.py` 路由到视觉 provider。
+- 如果主模型无视觉能力，且 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，必须停止图片语义读取：只能记录图片存在、读取降级 sidecar、生成待确认问题；不得要求用户 `/model` 切换来补读图片。
 - 判断文件属于任务书、区位图、地形图、现场照片、参考案例还是聊天记录。
 - 从资料中抽取项目名称、甲方、类型、规模、地址、风格偏好、功能需求。
 - 判断字段置信度。
@@ -66,8 +66,8 @@ S0 必须先看 `inventory.json` 中每个文件的 `read_policy`：
 - `direct_text` 文件可以读取文本内容。
 - `document_extract` 文件只能通过明确的 PDF/DOCX 提取器或渲染器读取。
 - `visual_asset` 文件用视觉方式理解，不做二进制文本探测。
-- `visual_asset` 文件必须优先通过 `python _tools/vision_route.py {项目代号} --write` 自动路由到视觉模型。工具使用 `OPENAI_API_KEY` 和 `VISION_MODEL`；未配置时会写入降级结果，S0 继续生成待确认问题。
-- `visual_asset` 的降级结果不是“请 agent 自己看图”的许可。降级后图片语义一律视为未知，地址、坐标、红线、现场条件、周边道路等都必须进入 pending 或 low confidence。
+- `visual_asset` 文件优先交给具备视觉能力的主对话模型；主模型无视觉能力或需要批量 sidecar 时，再通过 `python _tools/vision_route.py {项目代号} --write` 路由到视觉 provider。
+- `visual_asset` 的降级结果不是“无条件请 agent 自己看图”的许可。只有当前主模型明确具备视觉能力时，agent 才能继续直接读图；否则图片语义一律视为未知，地址、坐标、红线、现场条件、周边道路等都必须进入 pending 或 low confidence。
 - `legacy_word_conversion_required` 的 `.doc` 文件不得直接读取、不得用 `strings`/裸 `cat`/临时 `textract` 兜底。只记录路径、hash、文件名，并要求转换为 `.docx`、PDF 或 TXT 后再抽取正文。
 - `binary_index_only` 和 `unknown_index_only` 只作为文件事实登记，不能推断正文。
 
@@ -79,7 +79,7 @@ S0 必须先看 `inventory.json` 中每个文件的 `read_policy`：
 
 - `scaffold.py`：创建目录与空 `record.md`。
 - `inventory.py`：扫描文件、计算 hash、判断区位图门槛、标注文件读取策略和转换需求。
-- `vision_route.py`：把区位图、现场照片、参考图自动路由到配置的视觉模型，并把结果写入 `05_output/vision/`；未配置时生成降级 sidecar。
+- `vision_route.py`：在主模型无视觉能力、需要批量 sidecar 或 UI/脚本无人值守运行时，把区位图、现场照片、参考图路由到配置的视觉 provider，并把结果写入 `05_output/vision/`；未配置时生成降级 sidecar。
 - `extract_text.py`：安全提取文本和 `.docx` 正文；遇到 `.doc` 时明确要求转换。
 - `validate_record.py`：校验 frontmatter、marker、枚举和项目文件夹一致性。
 
@@ -98,7 +98,7 @@ Python 不负责建筑语义判断，不强制要求用户文件名完全标准�
 1. 当前处于 S0 项目档案初始化。
 2. 区位图是 S0 硬门槛。
 3. 用户上传资料后要运行 Inventory 和 Validate。
-4. JPG/PNG 区位图会自动走视觉模型路由；用户不需要手动切换 API 模型。
+4. JPG/PNG 区位图会由具备视觉能力的主模型读取；若主模型无视觉能力，则自动走视觉 provider 路由，用户不需要手动切换 API 模型。
 5. `.doc` 旧版 Word 只登记文件事实，需 PDF/DOCX/TXT 才能语义解析。
 6. S0 完成后要说明已确认事实、待问问题和推荐下一步。
 

@@ -64,9 +64,9 @@ python _tools/cad_preview.py {code} --json --write
 python _tools/cad_semantics.py {code} --json --write
 ```
 
-该脚本把 CAD 预览渲染成 `05_output/cad/site_preview_for_vision.png`，并在存在区位图/卫星图时合成为 `05_output/cad/cad_site_composite_for_vision.png`：左侧是 CAD 候选点，右侧是 S1 上传的区位/卫星视觉资料。脚本还应读取既有区位图视觉 sidecar 和高德上下文，通过仓库视觉 provider 路由到配置的视觉模型，输出 `05_output/cad/control_point_candidate_semantics.json`。UI 应优先展示模型给出的简短建议，如“红线配准点”“桥头/桥端”“道路边线候选”，让用户只需去高德拾取精确坐标；不应要求用户手动理解和选择完整枚举字段。
+该脚本把 CAD 预览渲染成 `05_output/cad/site_preview_for_vision.png`，并在存在区位图/卫星图时合成为 `05_output/cad/cad_site_composite_for_vision.png`：左侧是 CAD 候选点，右侧是 S1 上传的区位/卫星视觉资料。脚本还应读取既有区位图视觉 sidecar 和高德上下文；在 UI/脚本无人值守运行时，通过仓库视觉 provider 路由到配置的视觉模型，输出 `05_output/cad/control_point_candidate_semantics.json`。UI 应优先展示模型给出的简短建议，如“红线配准点”“桥头/桥端”“道路边线候选”，让用户只需去高德拾取精确坐标；不应要求用户手动理解和选择完整枚举字段。
 
-若视觉模型未配置或返回错误，脚本必须降级为保守建议，并在 sidecar 中记录原因。agent 不得改用当前对话模型直接看 CAD 预览截图补判断。
+若视觉 provider 未配置或返回错误，脚本必须降级为保守建议，并在 sidecar 中记录原因。若当前主对话模型具备视觉能力，agent 可以读取 `cad_site_composite_for_vision.png` 或原始区位图继续做人工语义判断，并把来源与置信度写入 S2；若主模型无视觉能力，则不得补读图像语义，只能保留保守建议。
 
 用户保存“地图点 ↔ CAD 点”后，运行：
 

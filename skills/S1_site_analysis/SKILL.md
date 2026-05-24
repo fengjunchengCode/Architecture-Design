@@ -92,18 +92,18 @@ python _tools/amap_context.py {code} --location "经度,纬度" --write
 
 ## 视觉资料读取
 
-图片资料必须先运行：
+图片资料优先由当前主对话模型读取，前提是当前模型/运行环境具备视觉输入能力。主模型无视觉能力、需要批量 sidecar 或 UI/脚本无人值守运行时，运行：
 
 ```powershell
 python _tools/vision_route.py {code} --write
 ```
 
-若视觉模型未配置、API 报错或模型不可用，只读取 `05_output/vision/` 降级 sidecar，不得用当前对话模型、截图或内置图片读取来补读图像语义。
+若主模型无视觉能力且视觉 provider 未配置、API 报错或模型不可用，只读取 `05_output/vision/` 降级 sidecar，并把图像语义缺口写入 pending/low confidence。不得要求用户切换 API 模型。
 
 ## Agent 职责
 
 1. 读取 `record.md` frontmatter、S0 marker、S1 现有 marker，并检查是否已有 S2 几何结果可引用。
-2. 按 `inventory.json` 的 `read_policy` 处理资料，图片走 `vision_route.py`。
+2. 按 `inventory.json` 的 `read_policy` 处理资料；图片优先走具备视觉能力的主模型，主模型无视觉能力或需要批量 sidecar 时走 `vision_route.py`。
 3. 建立定位证据链：地址、坐标、地图链接、区位图标注、道路/地名/地标互相验证。
 4. 读取 `05_output/amap/s1_map_context.json`；如具备高德能力或用户提供高德链接/坐标，提取周边道路、水系、POI、公交/步行到达和 500m/1000m 关系。
 5. 判断 `registration_state`，并说明能做到“周边语义判断”还是“CAD 红线精确绑定”。

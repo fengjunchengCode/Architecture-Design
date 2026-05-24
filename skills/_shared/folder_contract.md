@@ -47,7 +47,7 @@ python _tools/validate_record.py {code}
 
 - `.doc` 老 Word 二进制文件是 `legacy_word_conversion_required`，只能登记路径/hash/文件名，先转换再解析正文。
 - DWG、SKP、PSD、HEIC 等是 `binary_index_only`，没有专用工具时只登记事实。
-- 图片按视觉资料处理，先走 `_tools/vision_route.py` 自动路由到视觉模型；PDF/DOCX 按专用提取器或渲染器处理。
+- 图片按视觉资料处理，优先由具备视觉能力的主对话模型读取；主模型无视觉能力、需要批量 sidecar 或 UI/脚本无人值守运行时，再走 `_tools/vision_route.py` 自动路由到视觉 provider。PDF/DOCX 按专用提取器或渲染器处理。
 - 不要用 `strings`、裸 `cat`、裸 `Read` 或临时依赖探测作为二进制解析兜底。
 
 需要抽取正文时，优先运行：
@@ -56,10 +56,10 @@ python _tools/validate_record.py {code}
 python _tools/extract_text.py {文件路径}
 ```
 
-需要解析区位图、现场照片、参考图时，优先运行：
+需要批量解析区位图、现场照片、参考图，或当前主模型无视觉能力时，运行：
 
 ```powershell
 python _tools/vision_route.py {项目代号} --write
 ```
 
-该工具读取 `OPENAI_API_KEY` 和 `VISION_MODEL`。未配置时仍会写入 `05_output/vision/*.json`，提醒 S0 自动降级为待确认问题；不要让普通用户手动切换 API 模型。
+该工具读取 `.env` 中配置的视觉 provider。未配置时仍会写入 `05_output/vision/*.json`，提醒 S0 自动降级为待确认问题；不要让普通用户手动切换 API 模型。若主对话模型具备视觉能力，agent 可以不依赖该工具直接读图并记录来源与置信度。

@@ -6,16 +6,16 @@
 
 `inventory.py` 会为每个输入文件标注 `read_policy`。正文提取优先走 `python _tools/extract_text.py {文件路径}`。老 `.doc` 文件不会被直接读取正文，必须先转换为 `.docx`、PDF 或 TXT；agent 只能先记录其路径、hash 和文件名。
 
-JPG/PNG 区位图、现场照片等视觉资料由 `python _tools/vision_route.py {项目代号} --write` 自动路由到 `VISION_MODEL`。普通用户不需要手动切换 API 模型；未配置视觉模型时，工具会生成降级 sidecar，S0 继续以待确认问题推进。
+JPG/PNG 区位图、现场照片等视觉资料优先由当前主对话模型理解，前提是当前模型/运行环境具备视觉输入能力。`python _tools/vision_route.py {项目代号} --write` 是主模型没有视觉能力、需要批量 sidecar 或 UI/脚本无人值守运行时的兜底工具。普通用户不需要手动切换 API 模型；如果主模型没有视觉能力且视觉 provider 也未配置，工具会生成降级 sidecar，S0 继续以待确认问题推进。
 
-视觉模型配置放在仓库根目录 `.env` 中，可从 `.env.example` 复制。至少配置一种 provider：
+视觉 provider 配置放在仓库根目录 `.env` 中，可从 `.env.example` 复制。需要批量视觉 sidecar 或无视觉主模型时，至少配置一种 provider：
 
 ```powershell
 Copy-Item .env.example .env
 python _tools/vision_route.py --list-providers
 ```
 
-如果 provider 未配置、API 报错或模型不存在，agent 不得改用当前对话模型直接读图；应读取 `05_output/vision/` 的 sidecar，并把图片中的地址、坐标、红线和现场条件列为待确认问题。
+如果当前主模型具备视觉能力，agent 可以直接读取图像并记录来源与置信度；如果主模型没有视觉能力且 provider 未配置、API 报错或模型不存在，agent 应读取 `05_output/vision/` 的降级 sidecar，并把图片中的地址、坐标、红线和现场条件列为待确认问题。
 
 S1 区位、道路、POI 和来向分析由高德 Web Service 工具提供确定性地图上下文。把高德 Web Service Key 写入 `.env`：
 
@@ -48,7 +48,7 @@ python _tools/selfcheck.py
 python _tools/init_project/scaffold.py 26-SZ-NSXX --type school --name "深圳南山某小学"
 python _tools/uploader/server.py
 python _tools/inventory.py 26-SZ-NSXX --require-s0-ready
-python _tools/vision_route.py 26-SZ-NSXX --write
+python _tools/vision_route.py 26-SZ-NSXX --write  # 主模型无视觉能力或需要批量 sidecar 时
 python _tools/amap_context.py 26-SZ-NSXX --location "经度,纬度" --write
 python _tools/dwg_probe.py 26-SZ-NSXX --json --write
 python _tools/validate_record.py 26-SZ-NSXX

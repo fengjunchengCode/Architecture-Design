@@ -83,7 +83,7 @@ def read_policy_for(path: Path) -> tuple[str, bool, str]:
         return (
             "visual_asset",
             False,
-            "Route only through _tools/vision_route.py. Do not read image content with the active chat model or ask the user to switch models.",
+            "Use the active chat model if it has vision capability; otherwise route through _tools/vision_route.py. Do not ask the user to switch models.",
         )
     if ext in LEGACY_WORD_EXTS:
         return (

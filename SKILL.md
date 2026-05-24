@@ -66,7 +66,7 @@ description: 建筑设计项目的总协议与主路由 skill。用于用户要�
 
 - `direct_text`：可作为文本读取，但仍需控制大小。
 - `document_extract`：只能用明确的文档/PDF 提取器或渲染器，不读取原始二进制。
-- `visual_asset`：先运行 `python _tools/vision_route.py {code} --write`，由工具自动路由到配置的视觉模型；不要让用户手动切换 API 模型。未配置视觉模型时，读取 `05_output/vision/*.json` 的降级结果并写入 pending/low confidence。
+- `visual_asset`：优先由当前主对话模型读取，前提是当前模型/运行环境具备视觉输入能力。若主模型无视觉能力、需要批量 sidecar，或由 UI/脚本无人值守运行，则运行 `python _tools/vision_route.py {code} --write` 路由到配置的视觉 provider。两者都不可用时，读取 `05_output/vision/*.json` 的降级结果并写入 pending/low confidence。
 - `legacy_word_conversion_required`：老 `.doc` 二进制文件只登记路径/hash。必须先转换为 `.docx`、PDF 或 TXT，才能进入语义抽取。
 - `binary_index_only` / `unknown_index_only`：只登记路径、hash、文件名；没有专用解析器时不得推断正文。
 
@@ -96,15 +96,18 @@ python _tools/amap_context.py {项目代号} --location "经度,纬度" --write
 
 坐标和控制点优先通过本地上传 UI 的“空间定位”面板录入。该面板提供高德坐标拾取器链接，可写入 `05_output/amap/s1_map_context.json` 和 `05_output/amap/control_points.json`；不要只把坐标留在对话历史中。
 
-视觉资料解析优先使用：
+视觉资料解析策略：
+
+1. 当前主对话模型具备视觉能力时，可以直接读取 `visual_asset`，但必须记录来源文件、观察结论和置信度。
+2. 当前主模型无视觉能力、需要批量可复跑 sidecar、或 UI/脚本无人值守运行时，使用：
 
 ```powershell
 python _tools/vision_route.py {项目代号} --write
 ```
 
-硬规则：如果 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，agent 必须把图片语义视为未知，只读取 `05_output/vision/*.json` 降级 sidecar，并把地址、坐标、红线、现场条件等写入 `pending_questions` / `low_confidence_fields`。不得再用当前对话模型、内置 `Read`、截图查看或要求用户 `/model` 切换来补读图片。
+硬规则：如果主模型无视觉能力，且 `vision_route.py` 返回 `vision_model_not_configured`、`vision_api_error` 或 provider `status=error`，agent 必须把图片语义视为未知，只读取 `05_output/vision/*.json` 降级 sidecar，并把地址、坐标、红线、现场条件等写入 `pending_questions` / `low_confidence_fields`。不得要求用户 `/model` 切换来补读图片。
 
-该工具支持多种视觉模型 provider（OpenAI、Anthropic、Google），根据环境变量自动选择或由 `VISION_PROVIDER` 指定。如果视觉模型未配置，工具会写入降级 sidecar，S0 应继续推进并把地址、坐标、红线等缺口进入 `pending_questions`，而不是要求用户切换模型。
+该工具支持多种视觉 provider（OpenAI、Anthropic、Google），根据环境变量自动选择或由 `VISION_PROVIDER` 指定。如果视觉 provider 未配置，工具会写入降级 sidecar；是否还能继续视觉解析取决于当前主模型是否具备视觉能力。
 
 查看可用 provider 状态：
 
