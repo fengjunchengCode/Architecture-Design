@@ -46,6 +46,8 @@ BUCKETS = {
     "chat": "04_chat",
 }
 CAD_SEMANTICS_REL = Path("05_output/cad/control_point_candidate_semantics.json")
+CAD_CANDIDATES_REL = Path("05_output/cad/control_point_candidates.json")
+CONTROL_POINTS_REL = Path("05_output/amap/control_points.json")
 
 CONTROL_FEATURE_TYPES = {
     "redline_corner",
@@ -197,6 +199,25 @@ def content_type_for(path: Path) -> str:
     return mime
 
 
+def read_current_candidate_set_id(proj: Path) -> str | None:
+    path = proj / CAD_CANDIDATES_REL
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    value = data.get("candidate_set_id")
+    return str(value) if value else None
+
+
+def short_candidate_set_id(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "unknown"
+    if ":" in text:
+        text = text.split(":", 1)[1]
+    text = re.sub(r"[^0-9a-fA-F]", "", text)
+    return text[:16] or "unknown"
+
+
 class UploaderHandler(BaseHTTPRequestHandler):
     server_version = "ArchitectureUploader/0.1"
 
@@ -233,6 +254,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_amap_context()
             elif parsed.path == "/api/control-points":
                 self.handle_control_points()
+            elif parsed.path == "/api/control-points/archive":
+                self.handle_control_points_archive(archive=True)
+            elif parsed.path == "/api/control-points/migration-report":
+                self.handle_control_points_archive(archive=False)
             elif parsed.path == "/api/cad-candidate-semantics":
                 self.handle_cad_candidate_semantics()
             elif parsed.path == "/api/alignment-check":
@@ -430,10 +455,14 @@ class UploaderHandler(BaseHTTPRequestHandler):
         amap_dir = proj / "05_output" / "amap"
         context_path = amap_dir / "s1_map_context.json"
         control_path = amap_dir / "control_points.json"
+        candidate_set_id_current = read_current_candidate_set_id(proj)
         payload: dict[str, object] = {
             "project": code,
             "amap_context_exists": context_path.exists(),
             "control_points_exists": control_path.exists(),
+            "candidate_set_id_current": candidate_set_id_current,
+            "candidate_set_id_at_save": None,
+            "control_points_stale": False,
             "control_points": [],
         }
         if context_path.exists():
@@ -451,6 +480,11 @@ class UploaderHandler(BaseHTTPRequestHandler):
             try:
                 saved = json.loads(control_path.read_text(encoding="utf-8"))
                 payload["control_points"] = saved.get("control_points", [])
+                candidate_set_id_at_save = saved.get("candidate_set_id_at_save")
+                payload["candidate_set_id_at_save"] = candidate_set_id_at_save
+                payload["control_points_stale"] = bool(
+                    candidate_set_id_current and candidate_set_id_at_save != candidate_set_id_current
+                )
                 payload["control_points_path"] = str(control_path.relative_to(proj)).replace("\\", "/")
             except json.JSONDecodeError as exc:
                 payload["control_points_error"] = str(exc)
@@ -619,7 +653,29 @@ class UploaderHandler(BaseHTTPRequestHandler):
             result.update(self.read_cad_preview_payload(proj, code))
         self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
 
-    def clean_control_points(self, points: object) -> list[dict[str, object]]:
+    def clean_candidate_set_id_at_save(self, payload: dict) -> str:
+        if "candidate_set_id_at_save" not in payload:
+            raise ValueError("请求体缺少 candidate_set_id_at_save，请先重新加载 CAD 预览后再保存控制点")
+        value = str(payload.get("candidate_set_id_at_save") or "").strip()
+        if not value:
+            raise ValueError("candidate_set_id_at_save 不能为空，请先生成 CAD 预览")
+        return value
+
+    def stale_control_points_payload(self, proj: Path, candidate_set_id_at_save: str) -> dict[str, object] | None:
+        candidate_set_id_current = read_current_candidate_set_id(proj)
+        if not candidate_set_id_current:
+            raise ValueError("当前项目还没有 candidate_set_id，请先生成 CAD 预览")
+        if candidate_set_id_at_save != candidate_set_id_current:
+            return {
+                "status": "stale_control_points",
+                "candidate_set_id_current": candidate_set_id_current,
+                "candidate_set_id_at_save": candidate_set_id_at_save,
+            }
+        return None
+
+    def clean_control_points(self, points: object, candidate_set_id_at_save: str | None = None) -> list[dict[str, object]]:
+        if not candidate_set_id_at_save:
+            raise ValueError("请求体缺少 candidate_set_id_at_save，请先重新加载 CAD 预览后再保存控制点")
         if not isinstance(points, list):
             raise ValueError("control_points 必须是数组")
         cleaned = []
@@ -673,12 +729,24 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_alignment_check(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
-        cleaned = self.clean_control_points(payload.get("control_points"))
         proj = project_dir(code)
+        candidate_set_id_at_save = self.clean_candidate_set_id_at_save(payload)
+        stale = self.stale_control_points_payload(proj, candidate_set_id_at_save)
+        if stale:
+            self.send_json(stale, HTTPStatus.CONFLICT)
+            return
+        cleaned = self.clean_control_points(payload.get("control_points"), candidate_set_id_at_save)
         with tempfile.TemporaryDirectory(prefix="alignment_check_") as tmp:
             source = Path(tmp) / "control_points.json"
             source.write_text(
-                json.dumps({"control_points": cleaned}, ensure_ascii=False, indent=2),
+                json.dumps(
+                    {
+                        "candidate_set_id_at_save": candidate_set_id_at_save,
+                        "control_points": cleaned,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
             rc, stdout, stderr = run_tool(
@@ -691,14 +759,20 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_control_points(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
-        cleaned = self.clean_control_points(payload.get("control_points"))
         proj = project_dir(code)
+        candidate_set_id_at_save = self.clean_candidate_set_id_at_save(payload)
+        stale = self.stale_control_points_payload(proj, candidate_set_id_at_save)
+        if stale:
+            self.send_json(stale, HTTPStatus.CONFLICT)
+            return
+        cleaned = self.clean_control_points(payload.get("control_points"), candidate_set_id_at_save)
         out_dir = proj / "05_output" / "amap"
         out_dir.mkdir(parents=True, exist_ok=True)
         out = {
             "schema_version": "1.0",
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "project": code,
+            "candidate_set_id_at_save": candidate_set_id_at_save,
             "coordinate_system": {
                 "map": "GCJ-02 / AMap",
                 "cad": "project CAD units; unit and CRS must be confirmed in S2",
@@ -724,6 +798,48 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 "alignment": alignment,
             }
         )
+
+    def handle_control_points_archive(self, archive: bool) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        control_path = proj / CONTROL_POINTS_REL
+        if not control_path.exists():
+            raise ValueError("当前项目没有 control_points.json 可处理")
+
+        rc, stdout, stderr = run_tool(["_tools/cad_align.py", code, "--migration-report", "--write", "--json"])
+        migration = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        if rc != 0 or migration.get("status") != "ok":
+            migration.update({"ok": False, "returncode": rc, "stderr": stderr})
+            self.send_json(migration, HTTPStatus.BAD_REQUEST)
+            return
+
+        response: dict[str, object] = {
+            "ok": True,
+            "project": code,
+            "archived": False,
+            "migration_report": str(Path(migration.get("written_to", "")).resolve().relative_to(proj)).replace("\\", "/")
+            if migration.get("written_to")
+            else None,
+            "migration": migration,
+        }
+
+        if archive:
+            saved = json.loads(control_path.read_text(encoding="utf-8"))
+            at_save = saved.get("candidate_set_id_at_save")
+            suffix = short_candidate_set_id(at_save)
+            out_dir = control_path.parent
+            filename = f"control_points.legacy_{time.strftime('%Y-%m-%d')}_{suffix}.json"
+            legacy_path = unique_path(out_dir, filename)
+            control_path.replace(legacy_path)
+            response.update(
+                {
+                    "archived": True,
+                    "legacy_file": str(legacy_path.relative_to(proj)).replace("\\", "/"),
+                }
+            )
+
+        self.send_json(response)
 
     def handle_cad_candidate_semantics(self) -> None:
         payload = self.read_json()

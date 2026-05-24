@@ -658,6 +658,38 @@ select:disabled {
   line-height: 1.55;
 }
 
+.stale-banner {
+  border: 1px solid rgba(185, 75, 47, 0.45);
+  background: rgba(185, 75, 47, 0.08);
+  color: var(--ink);
+  padding: 12px 14px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.stale-banner[hidden] {
+  display: none;
+}
+
+.stale-banner p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 13px;
+}
+
+.stale-banner strong {
+  color: var(--accent-2);
+}
+
+.stale-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .page-actions {
   margin-bottom: 14px;
 }

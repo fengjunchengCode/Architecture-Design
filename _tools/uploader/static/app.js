@@ -12,6 +12,11 @@ const state = {
   cadPreview: null,
   alignment: null,
   alignmentTimer: null,
+  candidateSetIdCurrent: null,
+  candidateSetIdAtSave: null,
+  controlPointsSaved: false,
+  controlPointsStale: false,
+  migrationReport: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -102,7 +107,28 @@ function qualityText(value) {
     weak: "配准较弱",
     insufficient: "点数不足",
     failed: "配准失败",
+    stale_control_points: "旧控制点已过期",
   }[value] || value || "未检查";
+}
+
+function candidateSetShort(value) {
+  const text = String(value || "");
+  const body = text.includes(":") ? text.split(":").pop() : text;
+  return body ? body.slice(0, 16) : "无";
+}
+
+function refreshStaleState() {
+  state.controlPointsStale = Boolean(
+    state.controlPointsSaved
+      && state.controlPoints.length
+      && state.candidateSetIdCurrent
+      && state.candidateSetIdAtSave !== state.candidateSetIdCurrent
+  );
+}
+
+function hasStaleControlPoints() {
+  refreshStaleState();
+  return state.controlPointsStale;
 }
 
 function directionText(east, north) {
@@ -234,6 +260,18 @@ function summarizeSpatial(data) {
 
 function summarizeControlPoints(data) {
   const alignment = data.alignment || {};
+  if (alignment.status === "stale_control_points") {
+    return `
+      <div class="summary-card warn">
+        <h3>旧控制点已过期</h3>
+        <div class="result-grid">
+          ${resultRow("当前候选集", candidateSetShort(alignment.candidate_set_id_current))}
+          ${resultRow("保存时候选集", candidateSetShort(alignment.candidate_set_id_at_save))}
+        </div>
+        <p class="result-warning">请先生成迁移诊断或归档旧控制点，不要继续把这些点用于 S1/S2 合成。</p>
+      </div>
+    `;
+  }
   const best = alignment.best_fit || {};
   const quality = alignment.quality || "未检查";
   const inliers = best.inlier_labels || [];
@@ -257,6 +295,26 @@ function summarizeControlPoints(data) {
       ${outliers.length ? `<p class="result-warning">需复核：${compactList(outliers, 8)}</p>` : ""}
       ${outliers.map((label) => `<p class="result-warning">${escapeHtml(label)}：${escapeHtml(residualNote(alignment, label))}</p>`).join("")}
       <p class="result-next">S2 将读取这些控制点和配准报告，用于判断是否能把高德地图关系绑定到 CAD 红线边。</p>
+    </div>
+  `;
+}
+
+function summarizeMigration(data) {
+  const migration = data.migration || data;
+  const items = migration.items || [];
+  const unmatched = items.filter((item) => item.match_type === "unmatched").length;
+  const outliers = items.filter((item) => item.alignment_status === "alignment_outlier").length;
+  return `
+    <div class="summary-card ${unmatched || outliers ? "warn" : "ok"}">
+      <h3>${data.archived ? "旧控制点已归档" : "迁移诊断已生成"}</h3>
+      <div class="result-grid">
+        ${resultRow("文件", data.migration_report || data.written_to)}
+        ${resultRow("诊断点数", items.length)}
+        ${resultRow("不匹配", unmatched)}
+        ${resultRow("配准外点", outliers)}
+      </div>
+      ${data.legacy_file ? `<p class="result-next">归档文件：${escapeHtml(data.legacy_file)}</p>` : ""}
+      <p class="result-next">诊断只帮助判断旧点能否参考；正式控制点仍需在 S2 页面重新保存。</p>
     </div>
   `;
 }
@@ -311,6 +369,7 @@ function summarizeGeneric(data) {
   if ("amap_context_exists" in data) return summarizeSpatial(data);
   if ("preview_svg" in data && "candidates" in data) return summarizeCadPreview(data);
   if ("control_points" in data && "count" in data && data.path) return summarizeControlPoints(data);
+  if ("migration" in data || (Array.isArray(data.items) && "candidate_set_id_current" in data)) return summarizeMigration(data);
   if ("saved" in data && "bucket" in data) return summarizeUpload(data);
   if (data.provider?.name === "amap_webservice" && !("location" in data)) {
     return `
@@ -344,7 +403,12 @@ function activeProject() {
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || data.stderr || "请求失败");
+  if (!response.ok) {
+    const error = new Error(data.error || data.stderr || data.status || "请求失败");
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 }
 
@@ -410,6 +474,11 @@ function setActiveProject(code, options = {}) {
   if (resetInventory) state.inventory = null;
   if (resetInventory) state.cadPreview = null;
   if (resetInventory) state.alignment = null;
+  if (resetInventory) state.candidateSetIdCurrent = null;
+  if (resetInventory) state.candidateSetIdAtSave = null;
+  if (resetInventory) state.controlPointsSaved = false;
+  if (resetInventory) state.controlPointsStale = false;
+  if (resetInventory) state.migrationReport = null;
   if (code) $("#projectCode").value = code;
   if (clearFiles) clearFileInputs();
   renderProjectList();
@@ -461,6 +530,7 @@ function setControls() {
   ].forEach((selector) => {
     $(selector).disabled = !hasProject;
   });
+  $("#saveControlPoints").disabled = !hasProject || hasStaleControlPoints();
   ["#centerLocation"].forEach((selector) => {
     $(selector).disabled = !hasProject;
   });
@@ -472,9 +542,32 @@ function setControls() {
   setTab("#tabStatus", !hasProject ? "locked" : state.page === "status" ? "active" : "ready");
 
   updateBucketStates();
+  renderStaleBanner();
   renderControlPoints();
   renderCadPreview();
   renderAlignment();
+}
+
+function renderStaleBanner() {
+  const banner = $("#controlPointStaleBanner");
+  if (!banner) return;
+  refreshStaleState();
+  if (!state.controlPointsStale) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = `
+    <strong>旧控制点与当前 CAD 候选集不匹配</strong>
+    <p>当前候选集：${escapeHtml(candidateSetShort(state.candidateSetIdCurrent))}；旧控制点保存时：${escapeHtml(candidateSetShort(state.candidateSetIdAtSave))}。这些点可能已经串号，保存和配准会被阻止。</p>
+    <div class="stale-actions">
+      <button type="button" id="generateMigrationReport">生成迁移诊断</button>
+      <button type="button" id="archiveControlPoints" class="primary">归档旧控制点</button>
+    </div>
+  `;
+  $("#generateMigrationReport").addEventListener("click", () => generateMigrationReport().catch((err) => writeOutput(err.message)));
+  $("#archiveControlPoints").addEventListener("click", () => archiveControlPoints().catch((err) => writeOutput(err.message)));
 }
 
 function updateBucketStates() {
@@ -507,6 +600,11 @@ async function loadProjects() {
       state.controlPoints = [];
       state.cadPreview = null;
       state.alignment = null;
+      state.candidateSetIdCurrent = null;
+      state.candidateSetIdAtSave = null;
+      state.controlPointsSaved = false;
+      state.controlPointsStale = false;
+      state.migrationReport = null;
       clearFileInputs();
       shouldRefreshProjectData = true;
     } else {
@@ -625,6 +723,10 @@ async function saveCenter() {
 async function loadSpatial() {
   if (!state.project) return;
   const data = await api(`/api/spatial?project=${encodeURIComponent(state.project)}`);
+  state.candidateSetIdCurrent = data.candidate_set_id_current || state.candidateSetIdCurrent;
+  state.candidateSetIdAtSave = data.candidate_set_id_at_save || null;
+  state.controlPointsSaved = Boolean(data.control_points_exists);
+  state.controlPointsStale = Boolean(data.control_points_stale);
   const existing = data.control_points || [];
   state.controlPoints = existing.map((point) => ({
     label: point.label || "",
@@ -642,17 +744,30 @@ async function loadSpatial() {
     $("#centerLocation").value = data.amap_context.location.amap_gcj02;
     setAmapStatus(`已有上下文：${data.amap_context.location.confidence || "unknown"}`, true);
   }
+  refreshStaleState();
+  renderStaleBanner();
   renderControlPoints();
   renderAlignment();
-  if (!state.alignment && state.controlPoints.length >= 3) scheduleAlignmentCheck();
+  if (!state.alignment && state.controlPoints.length >= 3 && !state.controlPointsStale) scheduleAlignmentCheck();
 }
 
 function alignmentPayload() {
-  return { project: activeProject(), control_points: state.controlPoints };
+  return {
+    project: activeProject(),
+    candidate_set_id_at_save: state.candidateSetIdCurrent,
+    control_points: state.controlPoints,
+  };
 }
 
 function scheduleAlignmentCheck() {
   window.clearTimeout(state.alignmentTimer);
+  if (hasStaleControlPoints()) {
+    state.alignment = { status: "stale_control_points" };
+    renderStaleBanner();
+    renderAlignment();
+    renderControlPoints();
+    return;
+  }
   if (state.controlPoints.length < 3) {
     state.alignment = null;
     renderAlignment();
@@ -708,6 +823,14 @@ function renderAlignment() {
     `;
     return;
   }
+  if (alignment.status === "stale_control_points" || hasStaleControlPoints()) {
+    panel.classList.add("warn");
+    panel.innerHTML = `
+      <b>配准检查：旧控制点已过期</b>
+      <p>当前候选集和旧控制点保存时的候选集不一致。先生成迁移诊断或归档旧点，再重新加入并保存控制点。</p>
+    `;
+    return;
+  }
   const best = alignment.best_fit || {};
   const outliers = best.outlier_labels || [];
   const inliers = best.inlier_labels || [];
@@ -741,6 +864,9 @@ async function loadCadPreview() {
   if (!state.project) return;
   const data = await api(`/api/cad-preview?project=${encodeURIComponent(state.project)}`);
   state.cadPreview = data.exists ? data : null;
+  state.candidateSetIdCurrent = data.candidate_set_id || state.candidateSetIdCurrent;
+  refreshStaleState();
+  renderStaleBanner();
   renderCadPreview();
 }
 
@@ -753,6 +879,9 @@ async function runCadPreview() {
     body: JSON.stringify({ project: code }),
   });
   state.cadPreview = data.status === "ok" ? data : null;
+  state.candidateSetIdCurrent = data.candidate_set_id || state.candidateSetIdCurrent;
+  refreshStaleState();
+  renderStaleBanner();
   renderCadPreview();
   writeOutput(data);
 }
@@ -821,12 +950,21 @@ function renderCadPreview() {
     input.addEventListener("input", () => {
       candidate.amap_location = input.value;
     });
-    item.querySelector("button").addEventListener("click", () => addCandidateControlPoint(candidate));
+    item.querySelector("button").addEventListener("click", () => {
+      try {
+        addCandidateControlPoint(candidate);
+      } catch (err) {
+        writeOutput(err.message);
+      }
+    });
     list.appendChild(item);
   });
 }
 
 function addCandidateControlPoint(candidate) {
+  if (hasStaleControlPoints()) {
+    throw new Error("旧控制点与当前 CAD 候选集不匹配。请先生成迁移诊断或归档旧控制点。");
+  }
   const point = candidate.cad_point || {};
   const label = candidate.label || candidate.id || `CP${state.controlPoints.length + 1}`;
   const controlPoint = {
@@ -891,15 +1029,58 @@ function renderControlPoints() {
   });
 }
 
+async function generateMigrationReport() {
+  const code = activeProject();
+  const data = await api("/api/control-points/migration-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code }),
+  });
+  state.migrationReport = data.migration || data;
+  writeOutput(data);
+}
+
+async function archiveControlPoints() {
+  const code = activeProject();
+  const data = await api("/api/control-points/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code }),
+  });
+  state.migrationReport = data.migration || data;
+  state.controlPoints = [];
+  state.candidateSetIdAtSave = null;
+  state.controlPointsSaved = false;
+  state.controlPointsStale = false;
+  state.alignment = null;
+  writeOutput(data);
+  await loadSpatial();
+  await loadCadPreview();
+}
+
 async function saveControlPoints() {
   const code = activeProject();
+  if (!state.candidateSetIdCurrent) {
+    throw new Error("请先生成 CAD 预览，获得当前 candidate_set_id 后再保存控制点。");
+  }
+  if (hasStaleControlPoints()) {
+    throw new Error("旧控制点与当前 CAD 候选集不匹配。请先生成迁移诊断或归档旧控制点。");
+  }
   const data = await api("/api/control-points", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ project: code, control_points: state.controlPoints }),
+    body: JSON.stringify({
+      project: code,
+      candidate_set_id_at_save: state.candidateSetIdCurrent,
+      control_points: state.controlPoints,
+    }),
   });
   writeOutput(data);
+  state.candidateSetIdAtSave = state.candidateSetIdCurrent;
+  state.controlPointsSaved = true;
+  state.controlPointsStale = false;
   state.alignment = data.alignment || state.alignment;
+  renderStaleBanner();
   renderAlignment();
   renderControlPoints();
   await loadSpatial();

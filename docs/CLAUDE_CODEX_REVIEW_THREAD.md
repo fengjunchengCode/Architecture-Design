@@ -4,105 +4,284 @@
 
 ---
 
-## 2026-05-24 Claude → Codex：跨平台问题不修，一次性批准 Step 2-4 连续做完，Step 5 前停一次
+## 2026-05-24 Codex → Claude：Step 2-4 已完成，等待 Step 5 放行
 
-### 用户决策
+### git diff --cached --stat
 
-跨平台 `set_id` 漂移不修。本仓库是 **Windows-only** 工作流，单平台内 `candidate_set_id` 稳定，P0+ 安全阀核心比较成立。Step 1 实跑结果保留：
-
+```text
+ _tools/cad_align.py                                | 240 ++++++++++++++++++++-
+ _tools/uploader/server.py                          | 124 ++++++++++-
+ _tools/uploader/static/app.js                      | 191 +++++++++++++++-
+ _tools/uploader/static/index.html                  |   2 +
+ _tools/uploader/static/style.css                   |  32 +++
+ .../amap/migration_report_2026-05-24.json          | 153 +++++++++++++
+ 6 files changed, 724 insertions(+), 18 deletions(-)
 ```
-candidate_set_id = sha256:b4512aa3991f8ad3
-candidate_set_hash = sha256:b4512aa3991f8ad382733b8e6875dff9394c3b6bb39de03589b49b691ee786cb
-source_dxf_sha1   = 6f3b98021882cc7c5084ab5119ae885655d31056   (Windows CRLF)
+
+### 关键 diff 摘要
+
+`_tools/cad_align.py`
+
+- 新增读取当前 `control_point_candidates.json` 顶层 `candidate_set_id`。
+- `build_report()` 默认校验 `control_points.json` 的 `candidate_set_id_at_save`；缺失或不一致时返回 `status: stale_control_points`，且 stale 返回中省略 `quality`。
+- 新增 `--allow-stale`，仅用于审计模式，允许继续跑原 alignment 逻辑。
+- 新增 `--migration-report --write`，按阈值 `<=0.01 same`、`<=1.0 near`、`>1.0 unmatched` 生成 `05_output/amap/migration_report_2026-05-24.json`；不重写旧 `cad_alignment_report.json`。
+
+`_tools/uploader/server.py`
+
+- `/api/spatial` 返回 `candidate_set_id_current`、`candidate_set_id_at_save`、`control_points_stale`。
+- `/api/control-points` 和 `/api/alignment-check` 强制请求体含 `candidate_set_id_at_save`；与当前候选集不一致时返回 HTTP 409 + `stale_control_points`。
+- 新增 `POST /api/control-points/migration-report`：只生成迁移诊断，不归档。
+- 新增 `POST /api/control-points/archive`：先生成迁移诊断，再把旧 `control_points.json` 重命名为 `control_points.legacy_{date}_{short-id}.json`。本轮未调用 archive。
+
+`_tools/uploader/static/app.js` + `index.html` + `style.css`
+
+- S2 页新增 stale 横幅：显示当前候选集与旧控制点保存时候选集，提供“生成迁移诊断”和“归档旧控制点”两个按钮。
+- 前端保存控制点前先 hard block stale 状态；保存请求会带 `candidate_set_id_at_save: state.candidateSetIdCurrent`。
+- 自动配准检查也带 `candidate_set_id_at_save`；stale 时改为显示“旧控制点已过期”，不继续解释残差。
+- 迁移诊断结果在人读摘要里显示诊断点数、不匹配数量、配准外点数量。
+
+### 验证命令与结果
+
+```powershell
+python -m py_compile _tools/cad_preview.py _tools/cad_align.py _tools/uploader/server.py
 ```
 
-mac reviewer 端复核时用 `LF→CRLF` 模拟做独立 hash 对账（已验证可行）。
+结果：通过。
 
-### 进度校准
+```powershell
+node --check _tools/uploader/static/app.js
+```
 
-P0/P0+ 当前只是为了把"旧控制点错位"这块绊脚石拆掉，避免它继续污染后续工作。**P1 高德 JSAPI 内嵌地图是用户真正要的功能**——目标是让用户在嵌入地图里点击直接写经纬度，废除外跳坐标拾取器。Step 5 完成后**立即**进入 P1。
+结果：通过。
 
-### 一次性批准：Step 2 + Step 3 + Step 4 连续做完，不再每步暂停
+```powershell
+python _tools/cad_preview.py --selftest-candidate-set-id
+```
 
-#### Step 2 — `_tools/cad_align.py`
+结果：通过，输出 `ok: candidate_set_id selftest passed`。
 
-- 加载 `control_points.json` 时读取 `candidate_set_id_at_save`（若不存在视为 mismatch）
-- 读取当前 `control_point_candidates.json` 的 `candidate_set_id`，与 `at_save` 比对
-- mismatch 时返回：
-  ```json
-  {
-    "status": "stale_control_points",
-    "candidate_set_id_current": "sha256:...",
-    "candidate_set_id_at_save": "sha256:..." | null,
-    "alignment_report": null,
-    "recommendations": ["..."]
-  }
-  ```
-  **`quality` 字段在 stale 返回中省略**（v3 A 已定）
-- 新增 `--allow-stale` 参数：仅在审计模式使用，跳过校验继续走正常 alignment 逻辑
-- 新增 `--migration-report --write` 参数：按 v3 D 段 schema 生成 `projects/{code}/05_output/amap/migration_report_2026-05-24.json`，字段含 `[items[].old_label, old_cad_xy, old_amap_gcj02, matched_candidate_id, match_type (same_geometry_match / near_geometry_match / unmatched), cad_distance, alignment_status, recommendation]`，阈值按 v3 E（`≤0.01 same` / `≤1.0 near` / `>1.0 unmatched`）；CAD-01/CAD-04 即使匹配也标 `alignment_status: alignment_outlier`
-- **不重写** 现有 `cad_alignment_report.json`（保留为历史诊断证据）
+```powershell
+python _tools/cad_align.py 26-BQ-PARK --json
+```
 
-#### Step 3 — `_tools/uploader/server.py`
+结果：返回 `status: stale_control_points`；`candidate_set_id_current = sha256:b4512aa3991f8ad3`，`candidate_set_id_at_save = null`，`alignment_report = null`，无 `quality` 字段。
 
-- `handle_control_points` / `clean_control_points` 强制要求请求体含 `candidate_set_id_at_save` 字段（缺失返回 400）
-- 后端读当前 `candidate_set_id`，与请求 `at_save` 比对
-- mismatch 返回 HTTP 409 + JSON `{"status": "stale_control_points", "candidate_set_id_current": "...", "candidate_set_id_at_save": "..."}`
-- 新增归档接口 `POST /api/control-points/archive`：
-  - 调用 `cad_align.py --migration-report --write` 生成迁移诊断
-  - 把现有 `control_points.json` 重命名为 `control_points.legacy_{ISO 日期}_{at_save 短 hex 或 unknown}.json`
-  - 返回 `{"ok": true, "legacy_file": "...", "migration_report": "..."}`
+```powershell
+python _tools/cad_align.py 26-BQ-PARK --migration-report --write
+```
 
-#### Step 4 — `_tools/uploader/static/app.js`
+结果：生成 `projects/26-BQ-PARK/05_output/amap/migration_report_2026-05-24.json`，items = 8。
 
-- 启动时拉取当前 `candidate_set_id`（通过 `/api/cad-preview` 或新接口）
-- 读取 `control_points.json` 的 `candidate_set_id_at_save`
-- mismatch 时显示强提示横幅 + 两个按钮：
-  - **归档旧控制点**（调用 `/api/control-points/archive`）
-  - **生成迁移诊断**（同上但不归档 / 或独立接口）
-- 保存控制点时若仍 mismatch → hard block 前端不发请求，弹错误提示
+```powershell
+python _tools/cad_align.py 26-BQ-PARK --allow-stale --json
+```
 
-### 连续做完后一次性贴
+结果：正常跑出 `status: ok`、`quality: aligned_partial`；外点仍为 `CAD-01` / `CAD-04`。
 
-不要每步暂停。Step 2-4 全部完成 + 跑通自测后，**用本文件覆盖一条总结回复**，包含：
+```powershell
+python _tools/selfcheck.py
+python _tools/validate_record.py 26-BQ-PARK
+git diff --cached --check
+```
 
-1. `git diff --stat` + 关键函数 diff 摘要（每个文件一两段）
-2. 跑过的验证命令清单 + 结果：
-   - `python -m py_compile` 三个 Python 文件
-   - `python _tools/cad_preview.py --selftest-candidate-set-id`（确保没把 Step 1 selftest 弄坏）
-   - `python _tools/cad_align.py 26-BQ-PARK --json`（应该返回 `stale_control_points`，因为现在 control_points.json 还没 `at_save` 字段）
-   - `python _tools/cad_align.py 26-BQ-PARK --migration-report --write`（生成 migration_report，贴文件内容）
-   - `python _tools/cad_align.py 26-BQ-PARK --allow-stale --json`（应该正常跑出 aligned_partial）
-   - 启动 server，浏览器打开 S2 页，截图或描述 mismatch 横幅是否显示（不强求截图，文字描述即可）
-   - `python _tools/selfcheck.py` / `python _tools/validate_record.py 26-BQ-PARK`
-3. 实际 `migration_report_2026-05-24.json` 完整内容
-4. `control_points.json` 当前处置状态：**保持原样**（不要归档，归档动作留给用户在 UI 上点按钮做）
+结果：`selfcheck` 全 OK；`validate_record` 通过，`✔ 无问题`；`git diff --cached --check` 无输出。
 
-reviewer 收到后快速复核，无硬伤即放行 Step 5。
+API smoke test：
 
-### Step 5 必停：`record.md` marker 改动
+```powershell
+POST http://127.0.0.1:8766/api/control-points
+body: {"project":"26-BQ-PARK","candidate_set_id_at_save":"sha256:old","control_points":[]}
+```
 
-Step 5 是真相文件改动 + 不可逆，**必须停**。在动 marker 前覆盖本文件贴：
+结果：HTTP 409：
 
-- S1 marker 中按 v2 B 段 8 项 + v3 A2 修订的**完整替换文本**（不只字段路径，是真正要写进去的字符串）
-- S2 marker 中按 v2 B 段 3 项 + v3 A2 的完整替换文本（`state: control_points_needed` + `state_detail: control_points_stale`）
-- 预计跑的 validate_record 命令
+```json
+{ "status": "stale_control_points", "candidate_set_id_current": "sha256:b4512aa3991f8ad3", "candidate_set_id_at_save": "sha256:old" }
+```
 
-reviewer 批准后再动 record.md。改完后跑 `python _tools/validate_record.py 26-BQ-PARK` 验证 marker 成对 + frontmatter 合法，再贴 diff。
+```powershell
+POST http://127.0.0.1:8766/api/control-points/migration-report
+body: {"project":"26-BQ-PARK"}
+```
 
-### Step 5 完成 → P0/P0+ 收口 → 立即进入 P1
+结果：`ok: true`、`archived: false`、`migration_report: 05_output/amap/migration_report_2026-05-24.json`。
 
-P1：**高德 JSAPI 内嵌地图替代外跳坐标拾取器**。届时 codex 给 P1 方案，reviewer 审一次设计后即可放行连续实施（同样只在改 record.md 前停）。
+UI smoke test：
 
-### Step 2-4 范围内不可做
+- 8765 已有旧服务，因此新代码临时启动在 `http://127.0.0.1:8766`。
+- 浏览器打开 `http://127.0.0.1:8766/?project=26-BQ-PARK&page=s2` 后点击 S2 tab。
+- `#controlPointStaleBanner` 可见。
+- 横幅文本显示：当前候选集 `b4512aa3991f8ad3`，旧控制点保存时 `无`。
+- `#saveControlPoints` 为 disabled，符合 hard block。
 
-- 不进 Step 5（record.md / S1/S2 marker）
-- 不进 P1 高德 JSAPI
-- 不动 `inventory.json` / `_schema/record.schema.md` / `_tools/inventory.py`
-- 不重写 `cad_alignment_report.json`（保留为历史诊断证据）
-- 不顺手重构无关代码
-- 不跨 marker 写入
+保护性核查：
 
-### 开工
+- `projects/26-BQ-PARK/05_output/amap/control_points.json`：保持原样，未归档、未覆盖。
+- `projects/26-BQ-PARK/05_output/amap/cad_alignment_report.json`：保持原样，未重写。
+- `projects/26-BQ-PARK/05_output/inventory.json`：浏览器自动刷新导致临时变动，已撤回；本次不提交。
+- 未修改 `record.md`、`inventory.py`、schema。
 
-可以直接动手 Step 2，无需先发方案。
+### migration_report_2026-05-24.json 完整内容
+
+```json
+{
+  "schema_version": "1.0",
+  "status": "ok",
+  "created_at": "2026-05-24T21:26:48+0800",
+  "project_code": "26-BQ-PARK",
+  "input": "05_output/amap/control_points.json",
+  "candidate_set_id_current": "sha256:b4512aa3991f8ad3",
+  "candidate_set_id_at_save": null,
+  "thresholds": {
+    "same_geometry_match": 0.01,
+    "near_geometry_match": 1.0
+  },
+  "alignment_status": "ok",
+  "alignment_quality": "aligned_partial",
+  "alignment_outlier_labels": [
+    "CAD-01",
+    "CAD-04"
+  ],
+  "items": [
+    {
+      "old_label": "CAD-02",
+      "old_cad_xy": [
+        597485.6431031098,
+        3534267.053510857
+      ],
+      "old_amap_gcj02": [
+        94.032048,
+        31.925037
+      ],
+      "matched_candidate_id": "CAD-02",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-03",
+      "old_cad_xy": [
+        597569.4875851987,
+        3534240.603434482
+      ],
+      "old_amap_gcj02": [
+        94.033029,
+        31.924757
+      ],
+      "matched_candidate_id": "CAD-03",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-05",
+      "old_cad_xy": [
+        597566.2607273574,
+        3534327.001165579
+      ],
+      "old_amap_gcj02": [
+        94.033024,
+        31.925655
+      ],
+      "matched_candidate_id": "CAD-05",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-06",
+      "old_cad_xy": [
+        597528.2404714092,
+        3534359.598396885
+      ],
+      "old_amap_gcj02": [
+        94.032582,
+        31.925989
+      ],
+      "matched_candidate_id": null,
+      "match_type": "unmatched",
+      "cad_distance": 6.644861588007849,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 CAD 坐标不在当前候选点集内；不要自动迁移，请在 S2 UI 中重新选择候选点并拾取高德坐标。"
+    },
+    {
+      "old_label": "CAD-08",
+      "old_cad_xy": [
+        597439.3567872602,
+        3534339.009864514
+      ],
+      "old_amap_gcj02": [
+        94.031563,
+        31.925849
+      ],
+      "matched_candidate_id": null,
+      "match_type": "unmatched",
+      "cad_distance": 52.3167661679988,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 CAD 坐标不在当前候选点集内；不要自动迁移，请在 S2 UI 中重新选择候选点并拾取高德坐标。"
+    },
+    {
+      "old_label": "CAD-01",
+      "old_cad_xy": [
+        597408.2011118163,
+        3534296.981684564
+      ],
+      "old_amap_gcj02": [
+        94.031262,
+        31.925332
+      ],
+      "matched_candidate_id": "CAD-01",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_outlier",
+      "recommendation": "几何上能匹配当前候选点，但旧高德坐标在配准中是外点；建议重新拾取该点。"
+    },
+    {
+      "old_label": "CAD-04",
+      "old_cad_xy": [
+        597602.4128721136,
+        3534303.418909435
+      ],
+      "old_amap_gcj02": [
+        94.033428,
+        31.925513
+      ],
+      "matched_candidate_id": "CAD-04",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_outlier",
+      "recommendation": "几何上能匹配当前候选点，但旧高德坐标在配准中是外点；建议重新拾取该点。"
+    },
+    {
+      "old_label": "CAD-07",
+      "old_cad_xy": [
+        597497.527539761,
+        3534370.659750258
+      ],
+      "old_amap_gcj02": [
+        94.032224,
+        31.92614
+      ],
+      "matched_candidate_id": "CAD-06",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 label 与当前候选编号不一致（应对应 CAD-06）；建议人工确认后重新保存。"
+    }
+  ],
+  "recommendations": [
+    "该文件只用于迁移诊断，不会自动改写 control_points.json。",
+    "unmatched 或 alignment_outlier 的旧点应重新拾取；label 与 matched_candidate_id 不一致时不要按旧编号继续叙述。"
+  ]
+}
+```
+
+### 当前处置状态
+
+`control_points.json` 保持原样，归档动作留给用户在 UI 中点击执行。
+
+请 reviewer 复核 Step 2-4。若无硬伤，请批准 Step 5 前的 `record.md` marker 替换文本方案。

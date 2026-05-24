@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "status": "ok",
+  "created_at": "2026-05-24T21:26:48+0800",
+  "project_code": "26-BQ-PARK",
+  "input": "05_output/amap/control_points.json",
+  "candidate_set_id_current": "sha256:b4512aa3991f8ad3",
+  "candidate_set_id_at_save": null,
+  "thresholds": {
+    "same_geometry_match": 0.01,
+    "near_geometry_match": 1.0
+  },
+  "alignment_status": "ok",
+  "alignment_quality": "aligned_partial",
+  "alignment_outlier_labels": [
+    "CAD-01",
+    "CAD-04"
+  ],
+  "items": [
+    {
+      "old_label": "CAD-02",
+      "old_cad_xy": [
+        597485.6431031098,
+        3534267.053510857
+      ],
+      "old_amap_gcj02": [
+        94.032048,
+        31.925037
+      ],
+      "matched_candidate_id": "CAD-02",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-03",
+      "old_cad_xy": [
+        597569.4875851987,
+        3534240.603434482
+      ],
+      "old_amap_gcj02": [
+        94.033029,
+        31.924757
+      ],
+      "matched_candidate_id": "CAD-03",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-05",
+      "old_cad_xy": [
+        597566.2607273574,
+        3534327.001165579
+      ],
+      "old_amap_gcj02": [
+        94.033024,
+        31.925655
+      ],
+      "matched_candidate_id": "CAD-05",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+    },
+    {
+      "old_label": "CAD-06",
+      "old_cad_xy": [
+        597528.2404714092,
+        3534359.598396885
+      ],
+      "old_amap_gcj02": [
+        94.032582,
+        31.925989
+      ],
+      "matched_candidate_id": null,
+      "match_type": "unmatched",
+      "cad_distance": 6.644861588007849,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 CAD 坐标不在当前候选点集内；不要自动迁移，请在 S2 UI 中重新选择候选点并拾取高德坐标。"
+    },
+    {
+      "old_label": "CAD-08",
+      "old_cad_xy": [
+        597439.3567872602,
+        3534339.009864514
+      ],
+      "old_amap_gcj02": [
+        94.031563,
+        31.925849
+      ],
+      "matched_candidate_id": null,
+      "match_type": "unmatched",
+      "cad_distance": 52.3167661679988,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 CAD 坐标不在当前候选点集内；不要自动迁移，请在 S2 UI 中重新选择候选点并拾取高德坐标。"
+    },
+    {
+      "old_label": "CAD-01",
+      "old_cad_xy": [
+        597408.2011118163,
+        3534296.981684564
+      ],
+      "old_amap_gcj02": [
+        94.031262,
+        31.925332
+      ],
+      "matched_candidate_id": "CAD-01",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_outlier",
+      "recommendation": "几何上能匹配当前候选点，但旧高德坐标在配准中是外点；建议重新拾取该点。"
+    },
+    {
+      "old_label": "CAD-04",
+      "old_cad_xy": [
+        597602.4128721136,
+        3534303.418909435
+      ],
+      "old_amap_gcj02": [
+        94.033428,
+        31.925513
+      ],
+      "matched_candidate_id": "CAD-04",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_outlier",
+      "recommendation": "几何上能匹配当前候选点，但旧高德坐标在配准中是外点；建议重新拾取该点。"
+    },
+    {
+      "old_label": "CAD-07",
+      "old_cad_xy": [
+        597497.527539761,
+        3534370.659750258
+      ],
+      "old_amap_gcj02": [
+        94.032224,
+        31.92614
+      ],
+      "matched_candidate_id": "CAD-06",
+      "match_type": "same_geometry_match",
+      "cad_distance": 0.0,
+      "alignment_status": "alignment_inlier",
+      "recommendation": "旧 label 与当前候选编号不一致（应对应 CAD-06）；建议人工确认后重新保存。"
+    }
+  ],
+  "recommendations": [
+    "该文件只用于迁移诊断，不会自动改写 control_points.json。",
+    "unmatched 或 alignment_outlier 的旧点应重新拾取；label 与 matched_candidate_id 不一致时不要按旧编号继续叙述。"
+  ]
+}

@@ -21,7 +21,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PROJECTS_DIR = REPO_ROOT / "projects"
 INPUT_REL = Path("05_output/amap/control_points.json")
 OUTPUT_REL = Path("05_output/amap/cad_alignment_report.json")
+CANDIDATE_REL = Path("05_output/cad/control_point_candidates.json")
+MIGRATION_REPORT_DIR_REL = Path("05_output/amap")
 EARTH_RADIUS_M = 6378137.0
+SAME_GEOMETRY_THRESHOLD = 0.01
+NEAR_GEOMETRY_THRESHOLD = 1.0
 
 
 def resolve_project(code_or_path: str) -> Path:
@@ -31,11 +35,46 @@ def resolve_project(code_or_path: str) -> Path:
     return (PROJECTS_DIR / code_or_path).resolve()
 
 
-def load_points(project_dir: Path, input_path: Path | None = None) -> list[dict[str, Any]]:
+def load_control_points_payload(project_dir: Path, input_path: Path | None = None) -> tuple[dict[str, Any], Path]:
     path = input_path or project_dir / INPUT_REL
     if not path.exists():
         raise FileNotFoundError(f"{path.as_posix()} 不存在")
     data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("control_points.json 必须是 JSON object")
+    return data, path
+
+
+def load_current_candidate_set_id(project_dir: Path) -> str | None:
+    path = project_dir / CANDIDATE_REL
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    value = data.get("candidate_set_id")
+    return str(value) if value else None
+
+
+def candidate_set_mismatch(current: str | None, at_save: object) -> bool:
+    return bool(current) and str(at_save or "") != current
+
+
+def stale_control_points_report(project_dir: Path, current: str | None, at_save: object) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0",
+        "status": "stale_control_points",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "project_code": project_dir.name,
+        "candidate_set_id_current": current,
+        "candidate_set_id_at_save": str(at_save) if at_save else None,
+        "alignment_report": None,
+        "recommendations": [
+            "当前 control_points.json 保存时的候选集 ID 缺失或已过期，不能继续静默用于 CAD/高德配准。",
+            "请先生成迁移诊断，确认旧 CAD 点是否能映射到当前候选点；必要时归档旧控制点后重新选择。",
+        ],
+    }
+
+
+def extract_points(data: dict[str, Any]) -> list[dict[str, Any]]:
     points = data.get("control_points", [])
     if not isinstance(points, list):
         raise ValueError("control_points.json 中 control_points 必须是数组")
@@ -59,6 +98,11 @@ def load_points(project_dir: Path, input_path: Path | None = None) -> list[dict[
             }
         )
     return cleaned
+
+
+def load_points(project_dir: Path, input_path: Path | None = None) -> list[dict[str, Any]]:
+    data, _ = load_control_points_payload(project_dir, input_path)
+    return extract_points(data)
 
 
 def ll_to_local_m(points: list[dict[str, Any]]) -> tuple[list[list[float]], dict[str, float]]:
@@ -199,14 +243,27 @@ def residual_rows(points: list[dict[str, Any]], fit: dict[str, Any], origin: dic
     return rows
 
 
-def build_report(project_dir: Path, threshold_m: float, input_path: Path | None = None) -> dict[str, Any]:
-    points = load_points(project_dir, input_path)
+def build_report(
+    project_dir: Path,
+    threshold_m: float,
+    input_path: Path | None = None,
+    allow_stale: bool = False,
+) -> dict[str, Any]:
+    payload, loaded_path = load_control_points_payload(project_dir, input_path)
+    candidate_set_id_current = load_current_candidate_set_id(project_dir)
+    candidate_set_id_at_save = payload.get("candidate_set_id_at_save")
+    if not allow_stale and candidate_set_mismatch(candidate_set_id_current, candidate_set_id_at_save):
+        return stale_control_points_report(project_dir, candidate_set_id_current, candidate_set_id_at_save)
+
+    points = extract_points(payload)
     if len(points) < 3:
         return {
             "schema_version": "1.0",
             "status": "insufficient_points",
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "project_code": project_dir.name,
+            "candidate_set_id_current": candidate_set_id_current,
+            "candidate_set_id_at_save": str(candidate_set_id_at_save) if candidate_set_id_at_save else None,
             "point_count": len(points),
             "required": "At least 3 CAD/AMap point pairs are required.",
         }
@@ -224,7 +281,9 @@ def build_report(project_dir: Path, threshold_m: float, input_path: Path | None 
         "status": "ok",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "project_code": project_dir.name,
-        "input": input_path.as_posix() if input_path else INPUT_REL.as_posix(),
+        "input": loaded_path.as_posix() if input_path else INPUT_REL.as_posix(),
+        "candidate_set_id_current": candidate_set_id_current,
+        "candidate_set_id_at_save": str(candidate_set_id_at_save) if candidate_set_id_at_save else None,
         "coordinate_system": {
             "source": "CAD drawing coordinates",
             "target": "AMap GCJ-02 converted to local tangent meters for residual checks",
@@ -285,11 +344,155 @@ def write_report(project_dir: Path, report: dict[str, Any]) -> Path:
     return out
 
 
+def load_candidate_points(project_dir: Path) -> list[dict[str, Any]]:
+    path = project_dir / CANDIDATE_REL
+    if not path.exists():
+        raise FileNotFoundError(f"{path.as_posix()} 不存在")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    candidates = data.get("candidates", [])
+    if not isinstance(candidates, list):
+        raise ValueError("control_point_candidates.json 中 candidates 必须是数组")
+    out = []
+    for item in candidates:
+        if not isinstance(item, dict) or not isinstance(item.get("cad_point"), dict):
+            continue
+        cad = item["cad_point"]
+        out.append(
+            {
+                "id": str(item.get("id") or item.get("label") or ""),
+                "label": str(item.get("label") or item.get("id") or ""),
+                "cad": [float(cad["x"]), float(cad["y"])],
+                "feature_type": item.get("feature_type"),
+                "purpose": item.get("purpose"),
+                "source_handle": item.get("source_handle"),
+                "source_layer": item.get("source_layer"),
+            }
+        )
+    return out
+
+
+def nearest_candidate(point: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float | None]:
+    if not candidates:
+        return None, None
+    x, y = point["cad"]
+    best: tuple[dict[str, Any], float] | None = None
+    for candidate in candidates:
+        distance = math.hypot(x - candidate["cad"][0], y - candidate["cad"][1])
+        if best is None or distance < best[1]:
+            best = (candidate, distance)
+    return best if best else (None, None)
+
+
+def migration_match_type(distance: float | None) -> str:
+    if distance is None:
+        return "unmatched"
+    if distance <= SAME_GEOMETRY_THRESHOLD:
+        return "same_geometry_match"
+    if distance <= NEAR_GEOMETRY_THRESHOLD:
+        return "near_geometry_match"
+    return "unmatched"
+
+
+def migration_recommendation(
+    point: dict[str, Any],
+    candidate: dict[str, Any] | None,
+    match_type: str,
+    alignment_status: str,
+) -> str:
+    if match_type == "unmatched":
+        return "旧 CAD 坐标不在当前候选点集内；不要自动迁移，请在 S2 UI 中重新选择候选点并拾取高德坐标。"
+    candidate_id = candidate.get("id") if candidate else None
+    if alignment_status == "alignment_outlier":
+        return "几何上能匹配当前候选点，但旧高德坐标在配准中是外点；建议重新拾取该点。"
+    if candidate_id and candidate_id != point["label"]:
+        return f"旧 label 与当前候选编号不一致（应对应 {candidate_id}）；建议人工确认后重新保存。"
+    if match_type == "near_geometry_match":
+        return "CAD 坐标接近当前候选点但不是同一点；建议人工确认后再迁移。"
+    return "可作为迁移参考，但仍建议通过 UI 重新保存以写入最新 candidate_set_id_at_save。"
+
+
+def build_migration_report(project_dir: Path, threshold_m: float, input_path: Path | None = None) -> dict[str, Any]:
+    payload, loaded_path = load_control_points_payload(project_dir, input_path)
+    points = extract_points(payload)
+    candidates = load_candidate_points(project_dir)
+    candidate_set_id_current = load_current_candidate_set_id(project_dir)
+    candidate_set_id_at_save = payload.get("candidate_set_id_at_save")
+
+    alignment_status = "not_checked"
+    alignment_quality = None
+    alignment_outlier_labels: list[str] = []
+    try:
+        alignment = build_report(project_dir, threshold_m, input_path, allow_stale=True)
+        alignment_status = alignment.get("status", "not_checked")
+        alignment_quality = alignment.get("quality")
+        alignment_outlier_labels = alignment.get("best_fit", {}).get("outlier_labels", []) if alignment.get("best_fit") else []
+    except Exception as exc:
+        alignment_status = f"error: {exc}"
+    outlier_set = set(alignment_outlier_labels)
+
+    items = []
+    for point in points:
+        candidate, distance = nearest_candidate(point, candidates)
+        match_type = migration_match_type(distance)
+        matched_candidate_id = candidate.get("id") if candidate and match_type != "unmatched" else None
+        point_alignment_status = "alignment_outlier" if point["label"] in outlier_set else "alignment_inlier"
+        if alignment_status != "ok":
+            point_alignment_status = "alignment_not_checked"
+        items.append(
+            {
+                "old_label": point["label"],
+                "old_cad_xy": point["cad"],
+                "old_amap_gcj02": point["amap_gcj02"],
+                "matched_candidate_id": matched_candidate_id,
+                "match_type": match_type,
+                "cad_distance": distance,
+                "alignment_status": point_alignment_status,
+                "recommendation": migration_recommendation(point, candidate, match_type, point_alignment_status),
+            }
+        )
+
+    return {
+        "schema_version": "1.0",
+        "status": "ok",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "project_code": project_dir.name,
+        "input": loaded_path.as_posix() if input_path else INPUT_REL.as_posix(),
+        "candidate_set_id_current": candidate_set_id_current,
+        "candidate_set_id_at_save": str(candidate_set_id_at_save) if candidate_set_id_at_save else None,
+        "thresholds": {
+            "same_geometry_match": SAME_GEOMETRY_THRESHOLD,
+            "near_geometry_match": NEAR_GEOMETRY_THRESHOLD,
+        },
+        "alignment_status": alignment_status,
+        "alignment_quality": alignment_quality,
+        "alignment_outlier_labels": alignment_outlier_labels,
+        "items": items,
+        "recommendations": [
+            "该文件只用于迁移诊断，不会自动改写 control_points.json。",
+            "unmatched 或 alignment_outlier 的旧点应重新拾取；label 与 matched_candidate_id 不一致时不要按旧编号继续叙述。",
+        ],
+    }
+
+
+def migration_report_path(project_dir: Path) -> Path:
+    date = time.strftime("%Y-%m-%d")
+    return project_dir / MIGRATION_REPORT_DIR_REL / f"migration_report_{date}.json"
+
+
+def write_migration_report(project_dir: Path, report: dict[str, Any]) -> Path:
+    out = migration_report_path(project_dir)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate CAD/AMap control point alignment")
     parser.add_argument("project", help="Project code or path")
     parser.add_argument("--json", action="store_true", help="Print JSON only")
     parser.add_argument("--write", action="store_true", help="Write 05_output/amap/cad_alignment_report.json")
+    parser.add_argument("--allow-stale", action="store_true", help="Allow stale control points for audit-only alignment checks")
+    parser.add_argument("--migration-report", action="store_true", help="Build a migration report for stale control points")
     parser.add_argument("--threshold-m", type=float, default=5.0, help="Residual threshold for inliers")
     parser.add_argument("--input", help="Optional control_points JSON path for temporary checks")
     return parser.parse_args()
@@ -303,7 +506,10 @@ def main() -> int:
         return 3
     try:
         input_path = Path(args.input).resolve() if args.input else None
-        report = build_report(project_dir, args.threshold_m, input_path)
+        if args.migration_report:
+            report = build_migration_report(project_dir, args.threshold_m, input_path)
+        else:
+            report = build_report(project_dir, args.threshold_m, input_path, allow_stale=args.allow_stale)
     except Exception as exc:
         report = {
             "schema_version": "1.0",
@@ -318,16 +524,32 @@ def main() -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     if args.write:
-        report["written_to"] = str(write_report(project_dir, report))
+        if args.migration_report:
+            report["written_to"] = str(write_migration_report(project_dir, report))
+        elif report.get("status") == "stale_control_points":
+            report["write_skipped"] = OUTPUT_REL.as_posix()
+        else:
+            report["written_to"] = str(write_report(project_dir, report))
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
-        print(f"== cad_align :: {project_dir}")
+        title = "cad_align migration" if args.migration_report else "cad_align"
+        print(f"== {title} :: {project_dir}")
         print(f"  status: {report['status']}")
-        print(f"  quality: {report.get('quality')}")
+        if "quality" in report:
+            print(f"  quality: {report.get('quality')}")
+        if report.get("candidate_set_id_current") or report.get("candidate_set_id_at_save"):
+            print(f"  candidate_set_id_current: {report.get('candidate_set_id_current')}")
+            print(f"  candidate_set_id_at_save: {report.get('candidate_set_id_at_save')}")
+        if report.get("written_to"):
+            print(f"  written_to: {report['written_to']}")
+        if report.get("write_skipped"):
+            print(f"  write_skipped: {report['write_skipped']}")
         if report.get("best_fit"):
             print(f"  inliers: {', '.join(report['best_fit']['inlier_labels'])}")
-    return 0 if report["status"] in {"ok", "insufficient_points"} else 2
+        if args.migration_report:
+            print(f"  items: {len(report.get('items', []))}")
+    return 0 if report["status"] in {"ok", "insufficient_points", "stale_control_points"} else 2
 
 
 if __name__ == "__main__":
