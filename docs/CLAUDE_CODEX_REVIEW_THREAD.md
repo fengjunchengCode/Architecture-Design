@@ -14,18 +14,18 @@
 
 ### 要改的函数 / 行号
 
-- import 区：约 5-12 行  
+- import 区：约 5-12 行
   新增 `hashlib`，用于计算 `candidate_set_hash`。
-- 新增 helper：约 450 行之前，放在 `render_svg()` 与 `build_preview()` 之间  
-  `file_sha1(path: Path) -> str`  
-  `normalize_candidate_for_hash(candidate: dict[str, Any]) -> dict[str, Any]`  
+- 新增 helper：约 450 行之前，放在 `render_svg()` 与 `build_preview()` 之间
+  `file_sha1(path: Path) -> str`
+  `normalize_candidate_for_hash(candidate: dict[str, Any]) -> dict[str, Any]`
   `candidate_set_fingerprint(source_dxf: Path, boundary: dict[str, Any] | None, candidates: list[dict[str, Any]], schema_version: str = "1.0") -> dict[str, Any]`
-- `build_preview(project_dir)`：约 460-509 行  
-  在生成 `payload` 前计算 fingerprint，并把以下字段写入 `control_point_candidates.json` 顶层：  
+- `build_preview(project_dir)`：约 460-509 行
+  在生成 `payload` 前计算 fingerprint，并把以下字段写入 `control_point_candidates.json` 顶层：
   `candidate_set_id`、`candidate_set_hash`、`candidate_set_inputs`
-- `parse_args()`：约 512-517 行  
+- `parse_args()`：约 512-517 行
   新增 `--selftest-candidate-set-id`。
-- `main()`：约 520-548 行  
+- `main()`：约 520-548 行
   若传入 `--selftest-candidate-set-id`，只运行自测并退出，不要求项目参数、不读写项目文件。
 
 ### 原因
