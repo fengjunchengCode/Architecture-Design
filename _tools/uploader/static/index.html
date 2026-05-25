@@ -222,7 +222,14 @@
                     <b>CAD 地形图与候选控制点</b>
                     <span id="cadPreviewStatus">尚未生成 CAD 预览</span>
                   </div>
-                  <button id="runCadPreview" class="primary">生成 CAD 预览</button>
+                  <div class="cad-preview-actions">
+                    <div class="cad-zoom-controls" aria-label="CAD 预览缩放">
+                      <button id="cadZoomOut" type="button" title="缩小 CAD 预览">−</button>
+                      <button id="cadZoomReset" type="button" title="重置 CAD 预览缩放">100%</button>
+                      <button id="cadZoomIn" type="button" title="放大 CAD 预览">+</button>
+                    </div>
+                    <button id="runCadPreview" class="primary">生成 CAD 预览</button>
+                  </div>
                 </div>
                 <div class="cad-preview-layout">
                   <div class="cad-preview-frame" id="cadPreviewFrame">

@@ -18,6 +18,7 @@ const state = {
   controlPointsSaved: false,
   controlPointsStale: false,
   migrationReport: null,
+  cadPreviewZoom: 1,
   s1Location: "",
   amap: {
     config: null,
@@ -326,6 +327,12 @@ function setActiveCandidate(id) {
   const existing = state.controlPoints.find((point) => point.label === id);
   const parsed = parsedLocation(existing?.amap_location);
   if (parsed && state.amap.s2Map?.setCenter) state.amap.s2Map.setCenter([parsed.lng, parsed.lat]);
+}
+
+function scrollToS2Map() {
+  const panel = $("#s2AmapPanel");
+  if (!panel) return;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function clearS2Markers() {
@@ -651,7 +658,7 @@ function summarizeCadPreview(data) {
       </div>
       ${findings.length ? `<p class="result-next">${compactList(findings, 2)}</p>` : ""}
       ${userPick.length ? `<p class="result-warning">${compactList(userPick, 2)}</p>` : ""}
-      <p class="result-next">${data.status === "ok" ? "S2 页面已加载 CAD 底图。根据每个候选点的建议去高德拾取坐标，再点击“加入/更新”。" : escapeHtml(data.error || data.stderr || "请检查 DWG/DXF 是否可转换。")}</p>
+      <p class="result-next">${data.status === "ok" ? "S2 页面已加载 CAD 底图。点击候选点的“地图拾取”，再在高德地图上点选对应位置。" : escapeHtml(data.error || data.stderr || "请检查 DWG/DXF 是否可转换。")}</p>
     </div>
   `;
 }
@@ -843,11 +850,15 @@ function setControls() {
     "#checkAmap",
     "#saveCenter",
     "#runCadPreview",
+    "#cadZoomOut",
+    "#cadZoomReset",
+    "#cadZoomIn",
     "#saveControlPoints",
   ].forEach((selector) => {
     $(selector).disabled = !hasProject;
   });
   $("#saveControlPoints").disabled = !hasProject || hasStaleControlPoints();
+  applyCadPreviewZoom();
   ["#centerLocation"].forEach((selector) => {
     $(selector).disabled = !hasProject;
   });
@@ -1220,6 +1231,35 @@ function setCadPreviewStatus(text, ok = null) {
   el.style.color = ok === null ? "" : ok ? "#1f6f5b" : "#b94b2f";
 }
 
+function clampCadPreviewZoom(value) {
+  return Math.min(3, Math.max(0.5, Number(value) || 1));
+}
+
+function applyCadPreviewZoom() {
+  const zoom = clampCadPreviewZoom(state.cadPreviewZoom);
+  state.cadPreviewZoom = zoom;
+  const image = $("#cadPreviewFrame .cad-preview-image");
+  if (image) {
+    image.style.width = `${Math.round(zoom * 100)}%`;
+    image.style.minWidth = `${Math.round(720 * zoom)}px`;
+  }
+  const ready = Boolean(state.project && state.cadPreview?.preview_svg);
+  const out = $("#cadZoomOut");
+  const reset = $("#cadZoomReset");
+  const zoomIn = $("#cadZoomIn");
+  if (out) out.disabled = !ready || zoom <= 0.5;
+  if (reset) {
+    reset.disabled = !ready;
+    reset.textContent = `${Math.round(zoom * 100)}%`;
+  }
+  if (zoomIn) zoomIn.disabled = !ready || zoom >= 3;
+}
+
+function setCadPreviewZoom(value) {
+  state.cadPreviewZoom = clampCadPreviewZoom(value);
+  applyCadPreviewZoom();
+}
+
 function renderCadPreview() {
   const frame = $("#cadPreviewFrame");
   const list = $("#cadCandidateList");
@@ -1231,17 +1271,20 @@ function renderCadPreview() {
     setCadPreviewStatus("尚未生成 CAD 预览", null);
     frame.innerHTML = `<div class="control-empty">上传 DWG/DXF 后，点击“生成 CAD 预览”。</div>`;
     list.innerHTML = `<div class="control-empty">候选 CAD 控制点会显示在这里。</div>`;
+    applyCadPreviewZoom();
     return;
   }
   const semantic = data.candidate_semantics_status ? `，语义：${data.candidate_semantics_status}` : "";
   setCadPreviewStatus(`${(data.candidates || []).length} 个候选点${semantic}`, true);
   const image = document.createElement("img");
+  image.className = "cad-preview-image";
   image.alt = "CAD 地形图预览和候选控制点";
   image.src = projectFileUrl(data.preview_svg);
   frame.appendChild(image);
+  applyCadPreviewZoom();
   const candidates = data.candidates || [];
   if (!candidates.length) {
-    list.innerHTML = `<div class="control-empty">未识别到候选控制点。仍可手动填写 CAD X/Y。</div>`;
+    list.innerHTML = `<div class="control-empty">未识别到候选控制点。请先重新生成 CAD 预览或补充更清晰的 CAD/区位资料。</div>`;
     return;
   }
   candidates.forEach((candidate) => {
@@ -1264,31 +1307,23 @@ function renderCadPreview() {
     const role = candidate.role_label || controlFeatureText(featureType);
     const reason = candidate.reason || candidate.note || "候选点由 CAD 几何生成；如 AI 识别不可用，先作为红线配准点使用。";
     const sourceText = candidate.suggestion_source === "vision_model" ? "视觉识别" : "保守建议";
+    const pickedText = candidate.amap_location ? `已选 ${candidate.amap_location}` : "尚未拾取地图点";
     item.innerHTML = `
       <b>${escapeHtml(candidate.label || candidate.id)}</b>
       <span>CAD ${Number.isFinite(x) ? x.toFixed(3) : "?"}, ${Number.isFinite(y) ? y.toFixed(3) : "?"}</span>
       <small><b>${escapeHtml(sourceText)}：</b>${escapeHtml(role)}${candidate.feature_name ? ` / ${escapeHtml(candidate.feature_name)}` : ""}</small>
       <small>${escapeHtml(reason)}</small>
       <div class="candidate-pick">
-        <input data-field="amap_location" placeholder="粘贴高德坐标：经度,纬度" value="${escapeHtml(candidate.amap_location || "")}">
         <button type="button" data-action="map-pick" ${hasStaleControlPoints() ? "disabled" : ""}>地图拾取</button>
-        <button type="button" data-action="add" ${hasStaleControlPoints() ? "disabled" : ""}>加入/更新</button>
+        <span class="candidate-location">${escapeHtml(pickedText)}</span>
       </div>
     `;
-    const input = item.querySelector("[data-field='amap_location']");
-    input.addEventListener("input", () => {
-      candidate.amap_location = input.value;
-    });
     item.querySelector("[data-action='map-pick']").addEventListener("click", () => {
       setActiveCandidate(candidateId);
-      ensureS2Map().catch((err) => writeOutput(err.message));
-    });
-    item.querySelector("[data-action='add']").addEventListener("click", () => {
-      try {
-        addCandidateControlPoint(candidate);
-      } catch (err) {
-        writeOutput(err.message);
-      }
+      scrollToS2Map();
+      ensureS2Map()
+        .then(() => scrollToS2Map())
+        .catch((err) => writeOutput(err.message));
     });
     list.appendChild(item);
   });
@@ -1440,6 +1475,9 @@ function bind() {
     setCadPreviewStatus("生成失败", false);
     writeOutput(err.message);
   }));
+  $("#cadZoomOut").addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom - 0.25));
+  $("#cadZoomReset").addEventListener("click", () => setCadPreviewZoom(1));
+  $("#cadZoomIn").addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom + 0.25));
   $("#saveCenter").addEventListener("click", () => saveCenter().catch((err) => {
     setAmapStatus("生成失败", false);
     writeOutput(err.message);

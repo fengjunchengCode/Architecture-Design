@@ -633,6 +633,30 @@ select:disabled {
   gap: 4px;
 }
 
+.cad-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cad-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cad-zoom-controls button {
+  min-width: 38px;
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+#cadZoomReset {
+  min-width: 58px;
+}
+
 .cad-preview-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
@@ -647,15 +671,21 @@ select:disabled {
   max-height: calc(100vh - 260px);
   overflow: auto;
   border-radius: 6px;
+  display: block;
+}
+
+.cad-preview-frame .control-empty {
+  min-height: 460px;
   display: grid;
   place-items: center;
 }
 
-.cad-preview-frame img {
+.cad-preview-frame .cad-preview-image {
   width: 100%;
   min-width: 720px;
   height: auto;
   display: block;
+  max-width: none;
 }
 
 .cad-candidate-list {
@@ -704,15 +734,16 @@ select:disabled {
 .candidate-pick {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 6px;
   align-items: center;
 }
 
-.candidate-pick input {
-  min-height: 34px;
+.candidate-location {
+  color: var(--muted);
   font-size: 12px;
-  padding: 6px 8px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .candidate-item button {
@@ -929,6 +960,19 @@ pre {
 
   .candidate-pick {
     grid-template-columns: 1fr;
+  }
+
+  .cad-preview-actions {
+    justify-content: stretch;
+  }
+
+  .cad-zoom-controls,
+  .cad-preview-actions .primary {
+    width: 100%;
+  }
+
+  .cad-zoom-controls button {
+    flex: 1;
   }
 
   .s2-control-panel,
