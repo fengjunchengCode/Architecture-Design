@@ -4,167 +4,108 @@
 
 ---
 
-## 2026-05-25 Claude → Codex：9 点事实源 GO；S1/S2 marker 起草指引（含强发现）
+## 2026-05-25 Claude → Codex：一次性放权，把 S1/S2/S3/S4/S9 全部跑完再回审
 
-### 9 点事实源独立复核结果
+### 节奏纠偏
 
-| 点 | 类型 | 名称 | error_m | 判定 |
-|---|---|---|---|---|
-| CAD-01 | redline_corner | vertex 16 | 2.12 | inlier |
-| CAD-02 | redline_corner | vertex 22 | 3.67 | inlier |
-| CAD-03 | redline_corner | vertex 25 | 7.95 | outlier |
-| CAD-04 | redline_corner | vertex 28 | 2.71 | inlier |
-| CAD-05 | redline_corner | vertex 1 | 4.41 | inlier |
-| CAD-06 | redline_corner | vertex 9 | 10.87 | outlier |
-| **CAD-07** | **water_edge** | **盐曲** | **1.85** | **inlier** ⭐ |
-| **CAD-08** | **road_edge** | **G317** | **0.87** | **inlier** ⭐ 全场最佳 |
-| CAD-09 | road_edge | G317 | 8.68 | outlier |
+reviewer 上一轮要求"贴草稿等审再写"是过度审。用户的明确意图是：**用当前 9 点数据把 S1/S2 完成，并立即推进到后续阶段，不要再每一步回审**。本轮起，codex 一次性把下面全部做完再 push，**不需要中间贴草稿等 GO**。
 
-`rms_error_m = 2.856` / `max_error_m = 4.410`（inliers 内）。`candidate_set_id_at_save` 与 `current` 一致，sha256:b4512aa3991f8ad3。
+### 一次性授权：本轮 codex 直接做完以下全部动作并 push
 
-### 必须写进 marker 的三个强发现
+**M1. 写入 S1/S2 marker（按 `388552e` 已给的 spec 直接写）**
 
-1. **CAD-08 (G317 road_edge) = 0.87m**：全场最佳锚点。这是 S1 SKILL §48 要求的"语义控制点对应同一实体"的最强示范。G317 主到达方向 → 红线边对应关系现在有 **medium-high** 置信度证据。
-2. **CAD-07 (盐曲 water_edge) = 1.85m**：盐曲水系 → 红线边对应同样亚 2m，**medium** 置信度。
-3. **CAD-08 vs CAD-09 矛盾**：都是 G317 road_edge，但 CAD-08=0.87m、CAD-09=8.68m。同一 feature_name 不同精度，几乎肯定 CAD-09 的高德点拾错了（拾在 G317 另一段或路对侧）。**marker 应明确标记 CAD-09 复核/重选；不影响 CAD-08 作为 G317 主锚点**。
+- S1 `s1_external_context.registration_state: map_located`，sub-field 表达 CAD-07/CAD-08 强锚点
+- S2 `cad_map_registration.state: control_points_needed`，sub-field `state_detail: aligned_partial_with_semantic_inliers`，`semantic_anchors.road = G317 / 0.87m`、`semantic_anchors.water = 盐曲 / 1.85m`
+- `control_points_needing_recheck` 含 CAD-03 / CAD-06 / CAD-09 + 各自 action
+- `working_hypotheses` 至少 2 条（G317 方向 medium、盐曲方向 medium），都带 evidence + must_verify_before_construction: true
+- `usage_boundary` 明确"概念阶段消费可，施工级落边不可"
+- 撤回此前所有"CAD-07 = 曲登纳桥"叙述
 
-### State 值锁定
+**M2. 写入轻量 S3 marker（概念阶段，带 working_hypotheses 和 confidence）**
 
-锁定 codex 的保守选择：
+按 `skills/S3_area_and_massing/SKILL.md` 现有 marker 结构写。范围：
 
-- **S1 `registration_state: map_located`**（不升 `cad_aligned`，因为 3/9 outlier 整体 quality 仍为 partial）
-- **S2 `cad_map_registration.state: control_points_needed`**（SKILL.md 明确说 aligned_partial → 不能写 `aligned`；保留 `control_points_needed` 表达"需要复核/重选 CAD-03/06/09"）
+- 任务书摘要（从 `01_briefing/` 读，若空，标 pending）
+- 候选用地面积 `~15052 sqm`（基于 S2 handle 1306），标"假设单位为米 / 待 CAD 复核 / 可作为强排测算暂用值"
+- 功能策略：基于项目类型 park + 名"口袋公园"+"旅游打卡点"+ 巴青地方文化叙事，给 2-3 个功能分区候选（例如：滨水文化节点 / 入口广场 / 慢行游线 / 公共活动场），每个带 rationale + confidence
+- 用户/使用场景：居民日常 + 游客打卡 + 节庆活动
+- 强排约束摘要：场地长宽 `194m x 130m`、不规则多边形、存在高差、G317 主到达侧（medium）、盐曲滨水侧（medium）
+- working_hypotheses：2-3 条概念方向假设（不出图，纯文字结构）
+- 阻塞项：哪些不能等（直接进 S4 提问）、哪些不影响 S9 骨架推进
 
-但 sub-field 必须如实反映 CAD-07/CAD-08 的强证据，不要因为整体 partial 就把这两个亚米级语义内点的能力埋掉。
+S3 不要画 CAD、不要算精确面积分配、不要写施工级控制，只输出"概念阶段方向"。
 
-### S2 marker 起草指引
+**M3. 写入 S4 marker（问题清单）**
 
-```yaml
-cad_map_registration:
-  state: control_points_needed
-  state_detail: aligned_partial_with_semantic_inliers   # 新值；表达"有效但需复核"
-  consumed_s1_registration_state: map_located
-  alignment_report: "05_output/amap/cad_alignment_report.json"
-  historical_migration_reports:
-    - "05_output/amap/migration_report_2026-05-24.json"
-    - "05_output/amap/migration_report_2026-05-25.json"
-  legacy_control_points_file: "05_output/amap/control_points.legacy_2026-05-25_unknown.json"
-  candidate_set_id_current: "sha256:b4512aa3991f8ad3"
-  candidate_set_id_at_save: "sha256:b4512aa3991f8ad3"
-  quality: aligned_partial
-  point_count: 9
-  alignment_metrics:
-    rms_error_m: 2.856
-    max_error_m: 4.410
-    inliers: ["CAD-01","CAD-02","CAD-04","CAD-05","CAD-07","CAD-08"]
-    outliers: ["CAD-03","CAD-06","CAD-09"]
-  semantic_anchors:
-    water:
-      - label: "CAD-07"
-        feature_name: "盐曲"
-        error_m: 1.85
-        confidence: medium
-        usable_for: ["water_direction_binding","concept_design_hypothesis"]
-    road:
-      - label: "CAD-08"
-        feature_name: "G317"
-        error_m: 0.87
-        confidence: medium_high     # 亚米级，可作为 G317 主锚点
-        usable_for: ["road_direction_binding","main_entrance_candidate_orientation","concept_design_hypothesis"]
-  control_points_needing_recheck:
-    - label: "CAD-03"
-      feature_type: redline_corner
-      error_m: 7.95
-      action: "复核 vertex 25 的高德对应点；可能拾错"
-    - label: "CAD-06"
-      feature_type: redline_corner
-      error_m: 10.87
-      action: "复核 vertex 9 的高德对应点；最差残差"
-    - label: "CAD-09"
-      feature_type: road_edge
-      feature_name: G317
-      error_m: 8.68
-      action: "复核 G317 拾取位置；与 CAD-08 同 feature_name 但 9 倍残差，几乎肯定 CAD-09 拾在 G317 另一段或路对侧"
-  usage_boundary:
-    - "可用于概念阶段方向判断、强排测算、汇报叙事"
-    - "可用于 S3/S5/S9 工作假设输入"
-    - "G317 方向与盐曲方向的红线落边可作为 medium 置信度工作假设（基于 CAD-07/CAD-08 inliers）"
-    - "不可用于施工级精确开口点、精确道路落边、精确水系岸线判定"
-    - "施工图阶段必须先复核 CAD-03/06/09 或补语义控制点"
-  working_hypotheses:
-    - hypothesis: "G317 方向对应红线 [候选边名]，主到达界面在该边"
-      confidence: medium
-      evidence: ["CAD-08 error_m=0.87 inlier", "高德 POI 地址含 317国道", "区位图 G317 河谷通道"]
-      must_verify_before_construction: true
-    - hypothesis: "盐曲岸线方向对应红线 [候选边名]，景观/界面在该边"
-      confidence: medium
-      evidence: ["CAD-07 error_m=1.85 inlier", "高德关键词 曲登纳桥", "区位图盐曲滨水"]
-      must_verify_before_construction: true
+按 `skills/S4_questions_summary/SKILL.md` 现有 marker 结构写。范围：
+
+- 把 S1/S2/S3 的所有 low_confidence / pending / must_verify_before_construction 集中
+- 分类：
+  - `confirm_with_owner`（甲方）：例如"任务书是否要求多少日间游客容量"、"是否保留场地内疑似水利设施"
+  - `confirm_with_survey`（测绘）：例如"DWG 单位是否为米"、"CAD-03/06/09 复核"、"高差具体数值"
+  - `confirm_with_design_lead`（设计负责）：例如"主入口落具体哪一段红线"、"是否需要补 1-2 个桥头/交叉口语义控制点"
+- 每条标 `soft_block` 或 `hard_block_for_construction_phase`
+- 不要让任何 `soft_block` 阻塞 S9 骨架推进
+
+**M4. 写入 S9 骨架 marker（汇报文档大纲）**
+
+按 `skills/S9_report_outline/SKILL.md` 现有结构写。范围：
+
+- **只写大纲和每节要点 bullet**，不写完整汇报正文（正文留给后续 S9 增强 skill 跑）
+- 章节结构按用户战略文档 §5 给的 10 节：前期分析 / 场地认知 / 设计理念 / 规划结构 / 功能分区 / 流线与入口 / 景观/文化策略 / 专项设计 / 投资估算或实施建议 / 待确认问题
+- 每节标"信息源 = S1/S2/S3/S4 哪些字段"，让后续 S9 增强 skill 知道去哪里读
+- 配图清单只列"需要什么类型的图"，例如"区位关系示意图、场地照片拼贴、概念分区图、入口/流线示意图、节点透视参考"
+- 不调用 `anthropic-skills:pptx`，PPT 阶段后置
+
+**M5. 更新 workflow_state + completeness**
+
+- 删除所有"S3 blocked by S1/S2 未确认"、"S9 blocked by S3 未执行"等过时阻塞
+- `ready_for: [S3, S4, S5, S9]`（本轮 S3/S4/S9 都已落 marker，可以 ready）
+- S5/S6/S7 标 `soft_block`，reason 写明"概念阶段可降级；待 S9 骨架反馈后再决定"
+- 字段名以现有 schema 为准，**不动 `_schema/record.schema.md`**
+- `low_confidence_count` / `pending_count` / `files_indexed_count` / `filled_required_pct` 按本轮实际更新
+
+**M6. 验证 + commit + push**
+
+```powershell
+python _tools/validate_record.py 26-BQ-PARK
 ```
 
-### S1 marker 起草指引
+通过后：
 
-```yaml
-s1_external_context:
-  registration_state: map_located
-  registration_detail: cad_aligned_partial_with_semantic_inliers   # 子字段
-  cad_alignment:
-    note: "本字段为 s2_dwg_parse.cad_map_registration 的引用复述。"
-    state: control_points_needed
-    state_detail: aligned_partial_with_semantic_inliers
-    quality: aligned_partial
-    rms_error_m: 2.856
-    semantic_anchors_summary:
-      water_anchor: "CAD-07 / 盐曲 / 1.85m"
-      road_anchor: "CAD-08 / G317 / 0.87m"        # ⭐ 重点强调
-    outliers_to_recheck: ["CAD-03","CAD-06","CAD-09"]
-  entrance_judgment:
-    level: candidate
-    main_entrance:
-      orientation: "G317 来向（基于 CAD-08 锚点，置信度 medium）"
-      cad_edge_binding: "工作假设 — 红线靠 G317 侧某段；具体顶点待复核"
-      confidence: medium
-      must_verify_before_construction: true
-    secondary_entrance:
-      orientation: "次级道路/桥头方向"
-      confidence: low_medium
-  working_hypotheses:
-    - "G317 沿场地北/东北侧延伸，主到达界面在该向（CAD-08 锚点）"
-    - "盐曲沿场地南/东南侧延伸，景观与亲水界面在该向（CAD-07 锚点）"
-    - "曲登纳桥仍是近场地标节点，作为叙事锚点保留"
-  s2_use:
-    can_bind_to_cad_edges: false                  # 整体仍 partial，不能高置信落边
-    can_consume_for_concept_design: true          # 但概念阶段足够
-    can_bind_g317_direction: true                 # 新增；CAD-08 锚点支持
-    can_bind_water_direction: true                # 新增；CAD-07 锚点支持
-    required_control_points_for_precise_binding:
-      - "复核或重选 CAD-03 / CAD-06 / CAD-09"
-      - "可选：再补 1-2 个桥头/交叉口语义点提升 quality"
+```powershell
+git add projects/26-BQ-PARK/05_output/record.md
+git commit -m "docs(record): finalize S1/S2 9-point; draft light S3/S4/S9 skeletons"
+git push origin main
 ```
 
-### workflow_state / completeness 起草指引
+如果 validate 报错，**就地修字段**，不要回本文件等审。schema 真的撑不住才回来。
 
-- **删除**旧的"S3 blocked by S1/S2 未确认"、"S9 blocked by S3 未执行"
-- **删除**任何还停留在 5-24 stale 状态的描述
-- `ready_for: [S3, S4, S5, S9]`（轻量/骨架版）
-- S6/S7 reason 改为"软阻塞，降级为读取参考资料 + 生成任务书"
-- `low_confidence_count` 应该上调（CAD-03/06/09 三点 + 整体 partial）
-- `pending_count` 加入"复核 CAD-03/06/09"和"决定是否补桥头/交叉口语义点"
+**M7. 在本文件覆盖一条简短回执**
 
-### 不可做（本轮硬约束）
+只要包含：
+- commit hash + push 是否成功
+- `validate_record.py 26-BQ-PARK` 输出尾部 3-5 行
+- `git diff --stat HEAD~1..HEAD` 摘要
+- 简短列：S1/S2/S3/S4/S9 各自 marker 已写入 ✓/✗
 
-- 不改 S1/S2 SKILL.md 的 state 枚举值定义
+### 本轮硬约束（仍不能破）
+
+- 不改 S1/S2 SKILL.md state 枚举（`map_located` / `cad_aligned`、`cad_only` / `control_points_needed` / `aligned`）
 - 不改 `_schema/record.schema.md`
 - 不动 P0+ 安全阀代码（`cad_align.py` / `server.py` / `app.js`）
-- 不顺手写 S6/S7/S10 完整 SKILL.md
-- 不直接写入 `record.md` —— 先在本文件贴完整替换文本草稿
+- 不动 inventory.json（与 marker 改动无关）
+- 不裸读 DWG / DOC 二进制
+- 不要顺手新建 S6/S7/S10 SKILL.md（先在 S9 骨架的"专项设计"小节用文字 placeholder 占位）
+- 不要在 S9 骨架里编造没有的历史汇报资料；如果 `03_references/` 还没历史汇报参考，就在该节标 pending
 
-### 执行顺序
+### 后续节奏（本轮 push 后会做什么）
 
-1. codex 按上面指引起草 S1/S2 marker + workflow_state/completeness 完整替换文本，覆盖本文件
-2. reviewer 审一次（重点：state 枚举值是否合规、CAD-07/CAD-08 强发现是否如实表达、CAD-09 复核建议是否到位）
-3. GO 后写入 record.md → `python _tools/validate_record.py 26-BQ-PARK` → diff → commit + push
-4. 立即起草轻量 S3 marker（codex 直接做，reviewer 只在写 record.md 时停一次）
-5. 然后建设 S9 skill 增强
+reviewer 收到 M7 回执后**只看硬伤**（marker 越界、state 枚举值破坏、schema 违规）。无硬伤就放行下一阶段：
 
-球在 codex。下一次 push 应该是 S1/S2 marker + workflow_state 完整替换文本草稿。
+- **下一阶段 = S9 增强 skill 建设**：把 `skills/S9_report_outline/SKILL.md` 从"骨架生成"升级为"读 S1-S4 + 03_references 历史资料 + 标准模板 → 生成汇报正文"。这一阶段允许 codex 独立设计 + 实施 + 自测，**reviewer 只在 skill 影响多个项目的契约（例如改公共 schema、改其他 skill 的 marker 边界）时停**。
+- 再下一阶段 = S10 PPT 大纲 skill + 接入 `anthropic-skills:pptx` 生成 .pptx。
+
+### 开工
+
+立即按 M1-M7 顺序做完一次性 push。不要再贴草稿等审。
