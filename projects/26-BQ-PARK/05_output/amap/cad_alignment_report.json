@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "status": "ok",
-  "created_at": "2026-05-25T14:13:42+0800",
+  "created_at": "2026-05-25T14:54:15+0800",
   "project_code": "26-BQ-PARK",
   "input": "05_output/amap/control_points.json",
   "candidate_set_id_current": "sha256:b4512aa3991f8ad3",
@@ -10,23 +10,23 @@
     "source": "CAD drawing coordinates",
     "target": "AMap GCJ-02 converted to local tangent meters for residual checks",
     "local_origin_gcj02": {
-      "lon": 94.03256666666668,
-      "lat": 31.9252
+      "lon": 94.03248388888889,
+      "lat": 31.925480555555552
     }
   },
-  "point_count": 3,
+  "point_count": 9,
   "inlier_threshold_m": 5.0,
-  "quality": "aligned_high",
+  "quality": "aligned_partial",
   "duplicates": [],
   "all_points_fit": {
-    "scale": 0.6611075028170342,
-    "rotation_deg": 42.52399071331349,
+    "scale": 1.0779569214407787,
+    "rotation_deg": 2.95900941471412,
     "translation_local_m": [
-      1288143.3175242774,
-      -1988992.9309505434
+      -446574.7266850452,
+      -3838002.0057255942
     ],
-    "rms_error_m": 2.810056015173836,
-    "max_error_m": 3.972815332213856,
+    "rms_error_m": 5.17971647869707,
+    "max_error_m": 7.87185714680689,
     "residuals": [
       {
         "label": "CAD-01",
@@ -34,16 +34,16 @@
         "feature_name": "redline handle 1306 vertex 16",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 2.0442946692503474,
-        "delta_east_m": 1.9121579006737122,
-        "delta_north_m": 0.7230441602118702,
+        "error_m": 5.857580069847781,
+        "delta_east_m": -5.831318232082168,
+        "delta_north_m": 0.5540504948685054,
         "expected_gcj02": [
-          94.03202023849842,
-          31.925006495216202
+          94.03119628047106,
+          31.925314977120276
         ],
         "provided_gcj02": [
-          94.032,
-          31.925
+          94.031258,
+          31.92531
         ]
       },
       {
@@ -52,16 +52,16 @@
         "feature_name": "redline handle 1306 vertex 22",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 3.972815332213856,
-        "delta_east_m": -3.671154613855187,
-        "delta_north_m": -1.5185142294503748,
+        "error_m": 3.731872104875411,
+        "delta_east_m": -1.0124187712251924,
+        "delta_north_m": 3.5919183786408766,
         "expected_gcj02": [
-          94.03256114407873,
-          31.925186358954587
+          94.03209628441097,
+          31.92506426675179
         ],
         "provided_gcj02": [
-          94.0326,
-          31.9252
+          94.032107,
+          31.925032
         ]
       },
       {
@@ -70,35 +70,150 @@
         "feature_name": "redline handle 1306 vertex 25",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 1.9305030605117135,
-        "delta_east_m": 1.7589967127856667,
-        "delta_north_m": 0.7954700692385046,
+        "error_m": 6.360058499259432,
+        "delta_east_m": -1.0213261115145258,
+        "delta_north_m": 6.277518386109335,
         "expected_gcj02": [
-          94.03311861742286,
-          31.92540714582921
+          94.03306719013437,
+          31.924850391907125
         ],
         "provided_gcj02": [
-          94.0331,
-          31.9254
+          94.033078,
+          31.924794
+        ]
+      },
+      {
+        "label": "CAD-04",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 28",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 1.2605421444859841,
+        "delta_east_m": -0.06176422282459271,
+        "delta_north_m": 1.2590280691089448,
+        "expected_gcj02": [
+          94.03340534627839,
+          31.925474310041576
+        ],
+        "provided_gcj02": [
+          94.033406,
+          31.925463
+        ]
+      },
+      {
+        "label": "CAD-05",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 1",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 5.243207169421555,
+        "delta_east_m": 5.152812407243346,
+        "delta_north_m": -0.9694048262891144,
+        "expected_gcj02": [
+          94.0329795381236,
+          31.92568429168828
+        ],
+        "provided_gcj02": [
+          94.032925,
+          31.925693
+        ]
+      },
+      {
+        "label": "CAD-06",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 9",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 7.87185714680689,
+        "delta_east_m": -2.865043092332737,
+        "delta_north_m": -7.3319617442272005,
+        "expected_gcj02": [
+          94.03217067596296,
+          31.926072135867027
+        ],
+        "provided_gcj02": [
+          94.032201,
+          31.926138
+        ]
+      },
+      {
+        "label": "CAD-07",
+        "feature_type": "water_edge",
+        "feature_name": "盐曲",
+        "purpose": "water_binding",
+        "confidence": "medium",
+        "error_m": 2.171884585617123,
+        "delta_east_m": -0.25171446017510135,
+        "delta_north_m": -2.157248822871395,
+        "expected_gcj02": [
+          94.03214133581717,
+          31.924844621104107
+        ],
+        "provided_gcj02": [
+          94.032144,
+          31.924864
+        ]
+      },
+      {
+        "label": "CAD-08",
+        "feature_type": "road_edge",
+        "feature_name": "G317",
+        "purpose": "road_binding",
+        "confidence": "medium",
+        "error_m": 2.822971908798347,
+        "delta_east_m": 0.1715789779311585,
+        "delta_north_m": 2.817752837314991,
+        "expected_gcj02": [
+          94.03273881601712,
+          31.925981312304405
+        ],
+        "provided_gcj02": [
+          94.032737,
+          31.925956
+        ]
+      },
+      {
+        "label": "CAD-09",
+        "feature_type": "road_edge",
+        "feature_name": "G317",
+        "purpose": "road_binding",
+        "confidence": "medium",
+        "error_m": 7.003151539914514,
+        "delta_east_m": 5.7191935052165,
+        "delta_north_m": -4.041652773420353,
+        "expected_gcj02": [
+          94.03255953278435,
+          31.926038693215407
+        ],
+        "provided_gcj02": [
+          94.032499,
+          31.926075
         ]
       }
     ]
   },
   "best_fit": {
-    "scale": 0.6611075028170342,
-    "rotation_deg": 42.52399071331349,
+    "scale": 1.0454634919051726,
+    "rotation_deg": 3.348928114293019,
     "translation_local_m": [
-      1288143.3175242774,
-      -1988992.9309505434
+      -407771.7895274223,
+      -3725173.448218859
     ],
-    "rms_error_m": 2.810056015173836,
-    "max_error_m": 3.972815332213856,
+    "rms_error_m": 2.8563210850995815,
+    "max_error_m": 4.410316682473684,
     "inlier_labels": [
       "CAD-01",
       "CAD-02",
-      "CAD-03"
+      "CAD-04",
+      "CAD-05",
+      "CAD-07",
+      "CAD-08"
     ],
-    "outlier_labels": [],
+    "outlier_labels": [
+      "CAD-03",
+      "CAD-06",
+      "CAD-09"
+    ],
     "residuals": [
       {
         "label": "CAD-01",
@@ -106,16 +221,16 @@
         "feature_name": "redline handle 1306 vertex 16",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 2.0442946692503474,
-        "delta_east_m": 1.9121579006737122,
-        "delta_north_m": 0.7230441602118702,
+        "error_m": 2.1179259986543006,
+        "delta_east_m": -1.9622168225146481,
+        "delta_north_m": -0.797066921416473,
         "expected_gcj02": [
-          94.03202023849842,
-          31.925006495216202
+          94.03123723160884,
+          31.92530283982602
         ],
         "provided_gcj02": [
-          94.032,
-          31.925
+          94.031258,
+          31.92531
         ]
       },
       {
@@ -124,16 +239,16 @@
         "feature_name": "redline handle 1306 vertex 22",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 3.972815332213856,
-        "delta_east_m": -3.671154613855187,
-        "delta_north_m": -1.5185142294503748,
+        "error_m": 3.674865179847974,
+        "delta_east_m": 0.47577573201416357,
+        "delta_north_m": 3.6439362704204186,
         "expected_gcj02": [
-          94.03256114407873,
-          31.925186358954587
+          94.03211203568024,
+          31.92506473403646
         ],
         "provided_gcj02": [
-          94.0326,
-          31.9252
+          94.032107,
+          31.925032
         ]
       },
       {
@@ -142,22 +257,130 @@
         "feature_name": "redline handle 1306 vertex 25",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 1.9305030605117135,
-        "delta_east_m": 1.7589967127856667,
-        "delta_north_m": 0.7954700692385046,
+        "error_m": 7.947611533146156,
+        "delta_east_m": -2.143180550950518,
+        "delta_north_m": 7.653189283418072,
         "expected_gcj02": [
-          94.03311861742286,
-          31.92540714582921
+          94.03305531626216,
+          31.924862749769055
         ],
         "provided_gcj02": [
-          94.0331,
-          31.9254
+          94.033078,
+          31.924794
+        ]
+      },
+      {
+        "label": "CAD-04",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 28",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 2.711710529309993,
+        "delta_east_m": -2.6058114210247254,
+        "delta_north_m": 0.7504137744123456,
+        "expected_gcj02": [
+          94.03337841970907,
+          31.92546974108163
+        ],
+        "provided_gcj02": [
+          94.033406,
+          31.925463
+        ]
+      },
+      {
+        "label": "CAD-05",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 1",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 4.410316682473684,
+        "delta_east_m": 3.6680861544523395,
+        "delta_north_m": -2.4486807066705794,
+        "expected_gcj02": [
+          94.0329638235628,
+          31.92567100312695
+        ],
+        "provided_gcj02": [
+          94.032925,
+          31.925693
+        ]
+      },
+      {
+        "label": "CAD-06",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 9",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 10.870548893651995,
+        "delta_east_m": -2.329382692160973,
+        "delta_north_m": -10.618041699048817,
+        "expected_gcj02": [
+          94.03217634547134,
+          31.926042616508546
+        ],
+        "provided_gcj02": [
+          94.032201,
+          31.926138
+        ]
+      },
+      {
+        "label": "CAD-07",
+        "feature_type": "water_edge",
+        "feature_name": "盐曲",
+        "purpose": "water_binding",
+        "confidence": "medium",
+        "error_m": 1.8455156563329602,
+        "delta_east_m": 1.2694584147812904,
+        "delta_north_m": -1.3395534221937737,
+        "expected_gcj02": [
+          94.03215743613438,
+          31.924851966586868
+        ],
+        "provided_gcj02": [
+          94.032144,
+          31.924864
+        ]
+      },
+      {
+        "label": "CAD-08",
+        "feature_type": "road_edge",
+        "feature_name": "G317",
+        "purpose": "road_binding",
+        "confidence": "medium",
+        "error_m": 0.8665915699020873,
+        "delta_east_m": -0.8452920578081553,
+        "delta_north_m": 0.19095100427025358,
+        "expected_gcj02": [
+          94.03272805330467,
+          31.925957715342054
+        ],
+        "provided_gcj02": [
+          94.032737,
+          31.925956
+        ]
+      },
+      {
+        "label": "CAD-09",
+        "feature_type": "road_edge",
+        "feature_name": "G317",
+        "purpose": "road_binding",
+        "confidence": "medium",
+        "error_m": 8.68116467679031,
+        "delta_east_m": 5.171140160446631,
+        "delta_north_m": -6.972942677705575,
+        "expected_gcj02": [
+          94.03255373210723,
+          31.926012360990175
+        ],
+        "provided_gcj02": [
+          94.032499,
+          31.926075
         ]
       }
     ]
   },
   "recommendations": [
-    "可用内点先做粗配准判断，但不要把入口/道路边界写成高置信结论。",
-    "当前控制点主要用于几何配准；若要判断道路、桥梁、入口或水系落边，请补充道路交叉口、道路边线、桥头两端或水岸等语义控制点。"
+    "优先重选或删除高残差点：CAD-03、CAD-06、CAD-09",
+    "可用内点先做粗配准判断，但不要把入口/道路边界写成高置信结论。"
   ]
 }

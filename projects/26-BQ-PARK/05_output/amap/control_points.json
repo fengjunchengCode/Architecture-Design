@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-05-25T14:13:42+0800",
+  "updated_at": "2026-05-25T14:54:15+0800",
   "project": "26-BQ-PARK",
   "candidate_set_id_at_save": "sha256:b4512aa3991f8ad3",
   "coordinate_system": {
@@ -15,8 +15,8 @@
         "y": 3534296.981684564
       },
       "amap_gcj02": [
-        94.032,
-        31.925
+        94.031258,
+        31.92531
       ],
       "feature_type": "redline_corner",
       "feature_name": "redline handle 1306 vertex 16",
@@ -32,8 +32,8 @@
         "y": 3534267.053510857
       },
       "amap_gcj02": [
-        94.0326,
-        31.9252
+        94.032107,
+        31.925032
       ],
       "feature_type": "redline_corner",
       "feature_name": "redline handle 1306 vertex 22",
@@ -49,14 +49,116 @@
         "y": 3534240.603434482
       },
       "amap_gcj02": [
-        94.0331,
-        31.9254
+        94.033078,
+        31.924794
       ],
       "feature_type": "redline_corner",
       "feature_name": "redline handle 1306 vertex 25",
       "purpose": "registration",
       "confidence": "medium",
       "note": "CAD点位于项目红线东南角。卫星图（小图）显示该区域靠近盐曲河及一座跨河设施（可能是桥或水闸），但该点未明确落在该设施的端点或边缘上，因此作为红线角点用于注册。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-04",
+      "cad_point": {
+        "x": 597602.4128721136,
+        "y": 3534303.418909435
+      },
+      "amap_gcj02": [
+        94.033406,
+        31.925463
+      ],
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 28",
+      "purpose": "registration",
+      "confidence": "medium",
+      "note": "CAD点位于项目红线东端角点。卫星图（小图）中，该角点大致对应于红线框的东端，靠近一条从北向南延伸的蓝色线条（可能代表道路或水渠边缘），但对应关系不确切。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-05",
+      "cad_point": {
+        "x": 597566.2607273574,
+        "y": 3534327.001165579
+      },
+      "amap_gcj02": [
+        94.032925,
+        31.925693
+      ],
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 1",
+      "purpose": "registration",
+      "confidence": "medium",
+      "note": "CAD点位于项目红线东北角。在卫星图（小图）中，该点位于场地北部，其北侧有建筑和道路痕迹，但点位本身未精确落在可见的地物特征上。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-06",
+      "cad_point": {
+        "x": 597497.527539761,
+        "y": 3534370.659750258
+      },
+      "amap_gcj02": [
+        94.032201,
+        31.926138
+      ],
+      "feature_type": "redline_corner",
+      "feature_name": "redline handle 1306 vertex 9",
+      "purpose": "registration",
+      "confidence": "medium",
+      "note": "CAD点位于项目红线北端角点。卫星图（小图）中，该角点大致对应于红线框的北缘，附近有建筑群，但未直接落在G317国道或达尔塘路等已知道路上。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-07",
+      "cad_point": {
+        "x": 597488.4156019166,
+        "y": 3534244.197338932
+      },
+      "amap_gcj02": [
+        94.032144,
+        31.924864
+      ],
+      "feature_type": "water_edge",
+      "feature_name": "盐曲",
+      "purpose": "water_binding",
+      "confidence": "medium",
+      "note": "CAD点位于DLSS图层，在CAD图中处于蓝色线条（推测为水系）附近。卫星图（小图）显示项目场地南侧紧邻盐曲河及一座水利设施（水闸/小型水库），该点很可能对应于该水利设施的边缘或结构角点。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-08",
+      "cad_point": {
+        "x": 597546.7733985137,
+        "y": 3534358.722434355
+      },
+      "amap_gcj02": [
+        94.032737,
+        31.925956
+      ],
+      "feature_type": "road_edge",
+      "feature_name": "G317",
+      "purpose": "road_binding",
+      "confidence": "medium",
+      "note": "CAD点位于DLSS图层，在CAD图中处于北部道路边缘。卫星图（小图）与sidecar摘要显示项目场地北侧为G317国道及附属道路（如达尔塘路）。该点很可能对应于G317或其连接道路的边线。",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-09",
+      "cad_point": {
+        "x": 597531.3863982973,
+        "y": 3534365.451373012
+      },
+      "amap_gcj02": [
+        94.032499,
+        31.926075
+      ],
+      "feature_type": "road_edge",
+      "feature_name": "G317",
+      "purpose": "road_binding",
+      "confidence": "medium",
+      "note": "CAD点位于DLSS图层，在CAD图中处于北部道路边缘。卫星图（小图）与sidecar摘要显示项目场地北侧为G317国道及附属道路（如达尔塘路）。该点很可能对应于G317或其连接道路的边线。",
       "source": "uploader_ui"
     }
   ],
