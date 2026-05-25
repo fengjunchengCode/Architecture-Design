@@ -935,7 +935,7 @@ pre {
 
   .stage-nav {
     position: static;
-    grid-template-columns: repeat(5, minmax(132px, 1fr));
+    grid-template-columns: repeat(6, minmax(132px, 1fr));
     overflow-x: auto;
   }
 

@@ -1,0 +1,175 @@
+.drawing-workbench {
+  display: grid;
+  gap: 14px;
+}
+
+.workbench-toolbar,
+.workbench-layout,
+.workbench-side,
+.workbench-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.workbench-toolbar {
+  grid-template-columns: 190px minmax(260px, 1fr) auto auto;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+}
+
+.workbench-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: start;
+}
+
+.workbench-side {
+  position: sticky;
+  top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+}
+
+.workbench-side label,
+.workbench-toolbar label {
+  display: grid;
+  gap: 6px;
+}
+
+.workbench-side span,
+.workbench-toolbar span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workbench-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.workbench-actions button {
+  min-height: 38px;
+}
+
+.object-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.object-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.72);
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.object-row.active {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.object-row b {
+  font-size: 13px;
+}
+
+.object-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workbench-canvas-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.workbench-status {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workbench-canvas {
+  position: relative;
+  min-height: 520px;
+  border: 1px solid var(--line);
+  background: #eee8dc;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.workbench-canvas img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
+.workbench-canvas svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.workbench-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.workbench-empty[hidden] {
+  display: none;
+}
+
+.render-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.render-preview img {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.render-preview a {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+@media (max-width: 920px) {
+  .workbench-toolbar,
+  .workbench-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-side {
+    position: static;
+  }
+
+  .workbench-canvas {
+    min-height: 360px;
+  }
+}

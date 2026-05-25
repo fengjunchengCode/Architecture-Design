@@ -108,6 +108,11 @@ JPG/PNG/WEBP 区位图上传后不要求用户切换 API 模型。S0 运行时�
 | `amap/s1_map_context.json` | `amap_context.py` / 上传 UI | S1 高德地图上下文，含中心点、逆地理编码、500m/1000m POI |
 | `amap/s1_amap_raw.json` | `amap_context.py` | 高德原始响应与请求参数（key 已脱敏） |
 | `amap/control_points.json` | 上传 UI / S2 | 用户录入的“地图点 ↔ CAD 点”控制点，用于 S2 配准 |
+| `drawings/base/*` | user / agent | Stage W 语义绘图工作台底图，例如总平渲染图、CAD 导出图或卫星图 |
+| `drawings/semantic/*.json` | 上传 UI / diagram skills | 标准 semantic drawing JSON，例如功能分区、交通分析 |
+| `drawings/rendered/*.{html,png}` | `_tools/drawing_workbench` | 从 semantic JSON 渲染的人可读 HTML / PNG 技术图 |
+| `report/` | S9 / report skills | 汇报文档、HTML 页面、PDF 草稿与配套资产 |
+| `ppt/` | presentation skills | PPT/PPTX 草稿、幻灯片源文件与导出资产 |
 | `汇报文档.md` | S9 | 6 段式汇报初稿 |
 | `assets/` | 各 skill | 高德截图、生成示意图、中间产物 |
 

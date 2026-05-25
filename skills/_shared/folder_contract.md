@@ -17,6 +17,12 @@ projects/{code}/
     ├── record.md
     ├── inventory.json
     ├── parse_log.md
+    ├── drawings/
+    │   ├── base/                  # semantic drawing base images
+    │   ├── semantic/              # locked semantic JSON
+    │   └── rendered/              # rendered HTML / PNG
+    ├── report/                    # report/PDF working outputs
+    ├── ppt/                       # deck/PPTX working outputs
     └── 汇报文档.md
 ```
 

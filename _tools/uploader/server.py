@@ -22,6 +22,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PROJECTS_DIR = REPO_ROOT / "projects"
 ENV_FILE = REPO_ROOT / ".env"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from _tools.drawing_workbench.render import render_html
+from _tools.drawing_workbench.schema import (
+    DRAWING_TYPES,
+    drawing_output_paths,
+    empty_drawing,
+    normalize_drawing,
+)
 
 CODE_REGEX = re.compile(r"^\d{2}-[A-Z]{2,3}-[A-Za-z0-9]{2,8}$")
 VALID_TYPES = {
@@ -261,6 +271,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_spatial(parsed.query)
             elif parsed.path == "/api/cad-preview":
                 self.handle_cad_preview(parsed.query, run=False)
+            elif parsed.path == "/api/drawing/load":
+                self.handle_drawing_load(parsed.query)
             elif parsed.path == "/api/project-file":
                 self.serve_project_file(parsed.query)
             else:
@@ -289,6 +301,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_alignment_check()
             elif parsed.path == "/api/cad-preview":
                 self.handle_cad_preview("", run=True)
+            elif parsed.path == "/api/drawing/save":
+                self.handle_drawing_save()
+            elif parsed.path == "/api/drawing/render":
+                self.handle_drawing_render()
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -352,6 +368,130 @@ class UploaderHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def drawing_paths(self, proj: Path, drawing_type: str) -> dict[str, Path]:
+        rels = drawing_output_paths(drawing_type)
+        return {key: proj / rel for key, rel in rels.items()}
+
+    def project_file_url(self, code: str, rel_path: str | None) -> str | None:
+        if not rel_path:
+            return None
+        return f"/api/project-file?project={code}&path={rel_path}"
+
+    def default_drawing_for_project(self, code: str, proj: Path, drawing_type: str) -> dict[str, object]:
+        base_rel = "05_output/drawings/base/master_plan.jpg"
+        width = 1
+        height = 1
+        base_path = proj / base_rel
+        if base_path.exists():
+            try:
+                from PIL import Image
+
+                with Image.open(base_path) as image:
+                    width, height = image.size
+            except Exception:
+                width = height = 1
+        return empty_drawing(
+            project_code=code,
+            drawing_type=drawing_type,
+            base_path=base_rel,
+            natural_width=width,
+            natural_height=height,
+            base_source="render",
+        )
+
+    def handle_drawing_load(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+        proj = project_dir(code)
+        paths = self.drawing_paths(proj, drawing_type)
+        rels = drawing_output_paths(drawing_type)
+        semantic_path = paths["semantic"]
+        if semantic_path.exists():
+            drawing = normalize_drawing(
+                json.loads(semantic_path.read_text(encoding="utf-8")),
+                project_code=code,
+            )
+            exists = True
+        else:
+            drawing = self.default_drawing_for_project(code, proj, drawing_type)
+            exists = False
+
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "drawing_type": drawing_type,
+                "exists": exists,
+                "drawing": drawing,
+                "paths": rels,
+                "base_image_exists": (proj / drawing["base_image"]["path"]).exists(),
+                "base_image_url": self.project_file_url(code, drawing["base_image"]["path"]),
+                "html_exists": paths["html"].exists(),
+                "html_url": self.project_file_url(code, rels["html"]) if paths["html"].exists() else None,
+                "png_exists": paths["png"].exists(),
+                "png_url": self.project_file_url(code, rels["png"]) if paths["png"].exists() else None,
+            }
+        )
+
+    def handle_drawing_save(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        drawing = normalize_drawing(payload.get("drawing") or payload, project_code=code)
+        paths = self.drawing_paths(proj, drawing["drawing_type"])
+        paths["semantic"].parent.mkdir(parents=True, exist_ok=True)
+        paths["semantic"].write_text(json.dumps(drawing, ensure_ascii=False, indent=2), encoding="utf-8")
+        rels = drawing_output_paths(drawing["drawing_type"])
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "drawing_type": drawing["drawing_type"],
+                "path": rels["semantic"],
+                "drawing": drawing,
+            }
+        )
+
+    def handle_drawing_render(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        if payload.get("drawing"):
+            drawing = normalize_drawing(payload.get("drawing"), project_code=code)
+        else:
+            drawing_type = str(payload.get("drawing_type", "")).strip()
+            if drawing_type not in DRAWING_TYPES:
+                raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+            semantic_path = self.drawing_paths(proj, drawing_type)["semantic"]
+            if not semantic_path.exists():
+                raise ValueError("semantic drawing JSON does not exist; save first")
+            drawing = normalize_drawing(json.loads(semantic_path.read_text(encoding="utf-8")), project_code=code)
+
+        paths = self.drawing_paths(proj, drawing["drawing_type"])
+        rels = drawing_output_paths(drawing["drawing_type"])
+        for path in paths.values():
+            path.parent.mkdir(parents=True, exist_ok=True)
+        paths["semantic"].write_text(json.dumps(drawing, ensure_ascii=False, indent=2), encoding="utf-8")
+        paths["html"].write_text(render_html(drawing), encoding="utf-8")
+        from _tools.drawing_workbench.export import export_png
+
+        png = export_png(drawing, project_dir=proj, output_path=paths["png"])
+
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "drawing_type": drawing["drawing_type"],
+                "paths": rels,
+                "html_url": self.project_file_url(code, rels["html"]),
+                "png_url": self.project_file_url(code, rels["png"]),
+                "export": png,
+            }
+        )
 
     def handle_projects(self) -> None:
         PROJECTS_DIR.mkdir(exist_ok=True)

@@ -1,5 +1,5 @@
-const PAGES = ["project", "s0", "s1", "s2", "status"];
-const PAGE_ALIASES = { spatial: "s1", upload: "s0", validate: "status" };
+const PAGES = ["project", "s0", "s1", "s2", "workbench", "status"];
+const PAGE_ALIASES = { spatial: "s1", upload: "s0", validate: "status", drawings: "workbench" };
 const requestedPage = new URLSearchParams(window.location.search).get("page") || "project";
 const requestedStagePage = PAGE_ALIASES[requestedPage] || requestedPage;
 
@@ -743,11 +743,20 @@ function syncUrlState() {
   window.history.replaceState({}, "", url);
 }
 
+function notifyUploaderState() {
+  window.dispatchEvent(
+    new CustomEvent("uploader:state", {
+      detail: { project: state.project, page: state.page },
+    }),
+  );
+}
+
 function setPage(page, options = {}) {
   const next = PAGES.includes(page) ? page : "project";
   state.page = canOpenPage(next) ? next : "project";
   if (options.syncUrl !== false) syncUrlState();
   setControls();
+  notifyUploaderState();
 }
 
 function setTab(id, mode) {
@@ -808,6 +817,7 @@ function setActiveProject(code, options = {}) {
   renderProjectList();
   syncUrlState();
   setControls();
+  notifyUploaderState();
 }
 
 function setControls() {
@@ -949,6 +959,7 @@ async function loadProjects() {
   }
   renderProjectList();
   setControls();
+  notifyUploaderState();
   if (shouldRefreshProjectData) await runInventory();
   if (shouldRefreshProjectData) await loadSpatial();
   if (shouldRefreshProjectData) await loadCadPreview();
@@ -1513,7 +1524,14 @@ function bind() {
   });
 }
 
+window.architectureUploader = {
+  getProject: () => state.project,
+  getPage: () => state.page,
+  api,
+};
+
 if (!PAGES.includes(state.page)) state.page = "project";
 bind();
 setControls();
+notifyUploaderState();
 loadProjects().catch((err) => writeOutput(err.message));

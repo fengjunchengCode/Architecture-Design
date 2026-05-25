@@ -76,7 +76,32 @@ folders:
   - path: 05_output
     label: "产出"
     required: true
-    items: []
+    items:
+      - pattern: "drawings/base/*"
+        ext: [jpg, jpeg, png, webp, svg]
+        min: 0
+        max: 999
+        required: false
+      - pattern: "drawings/semantic/*.json"
+        ext: [json]
+        min: 0
+        max: 999
+        required: false
+      - pattern: "drawings/rendered/*"
+        ext: [html, png, pdf]
+        min: 0
+        max: 999
+        required: false
+      - pattern: "report/*"
+        ext: [md, html, pdf, png, jpg, json]
+        min: 0
+        max: 999
+        required: false
+      - pattern: "ppt/*"
+        ext: [pptx, html, md, json, png, jpg]
+        min: 0
+        max: 999
+        required: false
 
 vision_route:
   output_dir: 05_output/vision
@@ -96,6 +121,15 @@ amap_context:
   control_points_file: control_points.json
   coordinate_system: GCJ-02 / AMap
   ui_entry: _tools/uploader/server.py
+
+drawing_workbench:
+  output_dir: 05_output/drawings
+  base_dir: 05_output/drawings/base
+  semantic_dir: 05_output/drawings/semantic
+  rendered_dir: 05_output/drawings/rendered
+  drawing_types: [functional_zoning, traffic_analysis]
+  coordinate_mode: normalized_image_xy_0_1
+  ui_entry: _tools/uploader/server.py?page=workbench
 
 s0_ready_gate:
   required:
