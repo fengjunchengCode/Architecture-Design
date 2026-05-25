@@ -399,6 +399,94 @@ select:disabled {
   gap: 12px;
 }
 
+.amap-panel {
+  border: 1px solid var(--line);
+  background: rgba(247, 243, 234, 0.48);
+  border-radius: 6px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.amap-panel.disabled {
+  opacity: 0.74;
+}
+
+.amap-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.amap-head span,
+.map-hint,
+.map-fallback {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.amap-map {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.s2-map-panel .amap-map {
+  min-height: 340px;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.55;
+}
+
+.map-hint {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.map-hint.warn {
+  color: var(--accent-2);
+}
+
+.map-fallback {
+  width: fit-content;
+}
+
+.active-candidate {
+  border: 1px dashed var(--line);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.amap-label {
+  border: 1px solid var(--accent);
+  background: #fff;
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(31, 111, 91, 0.16);
+}
+
 .s2-control-panel {
   position: sticky;
   top: 18px;
@@ -597,6 +685,11 @@ select:disabled {
   align-items: center;
 }
 
+.candidate-item.active {
+  border-color: var(--accent);
+  background: rgba(31, 111, 91, 0.08);
+}
+
 .candidate-item span,
 .candidate-item small {
   color: var(--muted);
@@ -611,7 +704,7 @@ select:disabled {
 .candidate-pick {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
 }
@@ -625,8 +718,6 @@ select:disabled {
 .candidate-item button {
   min-height: 34px;
   padding: 5px 10px;
-  grid-row: 1 / span 2;
-  grid-column: 2;
 }
 
 .handoff-list {
@@ -836,10 +927,19 @@ pre {
     align-items: stretch;
   }
 
+  .candidate-pick {
+    grid-template-columns: 1fr;
+  }
+
   .s2-control-panel,
   .s2-workbench .cad-preview-panel {
     position: static;
     max-height: none;
+  }
+
+  .amap-map,
+  .s2-map-panel .amap-map {
+    min-height: 320px;
   }
 
   .cad-preview-frame {

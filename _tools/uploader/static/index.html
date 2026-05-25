@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Architecture Intake</title>
     <link rel="stylesheet" href="/style.css">
+    <script src="https://webapi.amap.com/loader.js"></script>
   </head>
   <body>
     <main class="shell">
@@ -168,6 +169,16 @@
                   <button id="checkAmap">检查高德 Key</button>
                   <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
                 </div>
+                <div class="amap-panel" id="s1AmapPanel">
+                  <div class="amap-head">
+                    <b>内嵌高德地图</b>
+                    <span id="s1AmapStatus">等待中心点</span>
+                  </div>
+                  <div class="amap-map" id="s1AmapMap">
+                    <div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div>
+                  </div>
+                  <p class="map-hint" id="s1AmapHint">点击地图会把 GCJ-02 坐标写入上方中心点输入框。</p>
+                </div>
               </div>
 
               <article class="bucket required" data-bucket="location_map">
@@ -224,6 +235,18 @@
               </section>
 
               <div class="spatial-box s2-control-panel">
+                <div class="amap-panel s2-map-panel" id="s2AmapPanel">
+                  <div class="amap-head">
+                    <b>地图拾取</b>
+                    <span id="s2AmapStatus">等待候选点</span>
+                  </div>
+                  <div class="active-candidate" id="s2ActiveCandidate">先在左侧候选点点击“地图拾取”。</div>
+                  <div class="amap-map" id="s2AmapMap">
+                    <div class="map-empty">地图会从 S1 中心点启动；不会使用默认城市。</div>
+                  </div>
+                  <p class="map-hint" id="s2AmapHint">点击地图后会把 GCJ-02 坐标写入当前 CAD 候选点并加入控制点列表。</p>
+                  <a class="map-fallback" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">外部高德拾取器备用</a>
+                </div>
                 <div class="box-head">
                   <b>已选地图点 ↔ CAD 点</b>
                   <span id="controlStatus">0 个控制点</span>

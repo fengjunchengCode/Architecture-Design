@@ -1,10 +1,11 @@
 const PAGES = ["project", "s0", "s1", "s2", "status"];
 const PAGE_ALIASES = { spatial: "s1", upload: "s0", validate: "status" };
 const requestedPage = new URLSearchParams(window.location.search).get("page") || "project";
+const requestedStagePage = PAGE_ALIASES[requestedPage] || requestedPage;
 
 const state = {
   project: "",
-  page: PAGE_ALIASES[requestedPage] || requestedPage,
+  page: PAGES.includes(requestedStagePage) ? requestedStagePage : "project",
   pendingUrlProject: new URLSearchParams(window.location.search).get("project") || "",
   projects: [],
   inventory: null,
@@ -17,6 +18,17 @@ const state = {
   controlPointsSaved: false,
   controlPointsStale: false,
   migrationReport: null,
+  s1Location: "",
+  amap: {
+    config: null,
+    sdk: null,
+    loaderPromise: null,
+    s1Map: null,
+    s1Marker: null,
+    s2Map: null,
+    s2Markers: new Map(),
+    activeCandidateId: "",
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -129,6 +141,306 @@ function refreshStaleState() {
 function hasStaleControlPoints() {
   refreshStaleState();
   return state.controlPointsStale;
+}
+
+function formatGcj02(lng, lat) {
+  return `${Number(lng).toFixed(6)},${Number(lat).toFixed(6)}`;
+}
+
+function parsedLocation(value) {
+  if (!value) return null;
+  try {
+    const normalized = parseLocationInput(String(value).trim());
+    const [lng, lat] = normalized.split(",").map(Number);
+    return { lng, lat, location: formatGcj02(lng, lat) };
+  } catch {
+    return null;
+  }
+}
+
+function s1CenterPoint() {
+  return parsedLocation($("#centerLocation")?.value || state.s1Location);
+}
+
+function setMapStatus(id, text, ok = null) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok === null ? "" : ok ? "#1f6f5b" : "#b94b2f";
+}
+
+function setMapHint(id, text, warn = false) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("warn", warn);
+}
+
+function setMapEmpty(id, text) {
+  const el = $(id);
+  if (!el) return;
+  el.innerHTML = `<div class="map-empty">${escapeHtml(text)}</div>`;
+}
+
+function amapFailureHint(error) {
+  const warnings = state.amap.config?.warnings || [];
+  return warnings.length ? warnings[0] : error?.message || "高德 JSAPI 暂不可用";
+}
+
+async function loadAmapJsapiConfig() {
+  if (state.amap.config) return state.amap.config;
+  state.amap.config = await api("/api/amap-jsapi-config");
+  return state.amap.config;
+}
+
+async function ensureAmapSdk() {
+  if (state.amap.sdk) return state.amap.sdk;
+  if (state.amap.loaderPromise) return state.amap.loaderPromise;
+  const config = await loadAmapJsapiConfig();
+  if (!config.configured || !config.key) {
+    throw new Error(config.warnings?.[0] || "未配置 AMAP_JSAPI_KEY");
+  }
+  const security = config.security || { mode: "none" };
+  if (security.mode === "service_host" && security.service_host) {
+    window._AMapSecurityConfig = { serviceHost: security.service_host };
+  } else if (security.mode === "security_jscode" && security.security_jscode) {
+    window._AMapSecurityConfig = { securityJsCode: security.security_jscode };
+  }
+  if (!window.AMapLoader?.load) {
+    throw new Error("高德 JSAPI loader 未加载，请检查网络或 referer 白名单。");
+  }
+  state.amap.loaderPromise = window.AMapLoader.load({
+    key: config.key,
+    version: "2.0",
+    plugins: ["AMap.Scale", "AMap.ToolBar"],
+  }).then((sdk) => {
+    state.amap.sdk = sdk;
+    return sdk;
+  });
+  return state.amap.loaderPromise;
+}
+
+function addAmapControls(AMap, map) {
+  try {
+    if (AMap.Scale) map.addControl(new AMap.Scale());
+    if (AMap.ToolBar) map.addControl(new AMap.ToolBar({ position: "RB" }));
+  } catch {
+    // Controls are optional; a failed control must not block coordinate picking.
+  }
+}
+
+function lngLatFromAmapClick(event) {
+  if (!event?.lnglat || typeof event.lnglat.getLng !== "function" || typeof event.lnglat.getLat !== "function") {
+    throw new Error("高德地图点击事件未返回 lnglat。");
+  }
+  // AMap JSAPI v2 domestic keys return GCJ-02 lnglat here; do not convert to WGS84.
+  const lng = Number(event.lnglat.getLng());
+  const lat = Number(event.lnglat.getLat());
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) throw new Error("地图坐标无效。");
+  return { lng, lat, location: formatGcj02(lng, lat) };
+}
+
+function upsertS1Marker(AMap, point) {
+  if (!state.amap.s1Map) return;
+  const position = [point.lng, point.lat];
+  if (!state.amap.s1Marker) {
+    state.amap.s1Marker = new AMap.Marker({ position });
+    state.amap.s1Marker.setMap(state.amap.s1Map);
+  } else {
+    state.amap.s1Marker.setPosition(position);
+  }
+}
+
+async function ensureS1Map() {
+  if (state.page !== "s1" || !state.project || !$("#s1AmapMap")) return;
+  const center = s1CenterPoint();
+  if (!center) {
+    setMapStatus("#s1AmapStatus", "等待中心点", null);
+    setMapHint("#s1AmapHint", "先输入或从已有 S1 上下文加载 GCJ-02 中心点。");
+    if (!state.amap.s1Map) setMapEmpty("#s1AmapMap", "输入或加载中心点后显示地图；外部拾取器仍可作为备用。");
+    return;
+  }
+  try {
+    const AMap = await ensureAmapSdk();
+    if (!state.amap.s1Map) {
+      $("#s1AmapMap").innerHTML = "";
+      state.amap.s1Map = new AMap.Map("s1AmapMap", {
+        center: [center.lng, center.lat],
+        zoom: 17,
+        viewMode: "2D",
+      });
+      addAmapControls(AMap, state.amap.s1Map);
+      state.amap.s1Map.on("click", (event) => {
+        try {
+          const picked = lngLatFromAmapClick(event);
+          $("#centerLocation").value = picked.location;
+          state.s1Location = picked.location;
+          upsertS1Marker(AMap, picked);
+          setMapStatus("#s1AmapStatus", "已写入中心点", true);
+          setMapHint("#s1AmapHint", "坐标已写入上方输入框，点击“生成 S1 高德上下文”后生效。");
+        } catch (err) {
+          writeOutput(err.message);
+        }
+      });
+    }
+    if (state.amap.s1Map.setCenter) state.amap.s1Map.setCenter([center.lng, center.lat]);
+    upsertS1Marker(AMap, center);
+    setMapStatus("#s1AmapStatus", "地图已加载", true);
+    setMapHint("#s1AmapHint", "点击地图会把 GCJ-02 坐标写入上方中心点输入框。");
+  } catch (err) {
+    setMapStatus("#s1AmapStatus", "地图不可用", false);
+    setMapHint("#s1AmapHint", amapFailureHint(err), true);
+    setMapEmpty("#s1AmapMap", "内嵌地图暂不可用；请使用外部高德拾取器备用。");
+  }
+}
+
+function findCandidateById(id) {
+  const candidates = state.cadPreview?.candidates || [];
+  return candidates.find((candidate) => (candidate.label || candidate.id) === id);
+}
+
+function updateActiveCandidatePanel() {
+  const el = $("#s2ActiveCandidate");
+  if (!el) return;
+  if (hasStaleControlPoints()) {
+    el.textContent = "旧控制点已过期。请先生成迁移诊断或归档旧控制点，再重新拾取。";
+    return;
+  }
+  if (!state.amap.activeCandidateId) {
+    el.textContent = "先在左侧候选点点击“地图拾取”。";
+    return;
+  }
+  const candidate = findCandidateById(state.amap.activeCandidateId);
+  const role = candidate ? controlFeatureText(candidate.feature_type || "redline_corner") : "候选点";
+  el.textContent = `正在拾取 ${state.amap.activeCandidateId} · ${role}`;
+}
+
+function setActiveCandidate(id) {
+  if (hasStaleControlPoints()) {
+    writeOutput("旧控制点已过期，请先归档旧控制点后再重新拾取。");
+    return;
+  }
+  state.amap.activeCandidateId = id || "";
+  updateActiveCandidatePanel();
+  renderCadPreview();
+  const existing = state.controlPoints.find((point) => point.label === id);
+  const parsed = parsedLocation(existing?.amap_location);
+  if (parsed && state.amap.s2Map?.setCenter) state.amap.s2Map.setCenter([parsed.lng, parsed.lat]);
+}
+
+function clearS2Markers() {
+  state.amap.s2Markers.forEach((marker) => {
+    if (marker?.setMap) marker.setMap(null);
+  });
+  state.amap.s2Markers.clear();
+}
+
+function upsertS2Marker(label, point) {
+  if (!state.amap.s2Map || !state.amap.sdk || !label || !point) return;
+  const AMap = state.amap.sdk;
+  const position = [point.lng, point.lat];
+  let marker = state.amap.s2Markers.get(label);
+  if (!marker) {
+    marker = new AMap.Marker({ position });
+    marker.on("click", () => setActiveCandidate(label));
+    marker.setMap(state.amap.s2Map);
+    state.amap.s2Markers.set(label, marker);
+  } else {
+    marker.setPosition(position);
+  }
+  marker.setLabel({
+    direction: "top",
+    content: `<div class="amap-label">${escapeHtml(label)}</div>`,
+  });
+}
+
+function renderS2Markers() {
+  if (!state.amap.s2Map || !state.amap.sdk) return;
+  if (hasStaleControlPoints()) {
+    clearS2Markers();
+    return;
+  }
+  const labels = new Set();
+  state.controlPoints.forEach((point) => {
+    const parsed = parsedLocation(point.amap_location);
+    if (!point.label || !parsed) return;
+    labels.add(point.label);
+    upsertS2Marker(point.label, parsed);
+  });
+  state.amap.s2Markers.forEach((marker, label) => {
+    if (!labels.has(label)) {
+      if (marker?.setMap) marker.setMap(null);
+      state.amap.s2Markers.delete(label);
+    }
+  });
+}
+
+async function ensureS2Map() {
+  if (state.page !== "s2" || !state.project || !$("#s2AmapMap")) return;
+  const panel = $("#s2AmapPanel");
+  const stale = hasStaleControlPoints();
+  panel?.classList.toggle("disabled", stale);
+  updateActiveCandidatePanel();
+  if (stale) {
+    setMapStatus("#s2AmapStatus", "旧控制点过期", false);
+    setMapHint("#s2AmapHint", "当前旧控制点与 CAD 候选集不匹配，地图拾取已停用。", true);
+    clearS2Markers();
+    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "旧控制点过期。请先处理 stale 提示，再重新拾取。");
+    return;
+  }
+  const center = s1CenterPoint();
+  if (!center) {
+    setMapStatus("#s2AmapStatus", "缺少 S1 中心点", false);
+    setMapHint("#s2AmapHint", "先在 S1 标定中心点，S2 地图才会启动。", true);
+    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "先在 S1 标定中心点；S2 不使用默认城市。");
+    return;
+  }
+  try {
+    const AMap = await ensureAmapSdk();
+    if (!state.amap.s2Map) {
+      $("#s2AmapMap").innerHTML = "";
+      state.amap.s2Map = new AMap.Map("s2AmapMap", {
+        center: [center.lng, center.lat],
+        zoom: 17,
+        viewMode: "2D",
+      });
+      addAmapControls(AMap, state.amap.s2Map);
+      state.amap.s2Map.on("click", (event) => {
+        try {
+          if (hasStaleControlPoints()) return;
+          if (!state.amap.activeCandidateId) {
+            setMapStatus("#s2AmapStatus", "先选择 CAD 点", false);
+            setMapHint("#s2AmapHint", "请先在候选点卡片上点击“地图拾取”。", true);
+            return;
+          }
+          const candidate = findCandidateById(state.amap.activeCandidateId);
+          if (!candidate) throw new Error("当前 CAD 候选点不存在，请重新选择。");
+          const picked = lngLatFromAmapClick(event);
+          candidate.amap_location = picked.location;
+          addCandidateControlPoint(candidate);
+          upsertS2Marker(state.amap.activeCandidateId, picked);
+          setMapStatus("#s2AmapStatus", "已加入控制点", true);
+          setMapHint("#s2AmapHint", `${state.amap.activeCandidateId} 已写入 ${picked.location}`);
+        } catch (err) {
+          writeOutput(err.message);
+        }
+      });
+    }
+    if (state.amap.s2Map.setCenter) state.amap.s2Map.setCenter([center.lng, center.lat]);
+    renderS2Markers();
+    setMapStatus("#s2AmapStatus", state.amap.activeCandidateId ? "等待地图点击" : "地图已加载", true);
+    setMapHint("#s2AmapHint", state.amap.activeCandidateId ? "在地图上点击当前 CAD 点对应的真实位置。" : "先在左侧候选点点击“地图拾取”。");
+  } catch (err) {
+    setMapStatus("#s2AmapStatus", "地图不可用", false);
+    setMapHint("#s2AmapHint", amapFailureHint(err), true);
+    setMapEmpty("#s2AmapMap", "内嵌地图暂不可用；请使用外部高德拾取器备用。");
+  }
+}
+
+function syncAmapUi() {
+  updateActiveCandidatePanel();
+  if (state.page === "s1") ensureS1Map().catch((err) => writeOutput(err.message));
+  if (state.page === "s2") ensureS2Map().catch((err) => writeOutput(err.message));
 }
 
 function directionText(east, north) {
@@ -479,6 +791,11 @@ function setActiveProject(code, options = {}) {
   if (resetInventory) state.controlPointsSaved = false;
   if (resetInventory) state.controlPointsStale = false;
   if (resetInventory) state.migrationReport = null;
+  if (resetInventory) state.s1Location = "";
+  if (resetInventory) {
+    state.amap.activeCandidateId = "";
+    clearS2Markers();
+  }
   if (code) $("#projectCode").value = code;
   if (clearFiles) clearFileInputs();
   renderProjectList();
@@ -546,6 +863,7 @@ function setControls() {
   renderControlPoints();
   renderCadPreview();
   renderAlignment();
+  syncAmapUi();
 }
 
 function renderStaleBanner() {
@@ -605,6 +923,10 @@ async function loadProjects() {
       state.controlPointsSaved = false;
       state.controlPointsStale = false;
       state.migrationReport = null;
+      state.s1Location = "";
+      state.amap.activeCandidateId = "";
+      clearS2Markers();
+      state.page = PAGES.includes(requestedStagePage) ? requestedStagePage : "s0";
       clearFileInputs();
       shouldRefreshProjectData = true;
     } else {
@@ -708,6 +1030,7 @@ async function checkAmap() {
 async function saveCenter() {
   const code = activeProject();
   const location = parseLocationInput($("#centerLocation").value.trim());
+  state.s1Location = location;
   setAmapStatus("正在生成高德上下文...", null);
   const data = await api("/api/amap-context", {
     method: "POST",
@@ -741,13 +1064,15 @@ async function loadSpatial() {
   }));
   state.alignment = data.alignment_report || null;
   if (data.amap_context?.location?.amap_gcj02) {
-    $("#centerLocation").value = data.amap_context.location.amap_gcj02;
+    state.s1Location = data.amap_context.location.amap_gcj02;
+    $("#centerLocation").value = state.s1Location;
     setAmapStatus(`已有上下文：${data.amap_context.location.confidence || "unknown"}`, true);
   }
   refreshStaleState();
   renderStaleBanner();
   renderControlPoints();
   renderAlignment();
+  syncAmapUi();
   if (!state.alignment && state.controlPoints.length >= 3 && !state.controlPointsStale) scheduleAlignmentCheck();
 }
 
@@ -868,6 +1193,7 @@ async function loadCadPreview() {
   refreshStaleState();
   renderStaleBanner();
   renderCadPreview();
+  syncAmapUi();
 }
 
 async function runCadPreview() {
@@ -883,6 +1209,7 @@ async function runCadPreview() {
   refreshStaleState();
   renderStaleBanner();
   renderCadPreview();
+  syncAmapUi();
   writeOutput(data);
 }
 
@@ -919,7 +1246,8 @@ function renderCadPreview() {
   }
   candidates.forEach((candidate) => {
     const item = document.createElement("div");
-    item.className = "candidate-item";
+    const candidateId = candidate.label || candidate.id;
+    item.className = `candidate-item ${state.amap.activeCandidateId === candidateId ? "active" : ""}`;
     const point = candidate.cad_point || {};
     const x = Number(point.x);
     const y = Number(point.y);
@@ -943,14 +1271,19 @@ function renderCadPreview() {
       <small>${escapeHtml(reason)}</small>
       <div class="candidate-pick">
         <input data-field="amap_location" placeholder="粘贴高德坐标：经度,纬度" value="${escapeHtml(candidate.amap_location || "")}">
-        <button type="button">加入/更新</button>
+        <button type="button" data-action="map-pick" ${hasStaleControlPoints() ? "disabled" : ""}>地图拾取</button>
+        <button type="button" data-action="add" ${hasStaleControlPoints() ? "disabled" : ""}>加入/更新</button>
       </div>
     `;
     const input = item.querySelector("[data-field='amap_location']");
     input.addEventListener("input", () => {
       candidate.amap_location = input.value;
     });
-    item.querySelector("button").addEventListener("click", () => {
+    item.querySelector("[data-action='map-pick']").addEventListener("click", () => {
+      setActiveCandidate(candidateId);
+      ensureS2Map().catch((err) => writeOutput(err.message));
+    });
+    item.querySelector("[data-action='add']").addEventListener("click", () => {
       try {
         addCandidateControlPoint(candidate);
       } catch (err) {
@@ -981,8 +1314,11 @@ function addCandidateControlPoint(candidate) {
   const existingIndex = state.controlPoints.findIndex((row) => row.label === label);
   if (existingIndex >= 0) state.controlPoints[existingIndex] = controlPoint;
   else state.controlPoints.push(controlPoint);
+  state.amap.activeCandidateId = label;
   renderControlPoints();
   renderCadPreview();
+  renderS2Markers();
+  updateActiveCandidatePanel();
   scheduleAlignmentCheck();
 }
 
@@ -996,6 +1332,7 @@ function renderControlPoints() {
     empty.className = "control-empty";
     empty.textContent = "尚未加入控制点。几何配准可用红线角点；判断道路和入口时应补桥头、道路交叉口、道路边线等语义控制点。";
     list.appendChild(empty);
+    clearS2Markers();
     return;
   }
   state.controlPoints.forEach((point, index) => {
@@ -1027,6 +1364,7 @@ function renderControlPoints() {
     item.appendChild(remove);
     list.appendChild(item);
   });
+  renderS2Markers();
 }
 
 async function generateMigrationReport() {
@@ -1053,6 +1391,9 @@ async function archiveControlPoints() {
   state.controlPointsSaved = false;
   state.controlPointsStale = false;
   state.alignment = null;
+  state.amap.activeCandidateId = "";
+  clearS2Markers();
+  updateActiveCandidatePanel();
   writeOutput(data);
   await loadSpatial();
   await loadCadPreview();
@@ -1083,6 +1424,7 @@ async function saveControlPoints() {
   renderStaleBanner();
   renderAlignment();
   renderControlPoints();
+  renderS2Markers();
   await loadSpatial();
 }
 
@@ -1102,6 +1444,14 @@ function bind() {
     setAmapStatus("生成失败", false);
     writeOutput(err.message);
   }));
+  $("#centerLocation").addEventListener("change", () => {
+    const parsed = parsedLocation($("#centerLocation").value);
+    if (parsed) {
+      state.s1Location = parsed.location;
+      ensureS1Map().catch((err) => writeOutput(err.message));
+      ensureS2Map().catch((err) => writeOutput(err.message));
+    }
+  });
   $("#saveControlPoints").addEventListener("click", () => saveControlPoints().catch((err) => writeOutput(err.message)));
   $("#projectCode").addEventListener("input", () => {
     if ($("#projectCode").value.trim() !== state.project) {

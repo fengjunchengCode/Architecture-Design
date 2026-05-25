@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, unquote_to_bytes, urlparse
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PROJECTS_DIR = REPO_ROOT / "projects"
+ENV_FILE = REPO_ROOT / ".env"
 
 CODE_REGEX = re.compile(r"^\d{2}-[A-Z]{2,3}-[A-Za-z0-9]{2,8}$")
 VALID_TYPES = {
@@ -69,6 +70,11 @@ CONTROL_PURPOSES = {
     "reference_only",
 }
 CONTROL_CONFIDENCE = {"low", "medium", "high"}
+
+AMAP_JSAPI_REFERER_HINT = (
+    "AMAP_JSAPI_KEY 需在高德控制台勾选 'Web 端' 并把 referer 白名单加入 "
+    "http://127.0.0.1:8765 / http://localhost:8765"
+)
 
 
 def safe_project(code: str) -> str:
@@ -187,6 +193,23 @@ def run_tool(args: list[str]) -> tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
+def load_env_file(path: Path = ENV_FILE) -> list[str]:
+    if not path.exists():
+        return []
+    loaded: list[str] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        os.environ[key] = value.strip().strip('"').strip("'")
+        loaded.append(key)
+    return loaded
+
+
 def content_type_for(path: Path) -> str:
     mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
     if path.suffix.lower() == ".svg":
@@ -232,6 +255,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_validate(parsed.query)
             elif parsed.path == "/api/amap-check":
                 self.handle_amap_check()
+            elif parsed.path == "/api/amap-jsapi-config":
+                self.handle_amap_jsapi_config()
             elif parsed.path == "/api/spatial":
                 self.handle_spatial(parsed.query)
             elif parsed.path == "/api/cad-preview":
@@ -432,6 +457,36 @@ class UploaderHandler(BaseHTTPRequestHandler):
         payload = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         payload.update({"ok": rc == 0, "returncode": rc, "stderr": stderr})
         self.send_json(payload, HTTPStatus.OK if rc in (0, 2) else HTTPStatus.BAD_REQUEST)
+
+    def handle_amap_jsapi_config(self) -> None:
+        loaded_env = load_env_file()
+        key = os.environ.get("AMAP_JSAPI_KEY", "").strip()
+        service_host = os.environ.get("AMAP_JSAPI_SERVICE_HOST", "").strip()
+        security_jscode = os.environ.get("AMAP_JSAPI_SECURITY_JSCODE", "").strip()
+        warnings = [AMAP_JSAPI_REFERER_HINT]
+
+        security: dict[str, object] = {"mode": "none"}
+        if service_host:
+            security = {"mode": "service_host", "service_host": service_host}
+        elif security_jscode:
+            security = {"mode": "security_jscode", "security_jscode": security_jscode}
+        elif key:
+            warnings.append("未配置 AMAP_JSAPI_SECURITY_JSCODE 或 AMAP_JSAPI_SERVICE_HOST；若控制台启用安全密钥，地图会加载失败。")
+
+        if not key:
+            warnings.append("未配置 AMAP_JSAPI_KEY，内嵌地图不可用；可继续使用外部高德坐标拾取器。")
+
+        self.send_json(
+            {
+                "ok": True,
+                "configured": bool(key),
+                "key": key or None,
+                "key_env": "AMAP_JSAPI_KEY" if key else None,
+                "security": security,
+                "warnings": warnings,
+                "env_loaded": loaded_env,
+            }
+        )
 
     def handle_amap_context(self) -> None:
         payload = self.read_json()
