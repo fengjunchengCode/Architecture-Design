@@ -1,347 +1,162 @@
 {
   "schema_version": "1.0",
   "status": "ok",
-  "created_at": "2026-05-23T18:04:41+0800",
+  "created_at": "2026-05-25T14:13:42+0800",
   "project_code": "26-BQ-PARK",
   "input": "05_output/amap/control_points.json",
+  "candidate_set_id_current": "sha256:b4512aa3991f8ad3",
+  "candidate_set_id_at_save": "sha256:b4512aa3991f8ad3",
   "coordinate_system": {
     "source": "CAD drawing coordinates",
     "target": "AMap GCJ-02 converted to local tangent meters for residual checks",
     "local_origin_gcj02": {
-      "lon": 94.03239500000001,
-      "lat": 31.925534
+      "lon": 94.03256666666668,
+      "lat": 31.9252
     }
   },
-  "point_count": 8,
+  "point_count": 3,
   "inlier_threshold_m": 5.0,
-  "quality": "aligned_partial",
+  "quality": "aligned_high",
   "duplicates": [],
   "all_points_fit": {
-    "scale": 1.0989731350008571,
-    "rotation_deg": 0.011233785913401585,
+    "scale": 0.6611075028170342,
+    "rotation_deg": 42.52399071331349,
     "translation_local_m": [
-      -655888.2334307124,
-      -3884243.75496848
+      1288143.3175242774,
+      -1988992.9309505434
     ],
-    "rms_error_m": 6.167725540251086,
-    "max_error_m": 8.642986846468434,
+    "rms_error_m": 2.810056015173836,
+    "max_error_m": 3.972815332213856,
     "residuals": [
+      {
+        "label": "CAD-01",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 16",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 2.0442946692503474,
+        "delta_east_m": 1.9121579006737122,
+        "delta_north_m": 0.7230441602118702,
+        "expected_gcj02": [
+          94.03202023849842,
+          31.925006495216202
+        ],
+        "provided_gcj02": [
+          94.032,
+          31.925
+        ]
+      },
       {
         "label": "CAD-02",
         "feature_type": "redline_corner",
-        "feature_name": null,
+        "feature_name": "redline handle 1306 vertex 22",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 6.029798936905633,
-        "delta_east_m": 3.6739929621400833,
-        "delta_north_m": 4.781239476710347,
+        "error_m": 3.972815332213856,
+        "delta_east_m": -3.671154613855187,
+        "delta_north_m": -1.5185142294503748,
         "expected_gcj02": [
-          94.03208688610391,
-          31.92507995060499
+          94.03256114407873,
+          31.925186358954587
         ],
         "provided_gcj02": [
-          94.032048,
-          31.925037
+          94.0326,
+          31.9252
         ]
       },
       {
         "label": "CAD-03",
         "feature_type": "redline_corner",
-        "feature_name": null,
+        "feature_name": "redline handle 1306 vertex 25",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 7.580306324709072,
-        "delta_east_m": 3.1367894557338474,
-        "delta_north_m": 6.90084023049522,
+        "error_m": 1.9305030605117135,
+        "delta_east_m": 1.7589967127856667,
+        "delta_north_m": 0.7954700692385046,
         "expected_gcj02": [
-          94.03306220025976,
-          31.924818991302523
+          94.03311861742286,
+          31.92540714582921
         ],
         "provided_gcj02": [
-          94.033029,
-          31.924757
-        ]
-      },
-      {
-        "label": "CAD-05",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 1.8845476459505393,
-        "delta_east_m": 0.04434751934294212,
-        "delta_north_m": 1.8840257767307342,
-        "expected_gcj02": [
-          94.03302446938093,
-          31.925671924491507
-        ],
-        "provided_gcj02": [
-          94.033024,
-          31.925655
-        ]
-      },
-      {
-        "label": "CAD-06",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 0.5188106539911165,
-        "delta_east_m": 0.014629584058159395,
-        "delta_north_m": 0.5186043481932785,
-        "expected_gcj02": [
-          94.03258215484176,
-          31.925993658702126
-        ],
-        "provided_gcj02": [
-          94.032582,
-          31.925989
-        ]
-      },
-      {
-        "label": "CAD-08",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 6.687208785465697,
-        "delta_east_m": -1.3857058988316453,
-        "delta_north_m": -6.54206240434565,
-        "expected_gcj02": [
-          94.03154833347665,
-          31.925790231653526
-        ],
-        "provided_gcj02": [
-          94.031563,
-          31.925849
-        ]
-      },
-      {
-        "label": "CAD-01",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 8.642986846468434,
-        "delta_east_m": -7.1771575350301475,
-        "delta_north_m": 4.815561373878058,
-        "expected_gcj02": [
-          94.031186035866,
-          31.92537525892384
-        ],
-        "provided_gcj02": [
-          94.031262,
-          31.925332
-        ]
-      },
-      {
-        "label": "CAD-04",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 8.373206271030975,
-        "delta_east_m": 1.60939209928533,
-        "delta_north_m": -8.217082227164969,
-        "expected_gcj02": [
-          94.03344503405233,
-          31.925439184694444
-        ],
-        "provided_gcj02": [
-          94.033428,
-          31.925513
-        ]
-      },
-      {
-        "label": "CAD-07",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 4.1419725943771,
-        "delta_east_m": 0.08371181354977608,
-        "delta_north_m": -4.14112657435669,
-        "expected_gcj02": [
-          94.03222488601865,
-          31.92610279962705
-        ],
-        "provided_gcj02": [
-          94.032224,
-          31.92614
+          94.0331,
+          31.9254
         ]
       }
     ]
   },
   "best_fit": {
-    "scale": 1.1351748639047707,
-    "rotation_deg": -2.5996884668149063,
+    "scale": 0.6611075028170342,
+    "rotation_deg": 42.52399071331349,
     "translation_local_m": [
-      -859561.3060420739,
-      -3977169.616523531
+      1288143.3175242774,
+      -1988992.9309505434
     ],
-    "rms_error_m": 2.8855365770050327,
-    "max_error_m": 4.549603333194764,
+    "rms_error_m": 2.810056015173836,
+    "max_error_m": 3.972815332213856,
     "inlier_labels": [
-      "CAD-02",
-      "CAD-03",
-      "CAD-05",
-      "CAD-06",
-      "CAD-08",
-      "CAD-07"
-    ],
-    "outlier_labels": [
       "CAD-01",
-      "CAD-04"
+      "CAD-02",
+      "CAD-03"
     ],
+    "outlier_labels": [],
     "residuals": [
+      {
+        "label": "CAD-01",
+        "feature_type": "redline_corner",
+        "feature_name": "redline handle 1306 vertex 16",
+        "purpose": "registration",
+        "confidence": "medium",
+        "error_m": 2.0442946692503474,
+        "delta_east_m": 1.9121579006737122,
+        "delta_north_m": 0.7230441602118702,
+        "expected_gcj02": [
+          94.03202023849842,
+          31.925006495216202
+        ],
+        "provided_gcj02": [
+          94.032,
+          31.925
+        ]
+      },
       {
         "label": "CAD-02",
         "feature_type": "redline_corner",
-        "feature_name": null,
+        "feature_name": "redline handle 1306 vertex 22",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 4.034113448493659,
-        "delta_east_m": -0.8611425901470184,
-        "delta_north_m": 3.9411298830097294,
+        "error_m": 3.972815332213856,
+        "delta_east_m": -3.671154613855187,
+        "delta_north_m": -1.5185142294503748,
         "expected_gcj02": [
-          94.032038885535,
-          31.925072403772106
+          94.03256114407873,
+          31.925186358954587
         ],
         "provided_gcj02": [
-          94.032048,
-          31.925037
+          94.0326,
+          31.9252
         ]
       },
       {
         "label": "CAD-03",
         "feature_type": "redline_corner",
-        "feature_name": null,
+        "feature_name": "redline handle 1306 vertex 25",
         "purpose": "registration",
         "confidence": "medium",
-        "error_m": 0.8171640156937849,
-        "delta_east_m": 0.17143427017482793,
-        "delta_north_m": 0.7989789230977351,
+        "error_m": 1.9305030605117135,
+        "delta_east_m": 1.7589967127856667,
+        "delta_north_m": 0.7954700692385046,
         "expected_gcj02": [
-          94.03303081448655,
-          31.924764177349783
+          94.03311861742286,
+          31.92540714582921
         ],
         "provided_gcj02": [
-          94.033029,
-          31.924757
-        ]
-      },
-      {
-        "label": "CAD-05",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 1.7614334318417275,
-        "delta_east_m": 1.4330725276928078,
-        "delta_north_m": -1.0241830232833742,
-        "expected_gcj02": [
-          94.033039167859,
-          31.925645799607363
-        ],
-        "provided_gcj02": [
-          94.033024,
-          31.925655
-        ]
-      },
-      {
-        "label": "CAD-06",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 1.8979234687823021,
-        "delta_east_m": 1.7567887213276414,
-        "delta_north_m": 0.7181969659993257,
-        "expected_gcj02": [
-          94.03260059412075,
-          31.925995451673117
-        ],
-        "provided_gcj02": [
-          94.032582,
-          31.925989
-        ]
-      },
-      {
-        "label": "CAD-08",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 4.549603333194764,
-        "delta_east_m": -3.8219627828468106,
-        "delta_north_m": -2.468094604335654,
-        "expected_gcj02": [
-          94.03152254776086,
-          31.925826828728944
-        ],
-        "provided_gcj02": [
-          94.031563,
-          31.925849
-        ]
-      },
-      {
-        "label": "CAD-01",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 15.72725122117471,
-        "delta_east_m": -12.877939790066904,
-        "delta_north_m": 9.028017375778195,
-        "expected_gcj02": [
-          94.03112569791395,
-          31.92541310005994
-        ],
-        "provided_gcj02": [
-          94.031262,
-          31.925332
-        ]
-      },
-      {
-        "label": "CAD-04",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 14.152218128877303,
-        "delta_east_m": 3.0453489524943933,
-        "delta_north_m": -13.82067754217805,
-        "expected_gcj02": [
-          94.03346023243948,
-          31.925388846741267
-        ],
-        "provided_gcj02": [
-          94.033428,
-          31.925513
-        ]
-      },
-      {
-        "label": "CAD-07",
-        "feature_type": "redline_corner",
-        "feature_name": null,
-        "purpose": "registration",
-        "confidence": "medium",
-        "error_m": 2.3690605652789998,
-        "delta_east_m": 1.321809853889313,
-        "delta_north_m": -1.9660281463196725,
-        "expected_gcj02": [
-          94.03223799023783,
-          31.926122338868673
-        ],
-        "provided_gcj02": [
-          94.032224,
-          31.92614
+          94.0331,
+          31.9254
         ]
       }
     ]
   },
   "recommendations": [
-    "优先重选或删除高残差点：CAD-01、CAD-04",
     "可用内点先做粗配准判断，但不要把入口/道路边界写成高置信结论。",
     "当前控制点主要用于几何配准；若要判断道路、桥梁、入口或水系落边，请补充道路交叉口、道路边线、桥头两端或水岸等语义控制点。"
   ]

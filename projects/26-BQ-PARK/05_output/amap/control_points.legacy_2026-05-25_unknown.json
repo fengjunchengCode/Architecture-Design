@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-23T17:41:42+0800",
+  "project": "26-BQ-PARK",
+  "coordinate_system": {
+    "map": "GCJ-02 / AMap",
+    "cad": "project CAD units; unit and CRS must be confirmed in S2"
+  },
+  "control_points": [
+    {
+      "label": "CAD-02",
+      "cad_point": {
+        "x": 597485.6431031098,
+        "y": 3534267.053510857
+      },
+      "amap_gcj02": [
+        94.032048,
+        31.925037
+      ],
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-03",
+      "cad_point": {
+        "x": 597569.4875851987,
+        "y": 3534240.603434482
+      },
+      "amap_gcj02": [
+        94.033029,
+        31.924757
+      ],
+      "note": "south edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-05",
+      "cad_point": {
+        "x": 597566.2607273574,
+        "y": 3534327.001165579
+      },
+      "amap_gcj02": [
+        94.033024,
+        31.925655
+      ],
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-06",
+      "cad_point": {
+        "x": 597528.2404714092,
+        "y": 3534359.598396885
+      },
+      "amap_gcj02": [
+        94.032582,
+        31.925989
+      ],
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-08",
+      "cad_point": {
+        "x": 597439.3567872602,
+        "y": 3534339.009864514
+      },
+      "amap_gcj02": [
+        94.031563,
+        31.925849
+      ],
+      "note": "redline corner candidate; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-01",
+      "cad_point": {
+        "x": 597408.2011118163,
+        "y": 3534296.981684564
+      },
+      "amap_gcj02": [
+        94.031262,
+        31.925332
+      ],
+      "note": "west edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-04",
+      "cad_point": {
+        "x": 597602.4128721136,
+        "y": 3534303.418909435
+      },
+      "amap_gcj02": [
+        94.033428,
+        31.925513
+      ],
+      "note": "east edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    },
+    {
+      "label": "CAD-07",
+      "cad_point": {
+        "x": 597497.527539761,
+        "y": 3534370.659750258
+      },
+      "amap_gcj02": [
+        94.032224,
+        31.92614
+      ],
+      "note": "north edge vertex; pick the matching visible map feature in AMap if it can be identified.",
+      "source": "uploader_ui"
+    }
+  ],
+  "agent_note": "Use these points only as user-provided correspondence evidence. S2 must still verify CAD handles/layers and transformation quality."
+}

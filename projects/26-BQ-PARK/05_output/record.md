@@ -7,7 +7,7 @@ project:
   type: park
   scale: 口袋公园
   stage: 方案设计
-  updated_at: '2026-05-23T18:04:57+08:00'
+  updated_at: '2026-05-25T14:25:00+08:00'
 site:
   address: 西藏自治区那曲市巴青县拉西镇
   coords: null
@@ -353,6 +353,13 @@ s1_external_context:
 - 给 S2：当前旧控制点已判定 stale，应归档或重新拾取；不得继续消费旧 `CAD-07` 叙述桥头关系。
 - 给下一步：暂不进入 S3。应先完成 S2 控制点重选，或进入 P1 高德 JSAPI 内嵌地图，让用户在同一页面内点击拾取坐标并写入最新 `candidate_set_id_at_save`。
 - 给汇报：区位关键词可保留为“G317 河谷通道、盐曲滨水、曲登纳桥节点、县城边缘口袋公园、巴青地方文化打卡点”，但入口落点必须标注为待复核。
+### 2026-05-25 P1 JSAPI 实测更新
+
+- P1 内嵌高德 JSAPI 已在 uploader 的 S1/S2 页面实测通过：S1 地图可加载，点击地图可将 GCJ-02 坐标写入中心点输入框。
+- S2 已归档旧 `control_points.json`，并重新保存 `CAD-01`、`CAD-02`、`CAD-03` 三个红线角点控制点；新文件已写入 `candidate_set_id_at_save: sha256:b4512aa3991f8ad3`。
+- 当前 `cad_align.py 26-BQ-PARK --json` 返回 `status: ok`、`quality: aligned_high`、`point_count: 3`、`best_fit.rms_error_m: 2.81`、`outlier_labels: []`。
+- 本次配准只能证明高德 GCJ-02 与 CAD 红线候选几何之间已有可用粗配准；三个点均为 `redline_corner / registration`，尚未补充道路交叉口、道路边线、桥头两端、水系岸线等语义控制点。
+- 因此 S1 可把“曲登纳桥、G317/650、盐曲”继续作为外部关系候选线索，但仍不能把主次入口、道路对应红线边或滨水界面写成高置信 CAD 落边结论。
 <!-- END:s1_site_analysis -->
 
 <!-- BEGIN:s2_dwg_parse -->
@@ -540,6 +547,14 @@ s2_site_geometry:
 - S1 应撤回旧 `CAD-07 = 曲登纳桥` 的确定性叙述，只保留曲登纳桥/G317/盐曲作为外部候选关系。
 - 当前配准状态不足以进入 S3 面积策划；S3/S9 仍应被阻塞，直到控制点重新保存并通过配准检查，或用户明确接受低置信概念推演。
 - Step 5 完成后，建议立即进入 P1 高德 JSAPI 内嵌地图，让用户在 S2 页面内直接点击拾取坐标，减少外跳拾取器导致的复核概率。
+### 2026-05-25 P1 JSAPI 实测更新
+
+- 已通过 uploader S2 页面归档旧控制点：旧文件保存为 `05_output/amap/control_points.legacy_2026-05-25_unknown.json`，迁移诊断写入 `05_output/amap/migration_report_2026-05-25.json`。
+- 已重新保存有效控制点文件 `05_output/amap/control_points.json`，包含 `CAD-01`、`CAD-02`、`CAD-03` 三个红线角点，对应 `candidate_set_id_at_save: sha256:b4512aa3991f8ad3`。
+- 自动配准报告 `05_output/amap/cad_alignment_report.json` 当前为 `quality: aligned_high`，三点均为内点，RMS 约 `2.81m`，无外点。
+- 本次控制点的 `feature_type` 均为 `redline_corner`，`purpose` 均为 `registration`，可作为几何配准底座，不足以确认道路、桥梁、入口或水系落边。
+- `required_next_control_points` 仍然有效：若要判断主次入口与主次干道关系，应继续补充桥头两端、G317/650 交叉口或道路边线、盐曲岸线等语义控制点。
+- 因此 S2 状态从 `control_points_stale` 更新为“几何配准可用，但语义落边待补”；S3 仍不应自动解锁，除非用户明确接受只做低置信概念推演。
 <!-- END:s2_dwg_parse -->
 
 <!-- BEGIN:s3_area_calc -->
