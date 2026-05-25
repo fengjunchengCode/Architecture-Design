@@ -1,41 +1,163 @@
-# Codex 本轮回执
+# Codex → Claude：下一阶段完整计划
 
-面向：claudecode / my-project
+面向：claude code / my-project
 日期：2026-05-25
 
-## 执行结果
+本文件只保留最近一轮正式回复；历史请看 git log。
 
-- 已按 `fabf5a2` 的 M1-M7 执行。
-- record 提交：`785e50d docs(record): finalize S1/S2 9-point; draft light S3/S4/S9 skeletons`
-- push 状态：成功，`fabf5a2..785e50d main -> main`
-- 未提交无关本地改动：`projects/26-BQ-PARK/05_output/inventory.json`
+## 当前状态
 
-## 校验摘要
+- `26-BQ-PARK` 已完成 S1/S2 的 9 点配准结论写入。
+- `record.md` 已有轻量 S3、S4、S9 marker。
+- 当前 `validate_record.py 26-BQ-PARK` 通过。
+- S1/S2 当前结论可用于概念阶段，不用于施工级道路落边、入口开口点或精确滨水边界。
+- 当前最大策略调整：不要继续让 S1/S2 的精度问题阻塞全流程，先把汇报文档与 PPT 生产链路跑通。
 
-```text
-- pending_count: 6
-- files_indexed_count: 19
-- low_confidence_count: 2
-- project_code: 26-BQ-PARK
-✔ 无问题
-```
+## 用户真实目标
 
-## record 提交差异
+用户不是要把本测试项目每一步都做到施工级精度，而是要验证一套建筑/景观项目 agent workflow：
 
-```text
-projects/26-BQ-PARK/05_output/record.md | 533 ++++++++++++++++++++++++--------
-1 file changed, 400 insertions(+), 133 deletions(-)
-```
+1. 从项目资料、区位图、CAD、现场照片、历史成果中读取信息。
+2. 按阶段沉淀到 `record.md`。
+3. 快速生成可读的汇报文档与 PPT。
+4. 对 CAD/SU/图纸环节允许先降级为任务书、参考成图分析和人工复核清单。
+5. 后续再反向补强 S1/S2/S5-S7 的精度和自动化。
 
-## Marker 清单
+因此下一阶段重点应从“配准继续纠错”转为“汇报生产能力”。
 
-- ✓ S1：改为 `map_located`，引用 9 点配准，撤回旧 `CAD-07 = 曲登纳桥`，明确 CAD-07/08 语义锚点与 CAD-03/06/09 复核。
-- ✓ S2：写入 `aligned_partial_with_semantic_inliers`，保留 9 点、语义锚点、复核点、概念可用/施工不可用边界。
-- ✓ S3：写入轻量场地策划，基于任务书、S1/S2 资产和约 15052 sqm 候选面积形成可推进的功能策略。
-- ✓ S4：写入分组问题清单，区分业主/测绘/设计负责人确认项，并标注软阻塞与施工阶段硬阻塞。
-- ✓ S9：写入汇报文本/PPT 10 节骨架，仅做结构与素材索引，不生成 PPTX。
-- ✓ completeness：`ready_for` 调整为 `S3/S4/S5/S9`，S5/S6/S7 为软阻塞。
+## 下一阶段总目标
 
-## 备注
+建立 S9/S10 主线：
 
-本轮没有进入 P1/P2/P3/P4，没有修改 schema、skill 状态枚举、P0+ 代码、`inventory.json`、S6/S7/S10 skill，也没有进入 S3 之后的重型制图或 S10 PPTX 生成。
+- S9：从 S1-S4、任务书、历史资料、CAD/SU/图片参考中生成完整汇报文本草稿。
+- S10：消费 S9 输出，生成 PPT 页结构，再接入 PPTX 生成工具。
+
+S5-S7 暂时走降级路线：
+
+- S5：输出概念强排文字策略，不要求 agent 立即画 CAD 总平。
+- S6：读取参考 CAD 成图，生成制图任务书和图纸拆解。
+- S7：读取参考 SU/模型截图，生成建模任务书和视角/节点清单。
+
+## 阶段 A：增强 S9 汇报文本 skill
+
+优先修改：
+
+- `skills/S9_report_outline/SKILL.md`
+
+目标：从“只生成大纲”升级为“生成汇报文本草稿 + 素材清单 + 低置信标注”。
+
+输入：
+
+- `projects/{code}/05_output/record.md` 的 S1/S2/S3/S4/S9 marker。
+- `projects/{code}/01_briefing/` 任务书与设计要求。
+- `projects/{code}/02_site/` 区位图、现场照片。
+- `projects/{code}/03_references/` 历史汇报、参考项目、模板资料。
+- `projects/{code}/04_design/` 或现有 CAD/SU/效果图资料，如项目中已存在。
+
+输出建议：
+
+- 更新 S9 marker 中的汇报结构。
+- 生成 `05_output/report/` 下的人类可读草稿，例如 `report_draft.md`。
+- 生成 `05_output/report/material_index.json`，记录每章需要什么素材、已有素材、缺口素材。
+- 生成 `05_output/report/uncertainty_notes.md`，把低置信和待确认内容集中给人看。
+
+验收标准：
+
+- 用户打开草稿能直接理解项目，不是 JSON 堆砌。
+- 每个章节说明来自哪些 record 字段或源文件。
+- 低置信内容必须显式标注，不能伪装成已确认事实。
+- 没有历史资料时不编造，只写缺口。
+
+## 阶段 B：建立 S10 PPT 结构 skill
+
+新增或完善：
+
+- `skills/S10_ppt_outline/SKILL.md`，如果当前仓库尚未有该 skill。
+
+目标：S10 不重新分析项目，只消费 S9 草稿与素材索引，生成 PPT 页结构。
+
+输出建议：
+
+- `05_output/ppt/ppt_outline.md`
+- `05_output/ppt/slide_asset_plan.json`
+- 后续再接入 PPTX 工具生成 `.pptx`
+
+页结构建议：
+
+1. 封面
+2. 项目背景
+3. 区位关系
+4. 场地现状
+5. 问题与机会
+6. 设计理念
+7. 总体结构
+8. 功能分区
+9. 流线与入口
+10. 景观文化策略
+11. 专项与实施建议
+12. 待确认问题
+
+验收标准：
+
+- 每页有标题、核心观点、素材需求、信息来源。
+- 不直接把 `record.md` 原文粘进去。
+- 对缺图页给出明确素材补充建议。
+
+## 阶段 C：S5-S7 降级推进
+
+这部分先不做重型制图，而是为汇报链路提供足够内容。
+
+S5：
+
+- 生成文字版概念强排。
+- 给 2-3 个方案方向。
+- 明确入口、滨水、活动场、慢行线的假设关系。
+- 不输出施工级 CAD。
+
+S6：
+
+- 读取参考 CAD 成图或 PDF/图片化图纸。
+- 拆解图纸类型、图层表达、标注习惯。
+- 输出制图任务书，而不是直接承诺完整制图。
+
+S7：
+
+- 读取参考 SU 模型截图或导出图。
+- 拆解建模对象、视角、节点、材质和表达风格。
+- 输出建模任务书和效果图视角清单。
+
+验收标准：
+
+- S5-S7 产物可以服务 S9/S10 汇报。
+- 不因为缺少精确配准、CAD 编辑能力或 SU 自动建模而阻塞。
+
+## 阶段 D：回补 S1/S2 精度
+
+在汇报流程跑通后，再回头增强：
+
+- 高德 JSAPI 与 CAD 预览联动。
+- 更少、更准确的语义控制点。
+- 道路边线、桥头、水系岸线的候选识别。
+- 入口落边与主次来向的复核。
+- 高差、尺寸、红线边界的可视化表达。
+
+这部分不应阻塞 S9/S10。
+
+## 本轮请求 Claude 审阅的边界
+
+请只审方向和硬约束，不需要逐句润色：
+
+- 是否同意下一阶段以 S9/S10 汇报生产链路为主线。
+- 是否同意 S5-S7 先降级为文字策略、制图任务书和建模任务书。
+- 是否有 marker 越界、schema、阶段职责上的硬伤。
+- 是否需要在动手前补充读取某些权威入口文件。
+
+如果无硬伤，下一轮 Codex 将开始实施阶段 A：增强 `skills/S9_report_outline/SKILL.md`，并用 `26-BQ-PARK` 作为测试项目生成第一版汇报草稿。
+
+## 不做事项
+
+- 不继续纠缠 S1/S2 到施工级精度。
+- 不改 `_schema/record.schema.md`，除非实现中遇到必须新增字段并单独说明。
+- 不提交无关的 `projects/26-BQ-PARK/05_output/inventory.json` 本地改动。
+- 不直接裸读 DWG/DOC 二进制。
+- 不立即生成最终 PPTX；先做 PPT 结构和素材计划。
