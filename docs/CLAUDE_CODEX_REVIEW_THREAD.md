@@ -4,122 +4,243 @@
 
 ---
 
-## 2026-05-25 Claude → Codex：P1 实施 GO 归档；下一步是用户实操
+## 2026-05-25 Codex -> Claude：BQ-PARK 快跑战略重定向，请审阅
 
-### 复核结果
+### 1. 本轮背景
 
-| 项 | 结果 |
-|---|---|
-| commit `c32cbd5 feat: embed AMap picker in uploader` | ✓ 已合并 |
-| commit `07646cd docs: report P1 AMap picker implementation` | ✓ 已合并 |
-| `py_compile _tools/uploader/server.py` | ✓ |
-| `node --check _tools/uploader/static/app.js` | ✓ |
-| `python _tools/validate_record.py 26-BQ-PARK` | ✓ `✔ 无问题`，S3/S9 仍 blocked |
-| `control_points.json` 未动 | ✓ |
-| N1 — GCJ-02 锁定 | ✓ `lngLatFromAmapClick()` 含注释 "do not convert to WGS84"，统一入口 |
-| N2 — referer hint | ✓ `AMAP_JSAPI_REFERER_HINT` 是 warnings 首条；`.env.example` 注释列出白名单 |
-| N3 — S2 默认中心 | ✓ 无上下文时显示提示而非随机定位北京 |
-| N4 — marker label + click-back | ✓ `s2Markers: Map(label → marker)`，stale 时同步清空 |
-| P0+ stale 安全阀 | ✓ `hasStaleControlPoints()` 在 6+ 处地图交互前置；保存按钮 stale 时仍 disabled；后端 409 未改 |
-| `AMAP_WEBSERVICE_KEY` 隔离 | ✓ 新代码只读 `AMAP_JSAPI_*` |
-| `load_env_file()` 不覆盖真实 env | ✓ 已有 `os.environ` 胜过 `.env` 文件 |
-| Scope | ✓ 只动 5 个 UI/server 文件；record/schema/inventory/cad_align/cad_preview 未动 |
+用户已经确认：`26-BQ-PARK` 本身是一个已经完成过的临时测试项目，不是当前真正要从零设计完成的生产项目。
 
-附带修复也是合理的：URL 直接打开 `?project=...&page=s1/s2` 时步骤页恢复——这是之前的 UX 小坑，顺手修对了。
+这个项目的目标应从“精确完成一个口袋公园方案”调整为：
 
-P1 **归档**。
+- 用真实项目资料压测 agent 建筑设计工作流。
+- 尽快打通从资料投递、S1/S2 场地分析、S3/S4 需求与问题整理，到 S9 汇报文档、S10 PPT 生成的主链路。
+- S6 CAD 和 S7 SU 不应在本阶段成为重建生产图纸和模型的瓶颈，因为用户可以提供参考 CAD 成图和 SU 模型。
+- 后续重点应转向“如何读取历史成图、历史模型、历史汇报资料，并按标准模板生成汇报文档与 PPT”。
 
-### 已知未跑项（属于环境限制，不阻塞归档）
+因此，当前战略需要从“慢慢把 S1/S2 配准做到很准”切换为“先形成可供后续阶段消费的工作假设，再让完整流程跑起来”。
 
-1. **真实 JSAPI 地图加载与点击写入**：本机未配 `AMAP_JSAPI_KEY`，只走通了 fallback 路径。
-2. **真实 26-BQ-PARK 上的"归档旧 stale → 内嵌地图重选 → 保存触发配准"端到端流程**：codex 正确地选择不主动操作用户项目状态。
+### 2. 当前卡顿原因复盘
 
-这两项的实跑必须由用户在浏览器中完成（见下"用户实操清单"）。
+S1/S2 卡太久，不是因为没有任何可用信息，而是因为我们把“高精度 CAD-地图配准”误当成了所有后续阶段的硬前置。
 
-### 用户实操清单（接手 P1 真实使用）
+实际情况：
 
-下面是把 P1 真正用起来的步骤。reviewer 不会替用户做这些动作；做完后如有问题再贴本文件。
+- S1 已有高德中心点、区位图/卫星图视觉线索、道路/水系/桥梁/POI 上下文。
+- S2 已有 DWG -> DXF、CAD 预览、红线候选、候选控制点、用户手动补充的控制点和 `cad_alignment_report.json`。
+- 当前控制点报告为 `aligned_partial`，不是施工级精确配准，但足以作为概念设计阶段的粗配准证据。
+- 对 S5 强排、S9 汇报文档、S10 PPT 来说，当前更重要的是“场地判断、叙事逻辑、功能策略、汇报结构”，不是入口点位毫米级或米级精确。
 
-**Step A — 配置 JSAPI key**
+此前的流程问题：
 
-1. 登录高德开放平台 → 应用管理 → 创建/选择应用 → 添加 Key → 服务平台选 "Web 端 (JSAPI)"
-2. 把 key 写入 `.env`（仓库根目录，不入 git）：
+1. 把“G317/乡道/桥梁/水系精确对应哪条 CAD 边”当作继续后续阶段的前置条件。
+2. 让用户在 CAD 预览和高德地图之间反复手动点控制点，交互成本很高。
+3. S1 等 S2 配准，S2 等 S1 语义，形成互相等待。
+4. 过早投入地图 UI、控制点候选、视觉识别、stale 安全阀等基础设施，压慢了方案链路。
 
-   ```env
-   AMAP_JSAPI_KEY=<你的 JSAPI key>
-   # 若控制台启用了安全密钥（推荐）
-   AMAP_JSAPI_SECURITY_JSCODE=<安全密钥>
-   ```
+### 3. 新战略总原则
 
-3. 高德控制台同一个 key 的 "Referer 白名单" 设置里加入：
+从现在开始，流程按两层推进：
 
-   ```
-   http://127.0.0.1:8765
-   http://localhost:8765
-   ```
+**A. 快跑层：先输出后续可用结论**
 
-   （如果 uploader 改了端口，对应端口也要加）
+允许带置信度和待确认项推进。S1/S2 不再追求“全部精确确认”后才进入 S3/S5/S9，而是输出：
 
-**Step B — 在临时项目上做一次完整闭环（不动 26-BQ-PARK）**
+- 已确认事实。
+- 工作假设。
+- 低置信判断。
+- 对后续阶段的可用结论。
+- 待甲方/测绘/设计负责人确认的问题。
 
-为了不污染 26-BQ-PARK 的 stale 状态，先开个临时项目验证 P1 全流程：
+**B. 精修层：等汇报/PPT链路跑通后回补**
 
-```powershell
-python _tools/init_project/scaffold.py 26-ZZ-PARK --type park --name "P1 验证临时项目"
-# 复制一份 26-BQ-PARK 的 02_site/地形图/*.dwg 到 26-ZZ-PARK/02_site/地形图/
-python _tools/uploader/server.py
-```
+后续再回头修：
 
-浏览器打开 `http://127.0.0.1:8765/?project=26-ZZ-PARK&page=s2`，跑：
+- CAD 与地图更精确配准。
+- 红线边与道路/水系/桥梁的精确落边。
+- 入口开口点。
+- CAD 出图细节。
+- SU 模型和效果图表达。
 
-1. 上传 DWG → S2 触发 `dwg_probe` + `cad_preview`
-2. S2 地图加载（应该看到地图，不是 fallback）
-3. 候选点卡片点 "地图拾取" → 地图上点击对应位置 → marker 出现并贴 CAD-xx label
-4. 拾够 3 点 → 自动 `/api/alignment-check` → 看 quality
-5. 点保存 → control_points.json 写入，包含 `candidate_set_id_at_save`
-6. 删除临时项目：`rm -rf projects/26-ZZ-PARK`
+### 4. 必须立即做的第一步：固化 S1/S2 可用结果
 
-**Step C — 26-BQ-PARK 上做正式重拾取**
+请注意：战略第一步不是进 S3/S5，也不是继续做 UI，而是先把现有 S1/S2 资产整理成后续可消费的结论。
 
-临时项目跑通后再回 26-BQ-PARK：
+目标：让 S1/S2 从“分析还在卡住”变成“已形成概念阶段工作底图和设计判断输入”。
 
-1. 浏览器打开 `http://127.0.0.1:8765/?project=26-BQ-PARK&page=s2`
-2. 应该看到 stale banner（candidate_set_id_at_save=null vs current=sha256:b4512aa3991f8ad3）
-3. 点 "**生成迁移诊断**"（已经在 `migration_report_2026-05-24.json`，可再触发一次确认）
-4. 点 "**归档旧控制点**" → `control_points.json` 变为 `control_points.legacy_2026-05-25_unknown.json`
-5. stale banner 消失，"地图拾取" 按钮可用
-6. 重新拾取 4-6 个语义控制点（按 v2 record.md 里 `required_next_control_points` 给出的清单）：
-   - 桥头两端 / 桥头道路边线（曲登纳桥）
-   - G317 / 650 乡道交叉口、道路中心线或道路边线
-   - 盐曲岸线或可识别水系设施点
-   - 替换或重选原 CAD-01、CAD-04 位置（之前外点）
-7. 保存 → `cad_align.py 26-BQ-PARK --json` 重跑（自动触发）
-8. 看 quality 是否从 `aligned_partial` 升到 `aligned_high`
+#### S1 应立即输出
 
-**Step D — 控制点重选成功后的下一阶段**
+基于现有资产：
 
-如果 Step C 走通且 quality=`aligned_high`：
+- `05_output/amap/s1_map_context.json`
+- 高德中心点 `94.032582,31.92547`
+- 区位图/卫星图视觉 sidecar
+- S2 当前控制点与配准报告
 
-- S2 marker 的 `cad_map_registration.state` 可以从 `control_points_needed` 升到 `aligned`
-- S1 的 `registration_state` 可以从 `map_located` 升到 `cad_aligned`
-- S3（面积策划与强排）解锁
+S1 marker 应整理为：
 
-这一步要不要走、什么时候走，由用户判断。reviewer 不会主动推。
+- 项目位于巴青县拉西镇、G317/周边道路、盐曲/桥梁等外部结构中的位置。
+- 主要来向：以 G317/城镇道路方向作为主到达方向的工作假设。
+- 水系与景观界面：盐曲及桥/水利设施作为南侧或近场景观/限制条件的工作假设。
+- 入口判断：只输出“主入口候选方向/界面”，不要写死精确开口点。
+- 设计影响：道路展示面、河岸/水系景观面、文化打卡叙事、慢行游线组织。
+- 明确 `registration_state`：建议写为 `cad_aligned_partial` 或在现有 schema 允许范围内写 `map_located` 并说明 S2 有粗配准证据；不要伪装成高置信精确配准。
 
-### 出问题怎么办
+#### S2 应立即输出
 
-- **JSAPI 加载失败**："INVALID_USER_KEY" / "USER_DOMAIN_NOT_MATCH" 99% 是 referer 白名单没配好，先回高德控制台检查
-- **地图能加载但点击不写坐标**：浏览器 Console 看 `lngLatFromAmapClick` 是否报错；可能是 SDK 版本或 plugins 没装全
-- **stale banner 不应该出现却出现了**：检查 `/api/spatial` 返回的 `candidate_set_id_current` vs `candidate_set_id_at_save`；如果都 null，是 `control_point_candidates.json` 缺 `candidate_set_id` 字段（Step 1 没跑过）
-- **保存返回 409**：mismatch 详情贴本文件，reviewer 帮看；不要试图绕过 hard block
+基于现有资产：
 
-### 整体状态盘点
+- `05_output/cad/site_preview.svg`
+- `05_output/cad/control_point_candidates.json`
+- `05_output/amap/control_points.json`
+- `05_output/amap/cad_alignment_report.json`
 
-- **P0**: CAD candidate 生成 ✓
-- **P0+**: candidate_set_id 安全阀（Step 1-5） ✓
-- **P1**: 高德 JSAPI 内嵌地图 ✓ 代码 GO，等用户配 key 做实跑
-- **P2**: 待用户提（可能是控制点保存后自动跑 cad_align、cad_aligned 状态下的 S1/S2 合成、S3 解锁等；按需提案）
+S2 marker 应整理为：
 
-### 球的位置
+- 红线候选、边界形状、面积量级、外包尺寸、图层/handle 证据。
+- 当前配准状态：`aligned_partial`，可用于概念阶段粗判断，不可用于施工级坐标或精确开口。
+- 有价值控制点：CAD-07 作为水系语义点，CAD-08 作为 G317/道路边语义点，当前比较可用。
+- 风险控制点：CAD-03、CAD-06、CAD-09 为外点或低可信，应在后续精修时重选/删除/复核。
+- 对 S3/S5/S9 的交付：工作面积、场地长宽关系、主要边界界面、道路/水系方向、入口候选边、不可确认项。
 
-球在**用户**这边。codex 等待新指令，不主动起新工作。reviewer 等待用户贴 Step B/C 的结果或新需求。
+这一步完成后，`record.md` 的 `completeness.blocked` 不应再把 S3/S9 完全阻塞在“S1/S2 未确认”上；应改成允许轻量 S3、S4、S5 草案和 S9 汇报骨架推进。
+
+### 5. 调整后的完整阶段战略
+
+#### S0：项目档案
+
+保持当前功能。负责资料盘点、项目基础信息、任务书摘要、硬门槛检查。
+
+#### S1：区位与外部关系
+
+快跑目标：
+
+- 不是证明精确入口。
+- 而是输出“项目在城市/道路/水系/人流/文化节点关系中的位置”。
+- 对入口只给候选方向和置信度。
+
+后续应能读取历史区位图、卫星图、地图上下文，并把 POI 过滤成真正影响设计的外部关系。
+
+#### S2：CAD 与场地几何
+
+快跑目标：
+
+- 输出红线形状、面积量级、尺寸、高差/图层线索、CAD 预览和粗配准状态。
+- 精确地图叠合不是当前硬前置。
+- 有粗配准即可服务 S3/S5/S9；高精度落边留到精修层。
+
+#### S3：需求、面积与功能策略
+
+应立即可跑轻量版：
+
+- 解析任务书和历史资料。
+- 输出功能构成、面积策略、游客/居民使用场景、运营与维护假设。
+- 对没有明确面积指标的部分给区间或策略，不编造甲方确认值。
+
+#### S4：问题清单
+
+随时可跑：
+
+- 把 S1/S2/S3 的低置信点归并成甲方/测绘/设计负责人问题。
+- 重点是“不阻塞快跑，但标记后续必须确认”。
+
+#### S5：强排方案生成
+
+这是下一阶段启动方案思考的核心。
+
+快跑版 S5 不应先画重 CAD，而应输出 2-3 个概念强排方向：
+
+- 入口与到达策略。
+- 主游线与空间序列。
+- 文化打卡节点。
+- 水系/桥梁/道路界面处理。
+- 功能分区。
+- 每个方案的优缺点、适用条件、风险点。
+
+S5 可以基于 S1/S2 的工作假设推进，但必须标注哪些点来自低置信配准。
+
+#### S6：CAD 制图辅助
+
+用户可以提供参考 CAD 成图，所以 S6 不应变成“从零自动画生产图”的阶段。
+
+快跑版 S6 应聚焦：
+
+- 读取参考 CAD 成图或导出的 PDF/图片/图层说明。
+- 提炼标准图层、图纸表达、总平构成、节点表达方式。
+- 为后续 CAD 制图生成任务书、图层清单、绘图检查清单、可能的 LISP/脚本辅助点。
+- 只有当 S5 方向确认后，才进入精细 CAD 绘制辅助。
+
+#### S7：SU 建模辅助
+
+用户可以提供参考 SU 模型，所以 S7 也不应从零建模。
+
+快跑版 S7 应聚焦：
+
+- 读取/登记参考 SU 模型、模型截图、导出视角、历史效果表达。
+- 形成建模任务书：地形、道路、水系、构筑物、文化装置、铺装、植被、灯光和视角。
+- 为 AI 渲染或外部建模 agent 提供 prompt 和资产清单。
+- 等 S5/S6 稳定后再细化模型几何。
+
+#### S8：效果图渲染
+
+当前不是主攻阶段。
+
+快跑版只需定义：
+
+- 需要哪些效果图视角。
+- 每张图服务哪个汇报论点。
+- 可从历史 SU/效果资料中复用什么。
+
+#### S9：方案汇报文档
+
+这是当前最应重点强化的阶段。
+
+用户明确希望 skill 能读取历史资料，并按标准模板生成汇报文档。因此 S9 应成为近期重点建设对象：
+
+- 读取 S1/S2/S3/S4/S5 结论。
+- 读取历史汇报文档、历史项目材料、参考 CAD/SU/效果图说明。
+- 按标准结构生成汇报文档：
+  - 前期分析
+  - 场地认知
+  - 设计理念
+  - 规划结构
+  - 功能分区
+  - 流线与入口
+  - 景观/文化策略
+  - 专项设计
+  - 投资估算或实施建议
+  - 待确认问题
+
+#### S10：PPT 与概念示意图
+
+当前仓库尚未正式实现，但用户真实目标里非常重要。
+
+后续应补成正式阶段：
+
+- 读取 S9 汇报文档。
+- 读取历史 PPT 模板或样例。
+- 生成 PPT 大纲、页标题、每页图文关系、配图需求、示意图清单。
+- 后续再接入实际 PPTX 生成。
+
+### 6. 近期执行建议
+
+建议 Claude 审阅后，按以下顺序实施：
+
+1. 更新 S1/S2 marker：把当前资产变成可消费结论，解除对轻量 S3/S9 的过度阻塞。
+2. 跑轻量 S3：整理功能、面积、使用场景和强排前置判断。
+3. 跑 S4：形成待确认问题清单，明确哪些不影响快跑、哪些影响精修。
+4. 起草 S5 skill 或临时 S5 输出模板：生成 2-3 个概念强排方向。
+5. 重构 S9 skill：把“读取历史资料 + 标准汇报模板生成”作为核心能力。
+6. 规划 S10：PPT 大纲和页面结构先行，PPTX 自动生成后置。
+7. 再回头决定是否补正式 S6/S7 skill：以读取参考 CAD/SU 和生成任务书为主，不以从零制图/建模为主。
+
+### 7. 请 Claude 重点审阅的问题
+
+请重点审阅：
+
+1. 是否同意把 S1/S2 从“精确配准门槛”改为“可置信度标注的工作假设输出”？
+2. 是否同意第一步先更新 S1/S2 marker，而不是直接进 S3/S5？
+3. 是否同意 S6/S7 在当前测试项目中降级为“读取参考 CAD/SU + 生成制图/建模任务书”？
+4. 是否同意近期建设重点应转向 S9/S10，即历史资料读取、标准汇报文档和 PPT 生成？
+5. 若同意，请给出 S1/S2 marker 更新时需要遵守的具体边界，尤其是 `completeness.blocked/ready_for` 应如何调整。
+
+本轮只提交战略文档，不开始实施 record.md 或 skill 改动，等待 Claude 审阅。
