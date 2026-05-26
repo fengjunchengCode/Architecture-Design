@@ -292,14 +292,16 @@
 
             <section id="drawingWorkbench" class="drawing-workbench">
               <div class="style-strip" id="styleStrip">当前风格：未加载</div>
+              <div class="drawing-tabs" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
+              <input id="drawingType" type="hidden" value="functional_zoning">
+              <section class="drawing-workspace-head">
+                <div>
+                  <p class="eyebrow" id="drawingWorkspaceState">可编辑</p>
+                  <h3 id="drawingWorkspaceTitle">功能分区工作台</h3>
+                  <p id="drawingWorkspaceDescription">标注功能区边界、名称和必要标签。</p>
+                </div>
+              </section>
               <div class="workbench-toolbar">
-                <label>
-                  <span>图纸类型</span>
-                  <select id="drawingType">
-                    <option value="functional_zoning">功能分区</option>
-                    <option value="traffic_analysis">交通组织</option>
-                  </select>
-                </label>
                 <label>
                   <span>底图路径</span>
                   <input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off">
@@ -312,39 +314,14 @@
                 <button id="workbenchSave">保存草图</button>
               </div>
 
-              <div class="workbench-layout">
+              <div class="planned-workspace" id="plannedWorkspace" hidden>
+                <b id="plannedTitle">该图纸工作台待设计</b>
+                <p id="plannedDescription">请在对话中定义该图纸的对象类型、输入方式和输出目标后再启用。</p>
+              </div>
+
+              <div class="workbench-layout" id="workbenchLayout">
                 <aside class="workbench-side">
-                  <label>
-                    <span>对象类型</span>
-                    <select id="objectType">
-                      <option value="functional_zone">功能区</option>
-                      <option value="vehicle_flow">车行流线</option>
-                      <option value="pedestrian_flow">人行流线</option>
-                      <option value="main_entrance">主入口</option>
-                      <option value="label">标签</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>几何类型</span>
-                    <select id="geometryKind">
-                      <option value="polygon">多边形</option>
-                      <option value="arrow">箭头</option>
-                      <option value="polyline">折线</option>
-                      <option value="point">点</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>标签文本</span>
-                    <input id="objectLabel" placeholder="如：主入口 / 休闲活动区">
-                  </label>
-                  <label>
-                    <span>来源</span>
-                    <select id="objectSource">
-                      <option value="user_sketch">用户手绘</option>
-                      <option value="vision_inferred">视觉识别</option>
-                      <option value="cad_extracted">CAD 提取</option>
-                    </select>
-                  </label>
+                  <div class="drawing-specific-tools" id="drawingSpecificTools"></div>
                   <div class="workbench-actions">
                     <button id="finishObject" class="primary">完成对象</button>
                     <button id="undoPoint">撤销最后一点</button>
@@ -376,6 +353,18 @@
                     <object id="svgDraftPreview" type="image/svg+xml" data="" hidden></object>
                   </div>
                 </section>
+              </div>
+
+              <div class="dirty-dialog" id="dirtyDialog" hidden role="dialog" aria-modal="true" aria-labelledby="dirtyDialogTitle">
+                <div class="dirty-dialog-panel">
+                  <b id="dirtyDialogTitle">当前图纸有未保存修改</b>
+                  <p>切换图纸前，请选择如何处理当前草图。未完成的点位不会进入保存文件。</p>
+                  <div class="dirty-dialog-actions">
+                    <button id="dirtySaveSwitch" class="primary">保存并切换</button>
+                    <button id="dirtyDiscardSwitch">丢弃并切换</button>
+                    <button id="dirtyCancelSwitch">取消</button>
+                  </div>
+                </div>
               </div>
             </section>
           </section>

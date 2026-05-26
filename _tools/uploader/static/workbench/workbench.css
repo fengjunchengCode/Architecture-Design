@@ -22,8 +22,172 @@
   font-size: 13px;
 }
 
+.drawing-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.drawing-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.drawing-tab {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.82);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.drawing-tab span,
+.drawing-tab small {
+  display: inline-block;
+}
+
+.drawing-tab small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.drawing-tab.enabled:hover,
+.drawing-tab.enabled.active {
+  border-color: var(--accent);
+  background: rgba(28, 124, 98, 0.12);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.drawing-tab.planned {
+  color: #999;
+  cursor: pointer;
+  opacity: 0.78;
+}
+
+.drawing-tab.planned:hover {
+  background: rgba(255, 253, 247, 0.82);
+  border-color: var(--line);
+}
+
+.drawing-tab.planned.active {
+  border-color: #b7b1a6;
+  background: rgba(218, 214, 204, 0.28);
+}
+
+.drawing-workspace-head,
+.planned-workspace {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.drawing-workspace-head h3 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+
+.drawing-workspace-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.workspace-state.enabled,
+.workspace-state.planned,
+.workspace-state.deprecated {
+  display: inline-block;
+}
+
+.workspace-state.enabled {
+  color: var(--accent);
+}
+
+.workspace-state.planned,
+.workspace-state.deprecated {
+  color: #8a8277;
+}
+
+.planned-workspace {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: repeating-linear-gradient(
+      -45deg,
+      rgba(218, 214, 204, 0.28),
+      rgba(218, 214, 204, 0.28) 12px,
+      rgba(255, 253, 247, 0.92) 12px,
+      rgba(255, 253, 247, 0.92) 24px
+    );
+}
+
+.planned-workspace[hidden] {
+  display: none;
+}
+
+.planned-workspace b {
+  display: block;
+  color: var(--ink);
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.planned-workspace p {
+  max-width: 520px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.dirty-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(34, 32, 28, 0.36);
+  padding: 24px;
+}
+
+.dirty-dialog[hidden] {
+  display: none;
+}
+
+.dirty-dialog-panel {
+  width: min(460px, 100%);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 18px;
+  box-shadow: 0 18px 45px rgba(34, 32, 28, 0.2);
+}
+
+.dirty-dialog-panel b {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.dirty-dialog-panel p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dirty-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
 .workbench-toolbar {
-  grid-template-columns: 170px minmax(220px, 1fr) minmax(210px, 260px) auto auto;
+  grid-template-columns: minmax(260px, 1fr) minmax(210px, 260px) auto auto;
   align-items: end;
   padding: 14px;
   border: 1px solid var(--line);
@@ -43,6 +207,11 @@
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: 6px;
+}
+
+.drawing-specific-tools {
+  display: grid;
+  gap: 12px;
 }
 
 .workbench-side label,
