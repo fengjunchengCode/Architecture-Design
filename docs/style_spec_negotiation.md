@@ -2,7 +2,7 @@
 
 **目的**：为某项目建立或修改 `05_output/style/style_spec.json`（设计 tokens）和 `style_card.svg`（设计资产）。流程"对标 → 变体 → 选定 → 抽参数 → 落 token → 样卡核对"。
 
-**适用对象**：claudecode（规划 + 抽参数 + 审阅）、codex（出图 + 落盘 + 出样卡）、用户（选对标 + 选变体 + 批准）。
+**适用对象**：codex（端到端执行）、用户（选对标 + 选变体 + 批准）、claudecode（只在用户喊"复核"时介入审查；不在主流程上）。
 
 **前置**：用户已选项目；工作台 style strip 显示"当前风格：未建立 style_spec"或上次更新时间。
 
@@ -11,24 +11,26 @@
 ## 1. 协议总览
 
 ```
-Stage 0  用户       选对标（一个 family）
+Stage 0  codex 主持   询问用户对标（启泰 / 长江 / 已建项目 / 上传图 / 默认起步）
+   ↓ 用户答
+Stage 1  codex        基于对标派生 5 份变体提示词，写 vibe_board.md
    ↓
-Stage 1  Claude     基于对标派生 5 份变体提示词
+Stage 2  codex        调 imagegen 批量出 5 张 mockup PNG，追加 generation log
    ↓
-Stage 2  codex      调 imagegen 批量出 5 张 mockup PNG，写 vibe_board.md
+Stage 3  codex 主持   把 5 张图路径告诉用户，等用户挑
+   ↓ 用户挑
+Stage 4  codex        视觉读 selected var_N + 对标原图，抽参数写 style_spec.json 草案
    ↓
-Stage 3  用户       选定 1 张（或要求重生）
+Stage 5  codex        落 style_spec.json（approved_at: null）+ 写 SVG 样卡 + cairosvg 出 PNG
    ↓
-Stage 4  Claude     从选定 mockup + 对标原图抽参数，写 style_spec.json 草案
+Stage 6  codex 主持   告知样卡路径，等用户裁决
+   ├─ OK    →  codex 把 approved_at 填入，commit；进入 Stage 7
+   └─ 不 OK →  按用户反馈回 Stage 4（调参数）或 Stage 1（重生变体）或 Stage 0（换对标）
    ↓
-Stage 5  codex      落 style_spec.json + 写 SVG 样卡 + 可选 cairosvg 出 PNG
-   ↓
-Stage 6  用户       看样卡核对真实参数能不能落地
-   ├─ OK    →  approved_at 填入，进入 Stage 7（真图生产）
-   └─ 不 OK →  回 Stage 4（调参数）或回 Stage 0（换对标）
-   ↓
-Stage 7  codex      按 agent_drawing_protocol.md 出 A1/A2/...
+Stage 7  codex        按 agent_drawing_protocol.md 出 A1/A2/...
 ```
+
+**Claude 何时介入**：默认不介入。用户可以在任意 Stage 后说"找 Claude 审一下"，Claude 拉最新主线 + 看 codex 的产物，给意见。审查不阻塞流程。
 
 **交付物双轨制**：
 
@@ -39,24 +41,37 @@ Stage 7  codex      按 agent_drawing_protocol.md 出 A1/A2/...
 
 ---
 
-## 2. Stage 0 · 选对标
+## 2. Stage 0 · 选对标（codex 主持）
 
-用户在对话窗口或工作台说出对标。可选来源：
+codex 在对话窗口启动流程时，先报告当前 style_spec 状态，再问对标：
 
-| 来源 | 表达 | Claude 后续动作 |
+```
+codex: 项目 {code} 当前未建立 style_spec。选对标：
+  1) 启泰直销市场（P52/P54，冷调低饱和分区 + 暖橙流线）
+  2) 长江大厦（P41/P42，同 firm 体系）
+  3) 已建项目 style_spec.json（我列一下：...）
+  4) 上传图作对标
+  5) 从默认起步值开始
+```
+
+可选来源 + codex 后续动作：
+
+| 来源 | 用户表达 | codex 后续 |
 |---|---|---|
-| 仓内参考 PDF 同类页 | "按启泰风格" / "按长江风格" | 查 `docs/reference_pdfs/page_index.json` 取页码 |
-| 已有项目 | "参考 25-XX 项目" | 读 `projects/25-XX/05_output/style/style_spec.json` |
-| 用户上传图 | "按这张图" + 路径 | 视觉打开图片 |
-| 默认起步 | "从零开始" | 用默认起步值（见 §10） |
+| 仓内参考 PDF 同类页 | "选 1" / "启泰" | 查 `docs/reference_pdfs/page_index.json` 取页码 + 调 `pdf_page_extract.py` 出 PNG |
+| 已有项目 | "选 3 / 参考 25-XX" | 读 `projects/25-XX/05_output/style/style_spec.json` |
+| 用户上传图 | "选 4" + 路径 | 视觉打开图片 |
+| 默认起步 | "选 5 / 从零开始" | 用默认起步值（见 §10） |
 
-**只能选一个**。多个对标会让派生变体逻辑混乱。如果想揉合多个 family，建议先选主对标，在变体维度上吸收其他对标的某项特征。
+**只能选一个**。多个对标会让派生变体逻辑混乱。如果用户想揉合多个 family，让其先选主对标，变体维度上吸收其他对标的某项特征。
+
+**如果 Stage 0 时 pdf_page_extract 失败**（poppler 缺）：codex 把对标原 PDF 路径 + 页码作为 base，跳过实际抽页，直接进 Stage 1 用文字描述代替视觉锚点。
 
 ---
 
-## 3. Stage 1 · 派生变体提示词（Claude）
+## 3. Stage 1 · 派生变体提示词（codex）
 
-输入：对标素材。输出：5 份提示词文本，写入 `vibe_board.md` 准备让 codex 执行。
+输入：Stage 0 锁定的对标素材（视觉可读的 PNG / 文字描述 / 已有 style_spec.json）。输出：5 份提示词文本写入 `vibe_board.md`。
 
 ### 派生原则
 
@@ -94,7 +109,9 @@ A3 landscape composition.
 
 ### 输出文件
 
-Claude 不写 PNG，只写 `projects/{code}/05_output/style/vibe_board.md`（schema 见 §11）。提示词文本在这份 md 里，codex 读它去调 imagegen。
+codex 写 `projects/{code}/05_output/style/vibe_board.md`（schema 见 §11）。本 Stage **只**写 md，不调 imagegen（Stage 2 才调）。
+
+写完后 codex 可以在对话窗口给用户一个简短预览（5 份变体动的维度列表），不强求用户在出图前确认提示词——直接进 Stage 2。
 
 ---
 
@@ -105,10 +122,12 @@ Claude 不写 PNG，只写 `projects/{code}/05_output/style/vibe_board.md`（sch
 ### 执行步骤
 
 1. 读 vibe_board.md，拿到 5 份提示词
-2. 检查本机 imagegen MCP 是否可用（`mcp__plugin_imagegen_imagegen__text-to-image` 或 `imagegen:image-generation` skill）
-3. 逐份调 imagegen，保存到 `05_output/style/vibe_board/var_{1-5}.png`
-4. 调用失败时（quota / 网络 / 模型故障）：写错误到 vibe_board.md 的 `errors` 段，**不要**伪造 PNG
-5. commit + 在 review thread 贴：成功几张 / 失败几张 / 路径列表
+2. 逐份调 imagegen 出图（codex 自带生图能力，直接调用即可）
+3. 保存到 `05_output/style/vibe_board/var_{1-5}.png`
+4. 调用失败时（quota / 网络 / 模型故障）：写错误到 vibe_board.md 的 `errors` 段，**不要**伪造 PNG，**不要**重试超过 2 次同一份提示词
+5. 全部完成后追加 `## Generation log` 段到 vibe_board.md（结构见 §11）
+6. commit 5 张 PNG + 更新后的 vibe_board.md
+7. 在对话窗口告诉用户：5 张 mockup 路径 + 哪几张成功，进 Stage 3
 
 ### 不要做的事
 
@@ -130,13 +149,13 @@ Claude 不写 PNG，只写 `projects/{code}/05_output/style/vibe_board.md`（sch
 
 ---
 
-## 6. Stage 4 · 抽参数（Claude）
+## 6. Stage 4 · 抽参数（codex）
 
-输入：选定的 var_N.png + 对标原图（同时看）。输出：style_spec.json 草案文本（不落盘）。
+输入：选定的 var_N.png + 对标原图（同时视觉打开）。输出：style_spec.json 草案文本（先在内存里、不落盘，Stage 5 才落盘）。
 
 ### 抽取方法
 
-1. **用视觉打开 var_N.png 和对标原图**
+1. **用视觉同时打开 var_N.png 和对标原图**
 2. 优先以 var_N 为准（用户看到的就是它），对标图作为"补充细节"参考
 3. 按 schema 顺序填字段：
    - palette：从 var_N 直接取主色 + 辅色 + accent；从对标补 annotation_colors 细节
@@ -158,56 +177,40 @@ imagegen 出的颜色像素级不稳定。抽取规则：
 - 用最近的"整数 hex"代替（如 `#7A9D5F` → `#7A9C5E`）
 - 同色系（如多个功能分区绿）保留对比度差，不要全合并成一种绿
 
-### 输出
+### 衔接
 
-Claude 在对话窗口贴完整 style_spec.json 候选 + 给 codex 一份 GO 信号（见 §7 的"GO 信号格式"）。
+codex 自己抽完直接进 Stage 5 落盘 + 出样卡，不需要外部 review。如果用户在 Stage 3 给了"颜色再暖一档"这种微调要求，codex 在抽取时就吸收进去。
 
 ---
 
 ## 7. Stage 5 · 落 token + 出样卡（codex）
 
-输入：Claude 给的 GO 信号（含完整 style_spec.json 文本 + 样卡 SVG 规格）。输出：3 个文件。
+输入：Stage 4 抽出的 style_spec.json 草案。输出：3 个文件。
 
 ### 文件清单
 
 | 文件 | 位置 | 内容 |
 |---|---|---|
-| Design Tokens | `05_output/style/style_spec.json` | 按 GO 信号原文落盘，`approved_at: null` |
-| Design Asset (SVG) | `05_output/style/style_card.svg` | 按规格手写，800×600，元素见 §8 |
-| Design Asset (PNG) | `05_output/style/style_card.png` | cairosvg 转出来；本机 Cairo 缺则跳过 |
+| Design Tokens | `05_output/style/style_spec.json` | 按草案落盘，`approved_at: null`，`updated_at: now()` |
+| Design Asset (SVG) | `05_output/style/style_card.svg` | 按 §8 规格手写，800×600 |
+| Design Asset (PNG) | `05_output/style/style_card.png` | cairosvg 转出来；本机 Cairo 缺则跳过并写明 |
 
-### GO 信号格式（Claude → codex）
+### 自检前 commit
 
-```yaml
-target_project: 26-BQ-PARK
-stage: style_lock
-style_spec_json: |
-  {  ...完整 JSON...  }
-style_card_spec:
-  canvas: 800x600
-  background: "{style_spec.palette.background}"
-  sections:
-    - id: title
-      content: "26-BQ-PARK 风格样卡 v1"
-    - id: palette_swatches
-      colors: [primary, secondary, accent, neutral, ...]
-    - id: stroke_samples
-      lines: [primary, secondary, dashed]
-    - id: arrow_samples
-      arrows: [vehicle_flow, pedestrian_flow]
-    - id: entrance_markers
-      types: [main, secondary, freight]
-    - id: legend_example
-      rows: 6
-    - id: scale_bar
-    - id: north_compass
-```
+样卡 SVG 的每一处颜色 / 线宽 / 字号必须**直接引用 style_spec.json 的字段值**。codex 写完 SVG 后再扫一遍：
+
+- 色卡区每块的 fill 是否在 palette 里能找到？
+- 线样区每条线的 stroke-width 是否换算自 strokes.*_width_mm？
+- 箭头形状是否对应 arrows.default_style / per_object_type？
+- 图例区布局是否匹配 legend.layout？
+
+任何一条对不上 → 改 SVG，不改 spec（spec 是 ground truth）。
 
 ### 不要做的事
 
-- ❌ 不修改 style_spec.json 字段内容（要改回 Claude 改）
+- ❌ 不在样卡里加 spec 没写的视觉元素
 - ❌ 不填 `approved_at`（等用户 Stage 6 OK）
-- ❌ 不写"漂亮但不一致"的样卡 —— 样卡所有元素必须**直接取自 style_spec.json 的值**
+- ❌ 不调 imagegen 出样卡（样卡是确定性 SVG，imagegen 只在 Stage 2 用）
 
 ---
 
@@ -238,7 +241,7 @@ style_card_spec:
 
 **OK 路径**：用户说"过 / OK / 拍板" → codex 把 `style_spec.json` 的 `approved_at` 填上 now()，`updated_at` 同步更新。
 
-**调一两项**：用户说"主色再深一点 / 箭头改小一点"。Claude 在原 spec 基础上局部改字段 → 给 codex 新 GO 信号 → codex 重写 spec + 重出样卡。**不**回头重出 mockup。
+**调一两项**：用户说"主色再深一点 / 箭头改小一点"。codex 在原 spec 基础上局部改字段 → 重写 style_spec.json + 重出样卡。**不**回头重出 mockup。每次改动 `updated_at` 同步、`approved_at` 清回 null。
 
 **整体不行**：用户说"风格不对，再选" → 回 Stage 3 重新挑 var_N；或回 Stage 0 换对标。
 
@@ -350,9 +353,9 @@ Claude 在 Stage 1 写、codex 在 Stage 2 追加回执：
 
 新项目想沿用旧项目的 style_spec：
 
-1. 用户说"参考 25-XX 项目"
-2. Claude 读 source 项目 style_spec.json
-3. **不**跳到 Stage 5。仍要走 Stage 1-3：把 source spec 作为 var_1，再派生 4 个变体让用户对比
+1. 用户在 Stage 0 选"参考 25-XX 项目"
+2. codex 读 source 项目 style_spec.json
+3. **不**跳到 Stage 5。仍要走 Stage 1-3：把 source spec 作为 var_1（用 imagegen 出图也行，但可以让 var_1 直接复用 source 的样卡截图），再派生 4 个变体让用户对比
 4. 用户选 → 后续相同
 
 继承不等于复用。每个项目都要走一遍批准，避免风格漂移失控。
@@ -363,11 +366,11 @@ Claude 在 Stage 1 写、codex 在 Stage 2 追加回执：
 
 - ❌ 不在工作台 UI 做 GUI 风格编辑器（调色板 / 滑块全部不要）
 - ❌ 不调 imagegen 出真实技术图（imagegen 只用于 Stage 2 的 vibe board）
-- ❌ 不让 codex 自行决定 style_spec 字段值（必须 Claude 给）
 - ❌ 不把 Stage 2 / Stage 5 失败的产物入仓
 - ❌ 不在 style_spec.json 里写绝对像素（mm/pt 单位描述，渲染时换算）
 - ❌ 不在没批准（`approved_at: null`）时启动 Stage 7 真图生产
 - ❌ 不在 style_spec.json 里塞 drawing_type 特定字段（per-drawing 偏好放在 task_pack 的 user_notes）
+- ❌ 不在用户没明确同意的情况下删本地未跟踪文件（之前 codex 在 smoke 收尾时清过用户的 IMG_*.jpg，下次保留）
 
 ---
 
