@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "arrows": {
+    "default_style": "filled_triangle",
+    "default_size_mm": 5,
+    "linecap": "round",
+    "linejoin": "round",
+    "per_object_type": {
+      "vehicle_flow": {
+        "stroke": "#E88A33",
+        "stroke_width_mm": 0.75,
+        "style": "solid",
+        "marker": "filled_triangle",
+        "marker_size_mm": 5.2
+      },
+      "vehicle_secondary_flow": {
+        "stroke": "#E88A33",
+        "stroke_width_mm": 0.55,
+        "style": "dash",
+        "dash_pattern": "8 5",
+        "marker": "open_triangle",
+        "marker_size_mm": 4.4
+      },
+      "pedestrian_flow": {
+        "stroke": "#65AFC4",
+        "stroke_width_mm": 0.55,
+        "style": "solid",
+        "marker": "open_triangle",
+        "marker_size_mm": 4.6
+      },
+      "underground_flow": {
+        "stroke": "#65AFC4",
+        "stroke_width_mm": 0.45,
+        "style": "dash",
+        "dash_pattern": "7 5",
+        "marker": "open_triangle",
+        "marker_size_mm": 4
+      }
+    }
+  },
+  "labels": {
+    "shape": "rect",
+    "corner_radius_mm": 0.4,
+    "padding_x_mm": 2.2,
+    "padding_y_mm": 1.1,
+    "background": "#FFFDF8",
+    "background_alpha": 0.86,
+    "text": "#4B5149",
+    "leader_line": "#A7ACA3",
+    "leader_width_mm": 0.28
+  },
+  "legend": {
+    "layout": "bottom_strip",
+    "position": "bottom",
+    "columns": 4,
+    "background": "#FFFDF8",
+    "border": "#D8D5CB",
+    "title": "图例",
+    "row_gap_mm": 3,
+    "swatch_size_mm": 7,
+    "section_titles": [
+      "功能分区",
+      "交通流线",
+      "出入口",
+      "其他"
+    ]
+  },
+  "palette": {
+    "primary": "#AFC7A1",
+    "accent": "#E88A33",
+    "neutral": "#4B5149",
+    "background": "#F7F4EC",
+    "sheet_background": "#FFFDF8",
+    "base_gray": "#D8D8D2",
+    "base_road": "#BFC0BB",
+    "redline": "#D34A43",
+    "annotation_colors": {
+      "vehicle_entrance": "#D9483B",
+      "pedestrian_entrance": "#3F8CC3",
+      "service_entrance": "#E9943A",
+      "underground_entrance": "#65AFC4",
+      "vehicle_flow": "#E88A33",
+      "pedestrian_flow": "#65AFC4",
+      "redline": "#D34A43"
+    },
+    "functional_zones": {
+      "activity_lawn": "#DCE8C8",
+      "woodland_rest": "#C9D6BD",
+      "children_activity": "#EAE1B8",
+      "multi_function_plaza": "#DDD3C2",
+      "service_support": "#D8CCDC",
+      "water_view": "#BFD4D9"
+    },
+    "transparency": {
+      "zone_fill_alpha": 0.72,
+      "redline_alpha": 0.95,
+      "flow_alpha": 0.96
+    }
+  },
+  "scale_north": {
+    "scale_style": "bar",
+    "scale_position": "top_right",
+    "north_style": "compass",
+    "north_position": "top_right",
+    "scale_segments": 4,
+    "scale_segment_label_m": 10,
+    "stroke": "#4B5149"
+  },
+  "strokes": {
+    "primary_width_mm": 0.75,
+    "secondary_width_mm": 0.45,
+    "thin_width_mm": 0.28,
+    "redline_width_mm": 0.5,
+    "zone_outline_width_mm": 0.35,
+    "dashed_pattern": "8 5",
+    "fine_dashed_pattern": "5 4"
+  },
+  "typography": {
+    "title_font": "Source Han Sans CN, PingFang SC, Microsoft YaHei, sans-serif",
+    "body_font": "Source Han Sans CN, PingFang SC, Microsoft YaHei, sans-serif",
+    "label_font": "Source Han Sans CN, PingFang SC, Microsoft YaHei, sans-serif",
+    "title_size_pt": 18,
+    "subtitle_size_pt": 11,
+    "body_size_pt": 9,
+    "label_size_pt": 9,
+    "legend_size_pt": 8.5,
+    "title_weight": 500,
+    "body_weight": 400,
+    "label_weight": 500
+  },
+  "based_on": [
+    "qitai:p52",
+    "qitai:p54",
+    "vibe:var_4"
+  ],
+  "approved_at": null,
+  "updated_at": "2026-05-26T16:20:00+08:00",
+  "notes": "用户选择 var_4：保留启泰冷调低饱和分区和暖橙/青蓝流线，把图例改为底部横条，并强化入口与主流线层级。"
+}

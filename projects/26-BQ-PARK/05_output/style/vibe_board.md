@@ -110,6 +110,6 @@
 
 ## Selection
 
-- picked: null
-- picked_at: null
+- picked: var_4
+- picked_at: 2026-05-26T16:20:00+08:00
 - adjustments_requested: null
