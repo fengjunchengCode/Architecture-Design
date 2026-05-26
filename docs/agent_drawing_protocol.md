@@ -183,7 +183,7 @@
 
 **图例条目里允许单端**：图例只表达“这是一种流线”，不需要展示双向语义。
 
-实现方式：所有 flow 类 marker 用 `orient="auto-start-reverse"`，path 同时挂 `marker-start` 和 `marker-end`：
+实现方式：所有 flow 类 marker 用 `orient="auto-start-reverse"`，path 同时挂 `marker-start` 和 `marker-end`。带箭头的 flow path 必须用 `stroke-linecap="butt"`，避免圆端帽在线端越过箭头尖端；不要通过移动 `refX` 遮盖端帽问题。
 
 ```xml
 <marker id="arrow-vehicle"
@@ -195,7 +195,10 @@
   <path d="M0,0 L10,5 L0,10 z" fill="..."/>
 </marker>
 
-<path d="..." marker-start="url(#arrow-vehicle)" marker-end="url(#arrow-vehicle)"/>
+<path d="..."
+      stroke-linecap="butt"
+      marker-start="url(#arrow-vehicle)"
+      marker-end="url(#arrow-vehicle)"/>
 ```
 
 `orient="auto-start-reverse"` 让同一 marker 既能贴在 path 起点（自动反转方向）也能贴在终点，不需要定义 `arrow-start` 和 `arrow-end` 两份。

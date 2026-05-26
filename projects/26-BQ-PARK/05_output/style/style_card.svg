@@ -60,11 +60,11 @@
   <g id="stroke-arrow-section">
     <rect x="42" y="300" width="338" height="130" class="panel"/>
     <text x="62" y="326" class="label">线样与箭头 · strokes / arrows</text>
-    <path d="M64 356 C120 340, 178 372, 234 352" fill="none" stroke="#E88A33" stroke-width="5.2" stroke-linecap="round" marker-start="url(#arrow-vehicle)" marker-end="url(#arrow-vehicle)"/>
+    <path d="M64 356 C120 340, 178 372, 234 352" fill="none" stroke="#E88A33" stroke-width="5.2" stroke-linecap="butt" marker-start="url(#arrow-vehicle)" marker-end="url(#arrow-vehicle)"/>
     <text x="254" y="358" class="tiny">vehicle_flow 0.75mm</text>
     <path d="M64 386 C122 402, 174 372, 232 392" fill="none" stroke="#E88A33" stroke-width="4.0" stroke-dasharray="8 5" stroke-linecap="round"/>
     <text x="254" y="392" class="tiny">secondary dash</text>
-    <path d="M64 416 C124 404, 172 432, 232 414" fill="none" stroke="#65AFC4" stroke-width="4.0" stroke-linecap="round" marker-start="url(#arrow-pedestrian)" marker-end="url(#arrow-pedestrian)"/>
+    <path d="M64 416 C124 404, 172 432, 232 414" fill="none" stroke="#65AFC4" stroke-width="4.0" stroke-linecap="butt" marker-start="url(#arrow-pedestrian)" marker-end="url(#arrow-pedestrian)"/>
     <text x="254" y="420" class="tiny">pedestrian 0.55mm</text>
   </g>
 
