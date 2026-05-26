@@ -181,28 +181,6 @@
     setStatus(`已保存：${data.path}`);
   }
 
-  async function renderDrawing() {
-    const project = projectCode();
-    if (!project) {
-      setStatus("请先打开或创建项目，再渲染。", false);
-      return;
-    }
-    state.project = project;
-    const drawing = buildDrawing();
-    const data = await api("/api/drawing/render", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project, drawing }),
-    });
-    state.drawing = drawing;
-    const preview = $("#renderPreview");
-    preview.innerHTML = `
-      <a href="${escapeHtml(data.png_url)}" target="_blank" rel="noreferrer">${escapeHtml(data.paths.png)}</a>
-      <img src="${escapeHtml(data.png_url)}&_=${Date.now()}" alt="渲染图">
-    `;
-    setStatus(`已渲染：${data.paths.png}`);
-  }
-
   function normalizedPoint(event) {
     const image = $("#baseImage");
     if (!image.src || !image.naturalWidth) return null;
@@ -346,7 +324,6 @@
     if (!$("#drawingWorkbench")) return;
     $("#workbenchLoad").addEventListener("click", () => loadDrawing().catch((err) => setStatus(err.message, false)));
     $("#workbenchSave").addEventListener("click", () => saveDrawing().catch((err) => setStatus(err.message, false)));
-    $("#workbenchRender").addEventListener("click", () => renderDrawing().catch((err) => setStatus(err.message, false)));
     $("#finishObject").addEventListener("click", finishObject);
     $("#undoPoint").addEventListener("click", undoPoint);
     $("#deleteObject").addEventListener("click", deleteSelected);

@@ -285,7 +285,7 @@
               <div>
                 <p class="eyebrow">图纸工作台</p>
                 <h2>语义图纸工作台</h2>
-                <p>在底图上手绘功能分区、交通流线、出入口和标签。工作台保存语义 JSON，并渲染 HTML/PNG 供汇报图使用。</p>
+                <p>在底图上手绘功能分区、交通流线、出入口和标签。工作台只保存人工草图 JSON，不自动生成技术图结论。</p>
               </div>
               <button id="workbenchLoad" class="primary">加载图纸</button>
             </div>
@@ -304,7 +304,6 @@
                   <input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off">
                 </label>
                 <button id="workbenchSave">保存 JSON</button>
-                <button id="workbenchRender" class="primary">渲染 PNG</button>
               </div>
 
               <div class="workbench-layout">
@@ -356,7 +355,6 @@
                     <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
                     <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
                   </div>
-                  <div class="render-preview" id="renderPreview"></div>
                 </section>
               </div>
             </section>

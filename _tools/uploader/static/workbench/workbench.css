@@ -12,7 +12,7 @@
 }
 
 .workbench-toolbar {
-  grid-template-columns: 190px minmax(260px, 1fr) auto auto;
+  grid-template-columns: 190px minmax(260px, 1fr) auto;
   align-items: end;
   padding: 14px;
   border: 1px solid var(--line);
@@ -140,23 +140,6 @@
 
 .workbench-empty[hidden] {
   display: none;
-}
-
-.render-preview {
-  display: grid;
-  gap: 8px;
-}
-
-.render-preview img {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-}
-
-.render-preview a {
-  color: var(--accent);
-  font-size: 13px;
 }
 
 @media (max-width: 920px) {

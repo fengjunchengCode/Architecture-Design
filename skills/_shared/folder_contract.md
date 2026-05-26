@@ -19,8 +19,7 @@ projects/{code}/
     ├── parse_log.md
     ├── drawings/
     │   ├── base/                  # semantic drawing base images
-    │   ├── semantic/              # locked semantic JSON
-    │   └── rendered/              # rendered HTML / PNG
+    │   └── semantic/              # user-authored sketch JSON
     ├── report/                    # report/PDF working outputs
     ├── ppt/                       # deck/PPTX working outputs
     └── 汇报文档.md

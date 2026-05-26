@@ -4,82 +4,46 @@
 
 ---
 
-## 2026-05-26 Codex -> Claude: Workbench Bug 1/2 fixed; Wave 1 plan understood
+## 2026-05-26 Codex -> Claude: User override, abandon script-render route
 
-### Scope Done
+### Correction
 
-本轮只修你指出的两个当前 bug，不进入 Wave 1 全量实现。
+用户明确指出：上一轮仍在沿着“脚本渲染技术图”的路线推进，这是错误方向。
 
-- Bug 1: 工作台 UI 中文化。
-- Bug 2: 底图自动加载 race 修复，增加 `image.onload/onerror` 可见状态。
+当前优先级以用户最新要求为准，高于 Wave 1 文档中的 deterministic render / PNG render 计划。
 
-仍然遵守本轮硬约束：
+新的当前边界：
 
-- 未改 `record.md`
-- 未改 `_schema/record.schema.md`
-- 未改 `inventory.json`
-- 未改 P0+ 控制点安全逻辑
-- 未引入 React/Vue/D3/headless browser
-- 未提交自动语义 POC 图
+- 工作台只做底图加载、人工绘制、保存人工草图 JSON。
+- 不在工作台里暴露“渲染 PNG / HTML / PDF”入口。
+- 不让 agent 或脚本从底图自动理解并生成设计结论。
+- 不把脚本生成图作为 BQ-PARK 成果或后续 S9 输入。
 
-### Files Changed
+### Fixes Made
 
-- `_tools/uploader/static/index.html`
-  - Drawing tab 与 workbench section 全部改为中文 UI。
-- `_tools/uploader/static/workbench/workbench.js`
-  - `objectName()` / `geometryName()` 改为中文。
-  - 状态提示、空列表、按钮交互反馈改为中文。
-  - `uploader:state` 监听改为：切到 workbench 且项目变化或尚未加载时重新加载。
-  - `loadBaseImage()` 增加 `console.log`、`onload`、`onerror`，状态行显示底图加载成败。
-  - 底图缺失时不再被后续“已初始化空白语义图纸”覆盖错误状态。
+- 修复 8765 底图未加载的根因：用户看的 8765 进程仍是旧代码，`/api/drawing/load` 为 404。已重启 8765 到最新代码。
+- 工作台保留中文 UI。
+- 移除前端 `渲染 PNG` 按钮与 render preview 区域。
+- 移除前端 `/api/drawing/render` 调用。
+- 移除后端 `/api/drawing/render` endpoint。
+- 删除 `_tools/drawing_workbench/render.py` 与 `export.py`。
+- `drawing_output_paths()` 只保留 semantic JSON 路径。
+- folder contract 中移除 `drawings/rendered/` 作为当前工作台输出。
 
-### Verification
+### Current Accepted Flow
 
-Commands run:
-
-```powershell
-node --check _tools\uploader\static\workbench\workbench.js
-node --check _tools\uploader\static\app.js
-python -m py_compile _tools\uploader\server.py
-python _tools\validate_record.py 26-BQ-PARK
+```text
+底图 -> 用户在工作台人工画草图 -> 保存 semantic JSON
 ```
 
-Results:
+后续如果要做成品技术图，必须重新设计“人工草图如何转换为可编辑表达”的流程，并先获得用户确认；不能默认回到脚本渲染路线。
 
-- `node --check`: passed
-- `py_compile`: passed
-- `validate_record.py 26-BQ-PARK`: passed, no issues
+### Verification Required
 
-Browser checks on `http://127.0.0.1:8766`:
+Before handoff, Codex should verify on the actual user port:
 
-1. Direct URL:
-   - `/?project=26-BQ-PARK&page=workbench`
-   - heading: `语义图纸工作台`
-   - status: `底图已加载 3393×1964。`
-   - object list: `还没有语义对象。`
-   - base image loaded: true
-
-2. Tab switch:
-   - opened `/?project=26-BQ-PARK&page=s2`
-   - clicked `图纸` tab
-   - active page: `workbench`
-   - status: `底图已加载 3393×1964。`
-   - base image loaded: true
-
-### Next Plan Understood
-
-Wave 1 is not “let agent infer design from image.” The accepted strategy is:
-
-`base image -> user manual sketch -> semantic JSON -> template-driven deterministic render`
-
-Recommended next implementation sequence:
-
-1. F3: base image upload/select UI and `/api/drawing/base/upload`.
-2. R8: template loading mechanism under `_tools/drawing_workbench/templates/{drawing_type}.json`.
-3. A1: functional zoning template and rendering polish.
-4. A2: traffic analysis template, arrow/line/entrance primitives.
-5. R1/R2/R3/R4/R5/R7: curve smoothing, dashed lines, arrow library, label upgrade, legend, high-DPI/PDF.
-6. R6 last: scale bar and north arrow, because scale requires a user-provided calibration.
-
-Do not start Stage A/S9 enhancement until Wave 1 has at least user-authored A1/A2 outputs that are visually acceptable.
+- `http://127.0.0.1:8765/?project=26-BQ-PARK&page=workbench`
+- status line shows base image loaded
+- no render button is visible
+- save JSON remains available
 

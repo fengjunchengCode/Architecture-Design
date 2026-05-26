@@ -87,11 +87,6 @@ folders:
         min: 0
         max: 999
         required: false
-      - pattern: "drawings/rendered/*"
-        ext: [html, png, pdf]
-        min: 0
-        max: 999
-        required: false
       - pattern: "report/*"
         ext: [md, html, pdf, png, jpg, json]
         min: 0
@@ -126,7 +121,6 @@ drawing_workbench:
   output_dir: 05_output/drawings
   base_dir: 05_output/drawings/base
   semantic_dir: 05_output/drawings/semantic
-  rendered_dir: 05_output/drawings/rendered
   drawing_types: [functional_zoning, traffic_analysis]
   coordinate_mode: normalized_image_xy_0_1
   ui_entry: _tools/uploader/server.py?page=workbench

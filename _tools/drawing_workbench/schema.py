@@ -35,8 +35,6 @@ def drawing_output_paths(drawing_type: str) -> dict[str, str]:
     drawing_type = _clean_drawing_type(drawing_type)
     return {
         "semantic": f"05_output/drawings/semantic/{drawing_type}.json",
-        "html": f"05_output/drawings/rendered/{drawing_type}.html",
-        "png": f"05_output/drawings/rendered/{drawing_type}.png",
     }
 
 
@@ -219,4 +217,3 @@ def _normalize_coord(value: object, object_index: int) -> list[float]:
             f"objects[{object_index}].geometry.coords must be normalized between 0 and 1"
         )
     return [round(x, 6), round(y, 6)]
-
