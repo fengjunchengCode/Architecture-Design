@@ -21,6 +21,14 @@ OBJECT_TYPES = {
 GEOMETRY_KINDS = {"point", "polyline", "polygon", "arrow"}
 CONFIDENCE_LEVELS = {"low", "medium", "high"}
 OBJECT_SOURCES = {"user_sketch", "vision_inferred", "cad_extracted"}
+ZONE_BORDER_STYLES = {"solid", "dashed", "none"}
+ZONE_STROKE_WIDTH_KEYS = {"thin", "medium", "bold"}
+DEFAULT_ZONE_STYLE_HINTS = {
+    "fill_color": "#DCE8C8",
+    "fill_enabled": True,
+    "border_style": "solid",
+    "stroke_width_key": "medium",
+}
 
 
 class DrawingValidationError(ValueError):
@@ -89,7 +97,7 @@ def normalize_drawing(data: dict[str, Any], *, project_code: str | None = None) 
         {"user", "agent", "vision_model"},
         "last_edited_by",
     )
-    objects = _normalize_objects(payload.get("objects"))
+    objects = _normalize_objects(payload.get("objects"), drawing_type=drawing_type)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -151,7 +159,7 @@ def _positive_int(value: object, field: str) -> int:
     return number
 
 
-def _normalize_objects(value: object) -> list[dict[str, Any]]:
+def _normalize_objects(value: object, *, drawing_type: str) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise DrawingValidationError("objects must be an array")
     result: list[dict[str, Any]] = []
@@ -167,6 +175,12 @@ def _normalize_objects(value: object) -> list[dict[str, Any]]:
         seen_ids.add(object_id)
         object_type = _clean_choice(raw.get("type"), OBJECT_TYPES, f"objects[{index}].type")
         geometry = _normalize_geometry(raw.get("geometry"), index)
+        style_hints = _normalize_style_hints(
+            raw.get("style_hints"),
+            drawing_type=drawing_type,
+            object_type=object_type,
+            object_index=index,
+        )
         result.append(
             {
                 "id": object_id,
@@ -183,10 +197,56 @@ def _normalize_objects(value: object) -> list[dict[str, Any]]:
                     OBJECT_SOURCES,
                     f"objects[{index}].source",
                 ),
-                "style_hints": {},
+                "style_hints": style_hints,
             }
         )
     return result
+
+
+def _normalize_style_hints(
+    value: object,
+    *,
+    drawing_type: str,
+    object_type: str,
+    object_index: int,
+) -> dict[str, Any]:
+    if drawing_type != "functional_zoning" or object_type != "functional_zone":
+        return {}
+    if value is None:
+        raw: dict[str, Any] = {}
+    elif isinstance(value, dict):
+        raw = value
+    else:
+        raise DrawingValidationError(f"objects[{object_index}].style_hints must be an object")
+
+    fill_color = str(raw.get("fill_color") or DEFAULT_ZONE_STYLE_HINTS["fill_color"]).strip()
+    if not _is_hex_color(fill_color):
+        raise DrawingValidationError(f"objects[{object_index}].style_hints.fill_color must be #RRGGBB")
+    fill_enabled = raw.get("fill_enabled", DEFAULT_ZONE_STYLE_HINTS["fill_enabled"])
+    if not isinstance(fill_enabled, bool):
+        raise DrawingValidationError(f"objects[{object_index}].style_hints.fill_enabled must be boolean")
+    border_style = _clean_choice(
+        raw.get("border_style") or DEFAULT_ZONE_STYLE_HINTS["border_style"],
+        ZONE_BORDER_STYLES,
+        f"objects[{object_index}].style_hints.border_style",
+    )
+    stroke_width_key = _clean_choice(
+        raw.get("stroke_width_key") or DEFAULT_ZONE_STYLE_HINTS["stroke_width_key"],
+        ZONE_STROKE_WIDTH_KEYS,
+        f"objects[{object_index}].style_hints.stroke_width_key",
+    )
+    return {
+        "fill_color": fill_color.upper(),
+        "fill_enabled": fill_enabled,
+        "border_style": border_style,
+        "stroke_width_key": stroke_width_key,
+    }
+
+
+def _is_hex_color(value: str) -> bool:
+    if len(value) != 7 or not value.startswith("#"):
+        return False
+    return all(char in "0123456789abcdefABCDEF" for char in value[1:])
 
 
 def _normalize_geometry(value: object, object_index: int) -> dict[str, Any]:

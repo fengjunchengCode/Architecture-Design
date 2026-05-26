@@ -13,6 +13,27 @@
     { value: "vision_inferred", label: "视觉识别" },
     { value: "cad_extracted", label: "CAD 提取" },
   ];
+  const UNDO_LIMIT = 50;
+  const PALETTE_FALLBACK = [
+    "#D6CBB8",
+    "#C2D0DB",
+    "#E0D2C2",
+    "#CFD4BF",
+  ];
+  const DEFAULT_ZONE_STYLE = {
+    fill_color: "#DCE8C8",
+    fill_enabled: true,
+    border_style: "solid",
+    stroke_width_key: "medium",
+  };
+  const ZONE_STROKE_WIDTHS = {
+    thin: 0.002,
+    medium: 0.003,
+    bold: 0.0045,
+  };
+  const ZONE_EDIT_WIDTH = 0.003;
+  const ZONE_SELECTED_WIDTH = 0.004;
+  const ZONE_HANDLE_RADIUS = 0.006;
   const DRAWING_WORKBENCHES = {
     functional_zoning: {
       status: "enabled",
@@ -20,9 +41,13 @@
       label: "功能分区",
       title: "功能分区工作台",
       description: "标注功能区边界、功能名称和必要标签，保存为后续精绘分区图的语义证据。",
+      fixedObjectType: "functional_zone",
+      fixedGeometry: "polygon",
+      fixedSource: "user_sketch",
+      hideCanvasLabels: true,
+      paletteFallback: PALETTE_FALLBACK,
       objectTypes: [
         { value: "functional_zone", label: "功能区", defaultGeometry: "polygon" },
-        { value: "label", label: "标签", defaultGeometry: "point" },
       ],
       taskButtonLabel: "生成分区图任务包",
       agentNotesPlaceholder: "例如：请把不同功能区整理为低饱和分区色块，并生成底部图例。",
@@ -77,6 +102,10 @@
     svgUrl: "",
     styleSpec: null,
     dirty: false,
+    undoStacks: {},
+    redoStacks: {},
+    zoneDraftStyle: { ...DEFAULT_ZONE_STYLE },
+    zoneDraftLabel: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -124,6 +153,10 @@
 
   function drawingConfig(type = drawingType()) {
     return DRAWING_WORKBENCHES[type] || DRAWING_WORKBENCHES[DEFAULT_DRAWING_TYPE];
+  }
+
+  function isFunctionalZoning(type = drawingType()) {
+    return type === "functional_zoning";
   }
 
   function isEnabled(type = drawingType()) {
@@ -184,6 +217,72 @@
   function clearDirty() {
     state.dirty = false;
     renderWorkspaceMeta();
+  }
+
+  function stackFor(kind, type = drawingType()) {
+    const stacks = kind === "redo" ? state.redoStacks : state.undoStacks;
+    if (!stacks[type]) stacks[type] = [];
+    return stacks[type];
+  }
+
+  function snapshotState() {
+    return {
+      objects: JSON.parse(JSON.stringify(state.objects)),
+      currentPoints: JSON.parse(JSON.stringify(state.currentPoints)),
+      selectedId: state.selectedId,
+      zoneDraftStyle: { ...state.zoneDraftStyle },
+      zoneDraftLabel: state.zoneDraftLabel,
+    };
+  }
+
+  function restoreSnapshot(snapshot) {
+    state.objects = JSON.parse(JSON.stringify(snapshot.objects || []));
+    state.currentPoints = JSON.parse(JSON.stringify(snapshot.currentPoints || []));
+    state.selectedId = snapshot.selectedId || "";
+    state.zoneDraftStyle = normalizeZoneStyle(snapshot.zoneDraftStyle || state.zoneDraftStyle);
+    state.zoneDraftLabel = snapshot.zoneDraftLabel || "";
+    renderObjects();
+    renderObjectList();
+    renderSpecificTools();
+    markDirty();
+  }
+
+  function pushUndoSnapshot() {
+    const stack = stackFor("undo");
+    stack.push(snapshotState());
+    if (stack.length > UNDO_LIMIT) stack.shift();
+    state.redoStacks[drawingType()] = [];
+  }
+
+  function resetHistory(type = drawingType()) {
+    state.undoStacks[type] = [];
+    state.redoStacks[type] = [];
+  }
+
+  function undoHistory() {
+    const undoStack = stackFor("undo");
+    if (!undoStack.length) {
+      setStatus("没有可撤销的操作。", false);
+      return;
+    }
+    const redoStack = stackFor("redo");
+    redoStack.push(snapshotState());
+    if (redoStack.length > UNDO_LIMIT) redoStack.shift();
+    restoreSnapshot(undoStack.pop());
+    setStatus("已撤销。");
+  }
+
+  function redoHistory() {
+    const redoStack = stackFor("redo");
+    if (!redoStack.length) {
+      setStatus("没有可重做的操作。", false);
+      return;
+    }
+    const undoStack = stackFor("undo");
+    undoStack.push(snapshotState());
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    restoreSnapshot(redoStack.pop());
+    setStatus("已重做。");
   }
 
   function resetInteraction() {
@@ -339,6 +438,10 @@
       tools.innerHTML = "";
       return;
     }
+    if (isFunctionalZoning()) {
+      renderFunctionalZoningTools(tools);
+      return;
+    }
     const currentObject = $("#objectType") && $("#objectType").value;
     const objectTypes = config.objectTypes || [];
     const selectedObject = objectTypes.some((item) => item.value === currentObject)
@@ -369,6 +472,155 @@
     setDefaultGeometry();
   }
 
+  function renderFunctionalZoningTools(tools) {
+    const selected = selectedObject();
+    const activeStyle = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
+    const palette = zonePaletteItems();
+    const label = selected ? selected.label || "" : state.zoneDraftLabel || "";
+    tools.innerHTML = `
+      <label class="zone-name-field">
+        <span>分区名称 <small>名称只进图例，不显示在图中</small></span>
+        <input id="objectLabel" placeholder="如：中心广场 / 活动草坪" value="${escapeHtml(label)}">
+      </label>
+      <div class="zone-tool-group">
+        <span>填充颜色</span>
+        <div class="zone-palette" id="zonePalette">
+          ${palette
+            .map(
+              (item, index) => `
+                <button
+                  type="button"
+                  class="zone-swatch ${item.color.toUpperCase() === activeStyle.fill_color ? "active" : ""} ${
+                    item.fallback ? "fallback" : ""
+                  }"
+                  style="--swatch:${escapeHtml(item.color)}"
+                  title="${item.fallback ? "补足色，后续风格协商会替换" : "风格色"}"
+                  aria-label="选择颜色 ${index + 1}"
+                  data-zone-color="${escapeHtml(item.color)}"
+                ></button>
+              `,
+            )
+            .join("")}
+        </div>
+        <input id="zoneCustomColor" type="color" value="${escapeHtml(activeStyle.fill_color)}" aria-label="自定义填充颜色">
+      </div>
+      <div class="zone-tool-group">
+        <span>填充</span>
+        <div class="segmented-control" id="zoneFillMode">
+          <button type="button" class="${activeStyle.fill_enabled ? "active" : ""}" data-fill-enabled="true">有填充</button>
+          <button type="button" class="${!activeStyle.fill_enabled ? "active" : ""}" data-fill-enabled="false">无填充</button>
+        </div>
+      </div>
+      <div class="zone-tool-group">
+        <span>边框</span>
+        <div class="segmented-control" id="zoneBorderStyle">
+          <button type="button" class="${activeStyle.border_style === "solid" ? "active" : ""}" data-border-style="solid">实线</button>
+          <button type="button" class="${activeStyle.border_style === "dashed" ? "active" : ""}" data-border-style="dashed">虚线</button>
+          <button type="button" class="${activeStyle.border_style === "none" ? "active" : ""}" data-border-style="none">无边框</button>
+        </div>
+      </div>
+      <div class="zone-tool-group">
+        <span>线宽</span>
+        <div class="segmented-control" id="zoneStrokeWidth">
+          <button type="button" class="${activeStyle.stroke_width_key === "thin" ? "active" : ""}" data-stroke-width="thin">细</button>
+          <button type="button" class="${activeStyle.stroke_width_key === "medium" ? "active" : ""}" data-stroke-width="medium">中</button>
+          <button type="button" class="${activeStyle.stroke_width_key === "bold" ? "active" : ""}" data-stroke-width="bold">粗</button>
+        </div>
+      </div>
+    `;
+    bindFunctionalZoningTools();
+  }
+
+  function selectedObject() {
+    return state.objects.find((obj) => obj.id === state.selectedId) || null;
+  }
+
+  function zonePaletteItems() {
+    const fromSpec = Object.values((state.styleSpec && state.styleSpec.palette && state.styleSpec.palette.functional_zones) || {})
+      .filter(isHexColor)
+      .map((color) => color.toUpperCase());
+    const colors = fromSpec.length >= 10 ? fromSpec.slice(0, 10) : [...fromSpec, ...PALETTE_FALLBACK].slice(0, 10);
+    return colors.map((color, index) => ({ color, fallback: index >= fromSpec.length }));
+  }
+
+  function normalizeZoneStyle(style = {}) {
+    const palette = zonePaletteItems();
+    const fallbackColor = (palette[0] && palette[0].color) || DEFAULT_ZONE_STYLE.fill_color;
+    const fillColor = isHexColor(style.fill_color) ? String(style.fill_color).toUpperCase() : fallbackColor;
+    const borderStyle = ["solid", "dashed", "none"].includes(style.border_style)
+      ? style.border_style
+      : DEFAULT_ZONE_STYLE.border_style;
+    const strokeWidthKey = ["thin", "medium", "bold"].includes(style.stroke_width_key)
+      ? style.stroke_width_key
+      : DEFAULT_ZONE_STYLE.stroke_width_key;
+    return {
+      fill_color: fillColor,
+      fill_enabled: typeof style.fill_enabled === "boolean" ? style.fill_enabled : DEFAULT_ZONE_STYLE.fill_enabled,
+      border_style: borderStyle,
+      stroke_width_key: strokeWidthKey,
+    };
+  }
+
+  function isHexColor(value) {
+    return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value.trim());
+  }
+
+  function bindFunctionalZoningTools() {
+    const labelInput = $("#objectLabel");
+    if (labelInput) {
+      labelInput.addEventListener("input", () => {
+        if (!selectedObject()) state.zoneDraftLabel = labelInput.value;
+      });
+      labelInput.addEventListener("change", () => {
+        const selected = selectedObject();
+        if (!selected) {
+          state.zoneDraftLabel = labelInput.value.trim();
+          return;
+        }
+        const next = labelInput.value.trim();
+        if ((selected.label || "") === next) return;
+        pushUndoSnapshot();
+        selected.label = next;
+        markDirty();
+        renderObjectList();
+        setStatus("已更新分区名称。");
+      });
+    }
+
+    $("#zonePalette")?.querySelectorAll("[data-zone-color]").forEach((button) => {
+      button.addEventListener("click", () => updateZoneStyle({ fill_color: button.dataset.zoneColor }));
+    });
+    $("#zoneCustomColor")?.addEventListener("change", (event) => updateZoneStyle({ fill_color: event.target.value }));
+    $("#zoneFillMode")?.querySelectorAll("[data-fill-enabled]").forEach((button) => {
+      button.addEventListener("click", () => updateZoneStyle({ fill_enabled: button.dataset.fillEnabled === "true" }));
+    });
+    $("#zoneBorderStyle")?.querySelectorAll("[data-border-style]").forEach((button) => {
+      button.addEventListener("click", () => updateZoneStyle({ border_style: button.dataset.borderStyle }));
+    });
+    $("#zoneStrokeWidth")?.querySelectorAll("[data-stroke-width]").forEach((button) => {
+      button.addEventListener("click", () => updateZoneStyle({ stroke_width_key: button.dataset.strokeWidth }));
+    });
+  }
+
+  function updateZoneStyle(patch) {
+    const selected = selectedObject();
+    const current = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
+    const next = normalizeZoneStyle({ ...current, ...patch });
+    if (JSON.stringify(current) === JSON.stringify(next)) return;
+    pushUndoSnapshot();
+    if (selected) {
+      selected.style_hints = next;
+      setStatus("已更新选中分区样式。");
+    } else {
+      state.zoneDraftStyle = next;
+      setStatus("已更新新分区默认样式。");
+    }
+    markDirty();
+    renderObjects();
+    renderObjectList();
+    renderSpecificTools();
+  }
+
   function renderAvailability() {
     const enabled = isEnabled();
     const layout = $("#workbenchLayout");
@@ -377,6 +629,7 @@
       "#workbenchSave",
       "#finishObject",
       "#undoPoint",
+      "#redoAction",
       "#deleteObject",
       "#clearDraft",
       "#sendToAgent",
@@ -389,6 +642,10 @@
     if (notes) notes.placeholder = drawingConfig().agentNotesPlaceholder || "";
     const send = $("#sendToAgent");
     if (send) send.textContent = drawingConfig().taskButtonLabel || "发给 agent 出图";
+    const finish = $("#finishObject");
+    if (finish) finish.textContent = isFunctionalZoning() ? "完成分区" : "完成对象";
+    const undo = $("#undoPoint");
+    if (undo) undo.textContent = isFunctionalZoning() ? "撤销" : "撤销最后一点";
   }
 
   async function loadStyle() {
@@ -401,6 +658,15 @@
     const data = await api(`/api/style/load?${params}`);
     state.styleSpec = data.exists ? data.style_spec : null;
     renderStyleStrip(data);
+    if (isFunctionalZoning()) {
+      state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
+      state.objects = state.objects.map((obj) =>
+        obj.type === "functional_zone" ? { ...obj, style_hints: normalizeZoneStyle(obj.style_hints) } : obj,
+      );
+      renderSpecificTools();
+      renderObjectList();
+      renderObjects();
+    }
   }
 
   function renderStyleStrip(data, error = "") {
@@ -470,7 +736,14 @@
     const data = await api(`/api/drawing/load?${params}`);
     state.drawing = data.drawing;
     state.objects = Array.isArray(data.drawing.objects) ? data.drawing.objects : [];
+    if (isFunctionalZoning()) {
+      state.objects = state.objects
+        .filter((obj) => obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon")
+        .map((obj) => ({ ...obj, source: "user_sketch", style_hints: normalizeZoneStyle(obj.style_hints) }));
+      state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
+    }
     resetInteraction();
+    resetHistory();
     state.svgExists = !!data.svg_exists;
     state.svgUrl = data.svg_url || "";
     clearDirty();
@@ -531,15 +804,17 @@
       },
       created_at: (state.drawing && state.drawing.created_at) || new Date().toISOString(),
       last_edited_by: "user",
-      objects: state.objects.map((obj) => ({
-        id: obj.id,
-        type: obj.type,
-        geometry: obj.geometry,
-        label: obj.label || "",
-        confidence: obj.confidence || "medium",
-        source: obj.source || "user_sketch",
-        style_hints: {},
-      })),
+      objects: state.objects
+        .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon"))
+        .map((obj) => ({
+          id: obj.id,
+          type: isFunctionalZoning() ? "functional_zone" : obj.type,
+          geometry: isFunctionalZoning() ? { kind: "polygon", coords: obj.geometry.coords } : obj.geometry,
+          label: obj.label || "",
+          confidence: obj.confidence || "medium",
+          source: isFunctionalZoning() ? "user_sketch" : obj.source || "user_sketch",
+          style_hints: isFunctionalZoning() ? normalizeZoneStyle(obj.style_hints) : {},
+        })),
     };
   }
 
@@ -651,6 +926,18 @@
   function addPoint(event) {
     const point = normalizedPoint(event);
     if (!point) return;
+    pushUndoSnapshot();
+    if (!state.currentPoints.length && state.selectedId) {
+      state.selectedId = "";
+    }
+    if (isFunctionalZoning()) {
+      state.currentPoints.push(point);
+      markDirty();
+      renderObjects();
+      renderObjectList();
+      renderSpecificTools();
+      return;
+    }
     const geometryKind = $("#geometryKind");
     if (!geometryKind) return;
     state.currentPoints.push(point);
@@ -661,6 +948,10 @@
 
   function finishObject() {
     if (!isEnabled()) return;
+    if (isFunctionalZoning()) {
+      finishFunctionalZone();
+      return;
+    }
     const geometryKind = $("#geometryKind");
     const objectType = $("#objectType");
     const objectLabel = $("#objectLabel");
@@ -672,8 +963,9 @@
       setStatus(`${geometryName(kind)} 至少需要 ${minimum} 个点。`, false);
       return;
     }
+    pushUndoSnapshot();
     const index = state.objects.length + 1;
-    const id = `obj-${String(index).padStart(3, "0")}`;
+    const id = nextObjectId();
     const label = (objectLabel && objectLabel.value.trim()) || `${objectName(objectType.value)} ${index}`;
     const object = {
       id,
@@ -693,31 +985,77 @@
     setStatus(`已添加：${label}`);
   }
 
-  function undoPoint() {
-    if (!state.currentPoints.length) return;
-    state.currentPoints.pop();
+  function finishFunctionalZone() {
+    const minimum = 3;
+    if (state.currentPoints.length < minimum) {
+      setStatus(`多边形至少需要 ${minimum} 个点。`, false);
+      return;
+    }
+    pushUndoSnapshot();
+    const index = state.objects.length + 1;
+    const id = nextObjectId();
+    const labelInput = $("#objectLabel");
+    const label = (labelInput && labelInput.value.trim()) || state.zoneDraftLabel.trim() || `功能区 ${index}`;
+    const style = normalizeZoneStyle(state.zoneDraftStyle);
+    const object = {
+      id,
+      type: "functional_zone",
+      geometry: { kind: "polygon", coords: state.currentPoints.slice() },
+      label,
+      confidence: "medium",
+      source: "user_sketch",
+      style_hints: style,
+    };
+    state.objects.push(object);
+    state.selectedId = id;
+    state.zoneDraftStyle = style;
+    state.zoneDraftLabel = "";
+    state.currentPoints = [];
     markDirty();
     renderObjects();
+    renderObjectList();
+    renderSpecificTools();
+    if (!style.fill_enabled && style.border_style === "none") {
+      setStatus("该分区在图中不可见（无边框 + 无填充）。", false);
+    } else {
+      setStatus(`已添加分区：${label}`);
+    }
+  }
+
+  function nextObjectId() {
+    const max = state.objects.reduce((current, obj) => {
+      const match = /^obj-(\d+)$/.exec(obj.id || "");
+      return match ? Math.max(current, Number(match[1])) : current;
+    }, 0);
+    return `obj-${String(max + 1).padStart(3, "0")}`;
+  }
+
+  function undoPoint() {
+    undoHistory();
   }
 
   function deleteSelected() {
     if (!state.selectedId) return;
+    pushUndoSnapshot();
     state.objects = state.objects.filter((obj) => obj.id !== state.selectedId);
     state.selectedId = "";
     markDirty();
     renderObjects();
     renderObjectList();
+    renderSpecificTools();
     setStatus("已删除选中对象。");
   }
 
   function clearDraft() {
     if (!state.objects.length && !state.currentPoints.length) return;
+    pushUndoSnapshot();
     state.objects = [];
     state.currentPoints = [];
     state.selectedId = "";
     markDirty();
     renderObjects();
     renderObjectList();
+    renderSpecificTools();
     setStatus("已清空当前草图。");
   }
 
@@ -725,9 +1063,13 @@
     const overlay = $("#sketchOverlay");
     if (!overlay) return;
     overlay.innerHTML = [...state.objects.map(renderObjectSvg), renderDraftSvg()].join("");
+    bindOverlaySelection(overlay);
   }
 
   function renderObjectSvg(obj) {
+    if (isFunctionalZoning() && obj.type === "functional_zone") {
+      return renderFunctionalZoneSvg(obj);
+    }
     const style = objectStyle(obj.type);
     const selected = obj.id === state.selectedId;
     const width = selected ? 0.012 : 0.008;
@@ -746,13 +1088,87 @@
     return `${shape}${renderSvgLabel(obj.label, labelPoint, style.stroke)}`;
   }
 
+  function renderFunctionalZoneSvg(obj) {
+    const selected = obj.id === state.selectedId;
+    const style = normalizeZoneStyle(obj.style_hints);
+    const coords = obj.geometry.coords;
+    const points = coords.map((point) => point.join(",")).join(" ");
+    const fill = style.fill_enabled ? style.fill_color : "none";
+    const fillOpacity = style.fill_enabled ? "0.42" : "1";
+    const strokeColor = style.border_style === "none" ? "none" : (selected ? darkenHex(style.fill_color, 0.2) : style.fill_color);
+    const strokeWidth =
+      style.border_style === "none"
+        ? 0
+        : selected
+          ? Math.max(ZONE_SELECTED_WIDTH, ZONE_STROKE_WIDTHS[style.stroke_width_key] || ZONE_EDIT_WIDTH)
+          : ZONE_STROKE_WIDTHS[style.stroke_width_key] || ZONE_EDIT_WIDTH;
+    const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
+    const shape = `
+      <polygon
+        points="${points}"
+        fill="${fill}"
+        fill-opacity="${fillOpacity}"
+        stroke="${strokeColor}"
+        stroke-width="${strokeWidth}"
+        stroke-linejoin="round"${dash}
+      ></polygon>
+      <polygon
+        class="zone-hit"
+        data-object-id="${escapeHtml(obj.id)}"
+        points="${points}"
+        fill="transparent"
+        stroke="transparent"
+        stroke-width="0.02"
+        pointer-events="all"
+      ></polygon>
+    `;
+    const handles = selected
+      ? coords
+          .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${ZONE_HANDLE_RADIUS}" fill="#fff" stroke="${darkenHex(style.fill_color, 0.28)}" stroke-width="0.0025"></circle>`)
+          .join("")
+      : "";
+    return `${shape}${handles}`;
+  }
+
   function renderDraftSvg() {
     if (!state.currentPoints.length) return "";
     const points = state.currentPoints.map((point) => point.join(",")).join(" ");
+    const strokeWidth = isFunctionalZoning() ? ZONE_EDIT_WIDTH : 0.006;
+    const handleRadius = isFunctionalZoning() ? ZONE_HANDLE_RADIUS : 0.009;
     const circles = state.currentPoints
-      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="0.009" fill="#111827"></circle>`)
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${handleRadius}" fill="#111827"></circle>`)
       .join("");
-    return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="0.006" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
+    return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="${strokeWidth}" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
+  }
+
+  function bindOverlaySelection(overlay) {
+    overlay.querySelectorAll("[data-object-id]").forEach((shape) => {
+      shape.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectObject(shape.dataset.objectId);
+      });
+    });
+  }
+
+  function selectObject(id) {
+    state.selectedId = id || "";
+    state.currentPoints = [];
+    renderObjects();
+    renderObjectList();
+    renderSpecificTools();
+  }
+
+  function darkenHex(color, amount) {
+    if (!isHexColor(color)) return color;
+    const next = [1, 3, 5]
+      .map((start) => {
+        const value = parseInt(color.slice(start, start + 2), 16);
+        return Math.max(0, Math.round(value * (1 - amount)))
+          .toString(16)
+          .padStart(2, "0");
+      })
+      .join("");
+    return `#${next}`.toUpperCase();
   }
 
   function renderSvgLabel(label, point, color) {
@@ -769,6 +1185,20 @@
       list.innerHTML = '<div class="control-empty">还没有语义对象。</div>';
       return;
     }
+    if (isFunctionalZoning()) {
+      list.innerHTML = state.objects.map(renderFunctionalZoneRow).join("");
+      list.querySelectorAll("[data-object-id]").forEach((button) => {
+        button.addEventListener("click", () => selectObject(button.dataset.objectId));
+      });
+      list.querySelectorAll("[data-delete-object]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          state.selectedId = button.dataset.deleteObject;
+          deleteSelected();
+        });
+      });
+      return;
+    }
     list.innerHTML = state.objects
       .map(
         (obj) => `
@@ -781,11 +1211,25 @@
       .join("");
     list.querySelectorAll("[data-object-id]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.selectedId = button.dataset.objectId;
-        renderObjects();
-        renderObjectList();
+        selectObject(button.dataset.objectId);
       });
     });
+  }
+
+  function renderFunctionalZoneRow(obj) {
+    const style = normalizeZoneStyle(obj.style_hints);
+    const fill = style.fill_enabled ? style.fill_color : "transparent";
+    const borderColor = style.border_style === "none" ? "transparent" : style.fill_color;
+    return `
+      <button class="object-row zone-row ${obj.id === state.selectedId ? "active" : ""}" data-object-id="${escapeHtml(obj.id)}">
+        <span class="zone-row-main">
+          <i class="zone-row-swatch" style="--swatch:${escapeHtml(fill)};--swatch-border:${escapeHtml(borderColor)}"></i>
+          <b>${escapeHtml(obj.label || obj.id)}</b>
+        </span>
+        <span>用户手绘 / 多边形</span>
+        <span class="object-row-delete" data-delete-object="${escapeHtml(obj.id)}" role="button" aria-label="删除 ${escapeHtml(obj.label || obj.id)}">删除</span>
+      </button>
+    `;
   }
 
   function renderSvgDraft() {
@@ -807,6 +1251,43 @@
     exportButton.disabled = false;
   }
 
+  function isEditableElement(element) {
+    if (!element) return false;
+    const tag = element.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable;
+  }
+
+  function workbenchIsActive() {
+    if (!$("#drawingWorkbench")) return false;
+    if (window.architectureUploader && window.architectureUploader.getPage) {
+      return window.architectureUploader.getPage() === "workbench";
+    }
+    return new URLSearchParams(window.location.search).get("page") === "workbench";
+  }
+
+  function handleShortcuts(event) {
+    if (!workbenchIsActive() || !isEnabled()) return;
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && event.key.toLowerCase() === "z" && !isEditableElement(document.activeElement)) {
+      event.preventDefault();
+      if (event.shiftKey) redoHistory();
+      else undoHistory();
+      return;
+    }
+    if (!modifier && event.key === "Escape" && !isEditableElement(document.activeElement)) {
+      if (state.currentPoints.length || state.selectedId) {
+        pushUndoSnapshot();
+        state.currentPoints = [];
+        state.selectedId = "";
+        markDirty();
+        renderObjects();
+        renderObjectList();
+        renderSpecificTools();
+        setStatus("已取消当前选择或未完成点位。");
+      }
+    }
+  }
+
   function bind() {
     if (!$("#drawingWorkbench")) return;
     state.currentDrawingType = initialDrawingType();
@@ -820,6 +1301,7 @@
     $("#exportDrawing").addEventListener("click", () => exportDrawing().catch((err) => setStatus(err.message, false)));
     $("#finishObject").addEventListener("click", finishObject);
     $("#undoPoint").addEventListener("click", undoPoint);
+    $("#redoAction").addEventListener("click", redoHistory);
     $("#deleteObject").addEventListener("click", deleteSelected);
     $("#clearDraft").addEventListener("click", clearDraft);
     $("#workbenchCanvas").addEventListener("click", addPoint);
@@ -827,6 +1309,7 @@
       event.preventDefault();
       finishObject();
     });
+    document.addEventListener("keydown", handleShortcuts);
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";
       const newPage = event.detail && event.detail.page;
