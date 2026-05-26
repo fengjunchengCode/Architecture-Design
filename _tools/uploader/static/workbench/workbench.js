@@ -6,6 +6,9 @@
     currentPoints: [],
     selectedId: "",
     loadedBaseUrl: "",
+    svgExists: false,
+    svgUrl: "",
+    styleSpec: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -41,6 +44,13 @@
 
   function basePath() {
     return $("#baseImagePath").value.trim() || "05_output/drawings/base/master_plan.jpg";
+  }
+
+  function setTaskStatus(message, ok = true) {
+    const el = $("#taskPackStatus");
+    if (!el) return;
+    el.textContent = message;
+    el.style.color = ok ? "var(--muted)" : "var(--accent-2)";
   }
 
   function escapeHtml(value) {
@@ -101,13 +111,47 @@
     state.objects = Array.isArray(data.drawing.objects) ? data.drawing.objects : [];
     state.currentPoints = [];
     state.selectedId = "";
+    state.svgExists = !!data.svg_exists;
+    state.svgUrl = data.svg_url || "";
     $("#baseImagePath").value = data.drawing.base_image.path || basePath();
     const hasBaseImage = loadBaseImage(data.base_image_url, data.base_image_exists);
+    renderSvgDraft();
+    loadStyle().catch((err) => renderStyleStrip(null, err.message));
     renderObjects();
     renderObjectList();
     if (hasBaseImage) {
-      setStatus(data.exists ? "已加载已保存的语义图纸。" : "已初始化空白语义图纸。");
+      setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
     }
+  }
+
+  async function loadStyle() {
+    const project = projectCode();
+    if (!project) {
+      renderStyleStrip(null);
+      return;
+    }
+    const params = new URLSearchParams({ project });
+    const data = await api(`/api/style/load?${params}`);
+    state.styleSpec = data.exists ? data.style_spec : null;
+    renderStyleStrip(data);
+  }
+
+  function renderStyleStrip(data, error = "") {
+    const el = $("#styleStrip");
+    if (!el) return;
+    if (error) {
+      el.textContent = `当前风格：读取失败，${error}`;
+      return;
+    }
+    if (!data || !data.exists) {
+      el.textContent = "当前风格：未建立 style_spec。修改风格请到对话窗口与 agent 协商。";
+      return;
+    }
+    const spec = data.style_spec || {};
+    const palette = spec.palette || {};
+    const primary = palette.primary || palette.main || "未指定";
+    const updated = spec.updated_at || "未知时间";
+    el.textContent = `当前风格：主色 ${primary}，上次更新 ${updated}。修改风格请到对话窗口与 agent 协商。`;
   }
 
   function loadBaseImage(url, exists) {
@@ -118,8 +162,8 @@
       image.removeAttribute("src");
       state.loadedBaseUrl = "";
       empty.hidden = false;
-      empty.textContent = "未找到底图。请把底图放到 05_output/drawings/base/master_plan.jpg。";
-      setStatus("底图不存在，请先把 master_plan.jpg 放到 05_output/drawings/base/。", false);
+      empty.textContent = "未找到底图。请上传 JPG/PNG，或填写 05_output/drawings/base/ 下的底图路径。";
+      setStatus("底图不存在，请先上传底图或填写已存在的底图路径。", false);
       return false;
     }
     state.loadedBaseUrl = `${url}&_=${Date.now()}`;
@@ -148,7 +192,7 @@
         path: basePath(),
         natural_width: naturalWidth,
         natural_height: naturalHeight,
-        source: "render",
+        source: "user_upload",
       },
       created_at: (state.drawing && state.drawing.created_at) || new Date().toISOString(),
       last_edited_by: "user",
@@ -178,7 +222,66 @@
       body: JSON.stringify({ project, drawing }),
     });
     state.drawing = data.drawing;
-    setStatus(`已保存：${data.path}`);
+    setStatus(`已保存草图：${data.path}`);
+    return data;
+  }
+
+  async function uploadBaseImage() {
+    const project = projectCode();
+    if (!project) {
+      setStatus("请先打开或创建项目，再上传底图。", false);
+      return;
+    }
+    const input = $("#baseImageFile");
+    if (!input || !input.files || !input.files.length) {
+      setStatus("请选择 JPG 或 PNG 底图文件。", false);
+      return;
+    }
+    const form = new FormData();
+    form.append("file", input.files[0]);
+    const params = new URLSearchParams({ project });
+    const data = await api(`/api/drawing/base/upload?${params}`, {
+      method: "POST",
+      body: form,
+    });
+    $("#baseImagePath").value = data.path;
+    if (state.drawing) {
+      state.drawing.base_image.path = data.path;
+    }
+    loadBaseImage(data.url, true);
+    setStatus(`底图已上传：${data.path}`);
+  }
+
+  async function sendToAgent() {
+    const project = projectCode();
+    if (!project) {
+      setStatus("请先打开或创建项目，再打包。", false);
+      return;
+    }
+    await saveDrawing();
+    const data = await api("/api/drawing/task-pack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project,
+        drawing_type: drawingType(),
+        user_notes: $("#taskUserNotes").value.trim(),
+      }),
+    });
+    setTaskStatus(`已生成：${data.task_pack}。请到对话窗口找 agent 处理该 task_pack。`);
+    setStatus("已打包草图证据，等待 agent 精绘 SVG。");
+  }
+
+  async function exportDrawing() {
+    const project = projectCode();
+    if (!project) {
+      setStatus("请先打开或创建项目，再导出。", false);
+      return;
+    }
+    const params = new URLSearchParams({ project, drawing_type: drawingType() });
+    const data = await api(`/api/drawing/export?${params}`, { method: "POST" });
+    const outputs = data.outputs || {};
+    setStatus(`已导出：${outputs.png || "PNG 未生成"}，${outputs.pdf || "PDF 未生成"}`);
   }
 
   function normalizedPoint(event) {
@@ -320,10 +423,32 @@
     });
   }
 
+  function renderSvgDraft() {
+    const preview = $("#svgDraftPreview");
+    const status = $("#svgDraftStatus");
+    const exportButton = $("#exportDrawing");
+    if (!preview || !status || !exportButton) return;
+    if (!state.svgExists || !state.svgUrl) {
+      preview.hidden = true;
+      preview.removeAttribute("data");
+      status.textContent = "等待 agent 生成。";
+      exportButton.disabled = true;
+      return;
+    }
+    const url = `${state.svgUrl}&_=${Date.now()}`;
+    preview.setAttribute("data", url);
+    preview.hidden = false;
+    status.textContent = "已加载 agent SVG 草稿。";
+    exportButton.disabled = false;
+  }
+
   function bind() {
     if (!$("#drawingWorkbench")) return;
     $("#workbenchLoad").addEventListener("click", () => loadDrawing().catch((err) => setStatus(err.message, false)));
     $("#workbenchSave").addEventListener("click", () => saveDrawing().catch((err) => setStatus(err.message, false)));
+    $("#uploadBaseImage").addEventListener("click", () => uploadBaseImage().catch((err) => setStatus(err.message, false)));
+    $("#sendToAgent").addEventListener("click", () => sendToAgent().catch((err) => setTaskStatus(err.message, false)));
+    $("#exportDrawing").addEventListener("click", () => exportDrawing().catch((err) => setStatus(err.message, false)));
     $("#finishObject").addEventListener("click", finishObject);
     $("#undoPoint").addEventListener("click", undoPoint);
     $("#deleteObject").addEventListener("click", deleteSelected);

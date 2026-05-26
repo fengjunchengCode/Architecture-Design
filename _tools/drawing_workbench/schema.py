@@ -35,6 +35,9 @@ def drawing_output_paths(drawing_type: str) -> dict[str, str]:
     drawing_type = _clean_drawing_type(drawing_type)
     return {
         "semantic": f"05_output/drawings/semantic/{drawing_type}.json",
+        "svg": f"05_output/drawings/svg/{drawing_type}.svg",
+        "png": f"05_output/drawings/png/{drawing_type}.png",
+        "pdf": f"05_output/drawings/pdf/{drawing_type}.pdf",
     }
 
 

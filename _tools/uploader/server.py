@@ -31,6 +31,9 @@ from _tools.drawing_workbench.schema import (
     empty_drawing,
     normalize_drawing,
 )
+from _tools.drawing_workbench.style_schema import validate_style_spec
+from _tools.drawing_workbench.svg_to_png import export_svg
+from _tools.drawing_workbench.task_pack import build_task_pack
 
 CODE_REGEX = re.compile(r"^\d{2}-[A-Z]{2,3}-[A-Za-z0-9]{2,8}$")
 VALID_TYPES = {
@@ -117,6 +120,20 @@ def unique_path(directory: Path, filename: str) -> Path:
     index = 2
     while True:
         candidate = directory / f"{stem}_{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def unique_dash_path(directory: Path, filename: str) -> Path:
+    target = directory / filename
+    if not target.exists():
+        return target
+    stem = target.stem
+    suffix = target.suffix
+    index = 1
+    while True:
+        candidate = directory / f"{stem}-{index}{suffix}"
         if not candidate.exists():
             return candidate
         index += 1
@@ -272,6 +289,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_cad_preview(parsed.query, run=False)
             elif parsed.path == "/api/drawing/load":
                 self.handle_drawing_load(parsed.query)
+            elif parsed.path == "/api/style/load":
+                self.handle_style_load(parsed.query)
             elif parsed.path == "/api/project-file":
                 self.serve_project_file(parsed.query)
             else:
@@ -300,8 +319,16 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_alignment_check()
             elif parsed.path == "/api/cad-preview":
                 self.handle_cad_preview("", run=True)
+            elif parsed.path == "/api/drawing/base/upload":
+                self.handle_drawing_base_upload(parsed.query)
             elif parsed.path == "/api/drawing/save":
                 self.handle_drawing_save()
+            elif parsed.path == "/api/drawing/task-pack":
+                self.handle_drawing_task_pack()
+            elif parsed.path == "/api/drawing/export":
+                self.handle_drawing_export(parsed.query)
+            elif parsed.path == "/api/style/save":
+                self.handle_style_save()
             else:
                 self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -394,7 +421,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             base_path=base_rel,
             natural_width=width,
             natural_height=height,
-            base_source="render",
+            base_source="user_upload",
         )
 
     def handle_drawing_load(self, query: str) -> None:
@@ -427,6 +454,46 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 "paths": rels,
                 "base_image_exists": (proj / drawing["base_image"]["path"]).exists(),
                 "base_image_url": self.project_file_url(code, drawing["base_image"]["path"]),
+                "svg_exists": paths["svg"].exists(),
+                "svg_url": self.project_file_url(code, rels["svg"]) if paths["svg"].exists() else None,
+                "png_exists": paths["png"].exists(),
+                "png_url": self.project_file_url(code, rels["png"]) if paths["png"].exists() else None,
+                "pdf_exists": paths["pdf"].exists(),
+                "pdf_url": self.project_file_url(code, rels["pdf"]) if paths["pdf"].exists() else None,
+            }
+        )
+
+    def handle_drawing_base_upload(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        if not proj.exists():
+            raise ValueError("请先创建项目，再上传底图")
+
+        content_type = self.headers.get("Content-Type", "")
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length) if length > 0 else b""
+        files = iter_multipart_files(content_type, body) if "multipart/form-data" in content_type else []
+        if not files:
+            raise ValueError("请选择 JPG 或 PNG 底图文件")
+
+        fname, payload = files[0]
+        filename = sanitize_filename(fname)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png"}:
+            raise ValueError("底图只支持 JPG/PNG")
+        target_dir = proj / "05_output" / "drawings" / "base"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        out = unique_dash_path(target_dir, filename)
+        out.write_bytes(payload)
+        rel = str(out.relative_to(proj)).replace("\\", "/")
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "path": rel,
+                "url": self.project_file_url(code, rel),
+                "filename": out.name,
             }
         )
 
@@ -446,6 +513,88 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 "drawing_type": drawing["drawing_type"],
                 "path": rels["semantic"],
                 "drawing": drawing,
+            }
+        )
+
+    def handle_drawing_task_pack(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        drawing_type = str(payload.get("drawing_type") or "").strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+        rels = drawing_output_paths(drawing_type)
+        pack_path = build_task_pack(
+            code,
+            drawing_type,
+            sketch_path=rels["semantic"],
+            user_notes=str(payload.get("user_notes") or ""),
+        )
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "drawing_type": drawing_type,
+                "task_pack": str(pack_path.relative_to(REPO_ROOT)).replace("\\", "/"),
+                "task_pack_project_path": str(pack_path.relative_to(project_dir(code))).replace("\\", "/"),
+            }
+        )
+
+    def handle_drawing_export(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+        proj = project_dir(code)
+        rels = drawing_output_paths(drawing_type)
+        svg_path = proj / rels["svg"]
+        outputs = export_svg(svg_path, proj / "05_output" / "drawings", formats=("png", "pdf"), dpi=300, page_size="A3")
+        rel_outputs = {key: str(path.relative_to(proj)).replace("\\", "/") for key, path in outputs.items()}
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "drawing_type": drawing_type,
+                "outputs": rel_outputs,
+                "urls": {key: self.project_file_url(code, rel) for key, rel in rel_outputs.items()},
+            }
+        )
+
+    def handle_style_load(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        path = proj / "05_output" / "style" / "style_spec.json"
+        rel = "05_output/style/style_spec.json"
+        if not path.exists():
+            self.send_json({"ok": True, "project": code, "exists": False, "path": rel})
+            return
+        style_spec = validate_style_spec(json.loads(path.read_text(encoding="utf-8")))
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "exists": True,
+                "path": rel,
+                "style_spec": style_spec,
+            }
+        )
+
+    def handle_style_save(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        style_spec = validate_style_spec(payload.get("style_spec") or payload)
+        path = proj / "05_output" / "style" / "style_spec.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(style_spec, ensure_ascii=False, indent=2), encoding="utf-8")
+        rel = "05_output/style/style_spec.json"
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "path": rel,
+                "style_spec": style_spec,
             }
         )
 

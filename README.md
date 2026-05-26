@@ -57,3 +57,13 @@ python _tools/validate_record.py 26-SZ-NSXX
 上传 UI 默认运行在 `http://127.0.0.1:8765`。
 
 Agent 执行具体阶段前，应先读取 `SKILL.md` 做路由与 gate 判断。
+
+## 图纸工作台导出依赖
+
+图纸工作台的 agent 精绘成果以 SVG 为主，PNG/PDF 只做机械导出：
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+`cairosvg` 需要系统级 Cairo。Windows 可安装 GTK for Windows Runtime 或 MSYS2 Cairo；macOS 可用 `brew install cairo`。PDF 参考页提取使用 `pdf2image`，本机需要安装 Poppler，并确保 `pdftoppm` 在 `PATH` 中。

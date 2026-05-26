@@ -6,13 +6,24 @@
 .workbench-toolbar,
 .workbench-layout,
 .workbench-side,
-.workbench-actions {
+.workbench-actions,
+.svg-draft-panel {
   display: grid;
   gap: 12px;
 }
 
+.style-strip {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .workbench-toolbar {
-  grid-template-columns: 190px minmax(260px, 1fr) auto;
+  grid-template-columns: 170px minmax(220px, 1fr) minmax(210px, 260px) auto auto;
   align-items: end;
   padding: 14px;
   border: 1px solid var(--line);
@@ -52,6 +63,17 @@
 
 .workbench-actions button {
   min-height: 38px;
+}
+
+.task-pack-status,
+.svg-draft-status {
+  min-height: 34px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 253, 247, 0.72);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .object-list {
@@ -140,6 +162,25 @@
 
 .workbench-empty[hidden] {
   display: none;
+}
+
+.svg-draft-panel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.svg-draft-panel .panel-title {
+  font-weight: 700;
+}
+
+.svg-draft-panel object {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
 }
 
 @media (max-width: 920px) {

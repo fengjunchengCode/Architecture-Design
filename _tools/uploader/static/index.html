@@ -285,12 +285,13 @@
               <div>
                 <p class="eyebrow">图纸工作台</p>
                 <h2>语义图纸工作台</h2>
-                <p>在底图上手绘功能分区、交通流线、出入口和标签。工作台只保存人工草图 JSON，不自动生成技术图结论。</p>
+                <p>在底图上手绘功能分区、交通流线、出入口和标签。工作台保存草图证据，并打包给 agent 精绘矢量技术图。</p>
               </div>
               <button id="workbenchLoad" class="primary">加载图纸</button>
             </div>
 
             <section id="drawingWorkbench" class="drawing-workbench">
+              <div class="style-strip" id="styleStrip">当前风格：未加载</div>
               <div class="workbench-toolbar">
                 <label>
                   <span>图纸类型</span>
@@ -303,7 +304,12 @@
                   <span>底图路径</span>
                   <input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off">
                 </label>
-                <button id="workbenchSave">保存 JSON</button>
+                <label>
+                  <span>上传底图</span>
+                  <input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png">
+                </label>
+                <button id="uploadBaseImage">上传底图</button>
+                <button id="workbenchSave">保存草图</button>
               </div>
 
               <div class="workbench-layout">
@@ -345,6 +351,15 @@
                     <button id="deleteObject">删除选中</button>
                     <button id="clearDraft">清空草图</button>
                   </div>
+                  <label>
+                    <span>给 agent 的说明</span>
+                    <textarea id="taskUserNotes" rows="4" placeholder="如：请把橙色箭头理解为车行流线，绿色区域为活动草坪"></textarea>
+                  </label>
+                  <div class="workbench-actions">
+                    <button id="sendToAgent" class="primary">发给 agent 出图</button>
+                    <button id="exportDrawing" disabled>导出 PNG/PDF</button>
+                  </div>
+                  <div class="task-pack-status" id="taskPackStatus">尚未生成 task_pack。</div>
                   <div id="objectList" class="object-list"></div>
                 </aside>
 
@@ -354,6 +369,11 @@
                     <img id="baseImage" alt="底图">
                     <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
                     <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                  </div>
+                  <div class="svg-draft-panel">
+                    <div class="panel-title">当前 SVG 草稿</div>
+                    <div id="svgDraftStatus" class="svg-draft-status">等待 agent 生成。</div>
+                    <object id="svgDraftPreview" type="image/svg+xml" data="" hidden></object>
                   </div>
                 </section>
               </div>
