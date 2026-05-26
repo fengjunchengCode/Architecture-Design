@@ -1,51 +1,261 @@
 # Style Spec 协商协议
 
-**目的**：当用户要为某项目建立或修改 `05_output/style/style_spec.json` 时，agent（Claude）按本文档的对话 SOP 引导，确保对话产出能机械映射成 style_spec 字段。
+**目的**：为某项目建立或修改 `05_output/style/style_spec.json`（设计 tokens）和 `style_card.svg`（设计资产）。流程"对标 → 变体 → 选定 → 抽参数 → 落 token → 样卡核对"。
 
-**适用 agent**：claudecode / 任意带视觉的 Claude 会话。不是脚本协议，是对话剧本。
+**适用对象**：claudecode（规划 + 抽参数 + 审阅）、codex（出图 + 落盘 + 出样卡）、用户（选对标 + 选变体 + 批准）。
 
-**前置条件**：用户在工作台已经选了项目；工作台顶部 style strip 显示"当前风格：未建立 style_spec"或上次更新时间。
+**前置**：用户已选项目；工作台 style strip 显示"当前风格：未建立 style_spec"或上次更新时间。
 
 ---
 
-## 1. 协商触发场景
+## 1. 协议总览
 
-| 场景 | 用户表达 | 走法 |
+```
+Stage 0  用户       选对标（一个 family）
+   ↓
+Stage 1  Claude     基于对标派生 5 份变体提示词
+   ↓
+Stage 2  codex      调 imagegen 批量出 5 张 mockup PNG，写 vibe_board.md
+   ↓
+Stage 3  用户       选定 1 张（或要求重生）
+   ↓
+Stage 4  Claude     从选定 mockup + 对标原图抽参数，写 style_spec.json 草案
+   ↓
+Stage 5  codex      落 style_spec.json + 写 SVG 样卡 + 可选 cairosvg 出 PNG
+   ↓
+Stage 6  用户       看样卡核对真实参数能不能落地
+   ├─ OK    →  approved_at 填入，进入 Stage 7（真图生产）
+   └─ 不 OK →  回 Stage 4（调参数）或回 Stage 0（换对标）
+   ↓
+Stage 7  codex      按 agent_drawing_protocol.md 出 A1/A2/...
+```
+
+**交付物双轨制**：
+
+- `style_spec.json` —— **design tokens**（机器消费的精确数据）
+- `style_card.svg` + `style_card.png` —— **design asset**（人核对用的视觉呈现）
+
+二者必须一致：用户在 Stage 6 看的就是 style_spec.json 翻译出来的样子。
+
+---
+
+## 2. Stage 0 · 选对标
+
+用户在对话窗口或工作台说出对标。可选来源：
+
+| 来源 | 表达 | Claude 后续动作 |
 |---|---|---|
-| 全新项目首次出图 | "26-BQ-PARK 还没有风格，先谈一下" | 走全流程 §3-§7 |
-| 想沿用其他项目 | "参考 25-XX 项目的风格" | §2(b) → 跳到 §6 |
-| 想基于参考 PDF | "我要启泰那种深绿+橙的风格" | §2(c) → §3-§7 |
-| 改某一项 | "把主色再深一点" | 跳到 §5 直接局部改 |
+| 仓内参考 PDF 同类页 | "按启泰风格" / "按长江风格" | 查 `docs/reference_pdfs/page_index.json` 取页码 |
+| 已有项目 | "参考 25-XX 项目" | 读 `projects/25-XX/05_output/style/style_spec.json` |
+| 用户上传图 | "按这张图" + 路径 | 视觉打开图片 |
+| 默认起步 | "从零开始" | 用默认起步值（见 §10） |
+
+**只能选一个**。多个对标会让派生变体逻辑混乱。如果想揉合多个 family，建议先选主对标，在变体维度上吸收其他对标的某项特征。
 
 ---
 
-## 2. Step 1 — 摸清起点
+## 3. Stage 1 · 派生变体提示词（Claude）
 
-agent 第一句问，给四个选项：
+输入：对标素材。输出：5 份提示词文本，写入 `vibe_board.md` 准备让 codex 执行。
+
+### 派生原则
+
+- **5 份共享同一个 base**（对标的核心特征：构图、视角、画幅）
+- **每份只动 1-2 个维度**，差异小步
+- 维度库（每变体动 1-2 个）：
+  - palette 温度（暖移 / 冷移）
+  - palette 饱和度（提饱 / 降饱）
+  - background 明暗（提亮 / 压暗）
+  - legend 布局（sidebar / bottom strip / scatter）
+  - stroke 粗细（粗化 / 细化）
+  - 装饰元素（去除 / 添加纹理）
+
+不要让 5 份变成"5 个完全不同风格"。**变体是兄弟，不是表亲**。
+
+### 提示词模板
+
+每份提示词必须自包含（imagegen 无状态），结构：
 
 ```
-本次报告想用什么风格？四个选项：
-  (a) 沿用本项目已有的 style_spec
-  (b) 复用其他项目的 style_spec（我可以列已有的）
-  (c) 参考某份 PDF / 图片（你上传或指路径）
-  (d) 从默认值起步，逐项谈
+[场景]：A3 horizontal architectural master plan rendering page.
+Top-down aerial view of a small pocket park in Tibet plateau, ~7800㎡ site.
+Right side: vertical legend bar.
+Left side: master plan with functional zones, flow arrows, entrance markers.
+Page is a single sheet from a Chinese architectural design report.
+
+[对标]：{描述对标的核心视觉}.
+
+[变体]：{这一份动了什么维度，怎么动}.
+
+[输出要求]：clean rendering style, no photographic realism, no people, 
+no text labels (Chinese characters in legend OK), high resolution, 
+A3 landscape composition.
 ```
 
-按选项加载素材：
+### 输出文件
 
-- **(a)** 读 `projects/{code}/05_output/style/style_spec.json`，直接进入"过一遍当前值确认改/不改"
-- **(b)** `ls projects/*/05_output/style/style_spec.json`，列出来让用户挑；挑完读那份作为起始
-- **(c)** 用户给路径或上传 → 用视觉打开 → 抽出 palette/strokes/arrows 候选值
-- **(d)** 从下面"默认起步值"起跑
+Claude 不写 PNG，只写 `projects/{code}/05_output/style/vibe_board.md`（schema 见 §11）。提示词文本在这份 md 里，codex 读它去调 imagegen。
 
-### 默认起步值
+---
+
+## 4. Stage 2 · 批量出图（codex）
+
+输入：`05_output/style/vibe_board.md`。输出：5 张 PNG + 写回执到 md。
+
+### 执行步骤
+
+1. 读 vibe_board.md，拿到 5 份提示词
+2. 检查本机 imagegen MCP 是否可用（`mcp__plugin_imagegen_imagegen__text-to-image` 或 `imagegen:image-generation` skill）
+3. 逐份调 imagegen，保存到 `05_output/style/vibe_board/var_{1-5}.png`
+4. 调用失败时（quota / 网络 / 模型故障）：写错误到 vibe_board.md 的 `errors` 段，**不要**伪造 PNG
+5. commit + 在 review thread 贴：成功几张 / 失败几张 / 路径列表
+
+### 不要做的事
+
+- ❌ 不改提示词内容（如果提示词有问题，先在 review thread 提）
+- ❌ 不调 imagegen 出超过 5 张
+- ❌ 不删之前的 var_*.png（除非重生时才覆盖）
+
+---
+
+## 5. Stage 3 · 选定方向（用户）
+
+用户在工作台 / 文件浏览器 / 终端打开 `vibe_board/*.png` 横向对比，给出一个数字（var_N）。
+
+**允许的反馈**：
+- "选 var_3" → Stage 4 启动
+- "var_3 但颜色再暖一点" → Stage 4 时 Claude 在 var_3 基础上做微调
+- "5 张都不行，再来一批" → 回 Stage 1，Claude 调整维度组合重派
+- "换对标" → 回 Stage 0
+
+---
+
+## 6. Stage 4 · 抽参数（Claude）
+
+输入：选定的 var_N.png + 对标原图（同时看）。输出：style_spec.json 草案文本（不落盘）。
+
+### 抽取方法
+
+1. **用视觉打开 var_N.png 和对标原图**
+2. 优先以 var_N 为准（用户看到的就是它），对标图作为"补充细节"参考
+3. 按 schema 顺序填字段：
+   - palette：从 var_N 直接取主色 + 辅色 + accent；从对标补 annotation_colors 细节
+   - typography：用对标（imagegen 通常字体不准）
+   - strokes：估算粗细，参考 §10 默认
+   - arrows：观察 var_N 的箭头样式
+   - labels：参考对标
+   - legend：以 var_N 的布局为准
+   - scale_north：参考对标
+4. `based_on` 字段：`["qitai:p52", "qitai:p54", "vibe:var_3"]` 这种格式，全部来源都标
+5. `approved_at: null`（强制走 Stage 6）
+6. `notes`：一句话说明本次决策要点（"用户挑了 var_3，偏冷调升级、橙色保留启泰"）
+
+### 颜色清洗
+
+imagegen 出的颜色像素级不稳定。抽取规则：
+
+- 找 var_N 里**面积大的主色**，吸出 hex
+- 用最近的"整数 hex"代替（如 `#7A9D5F` → `#7A9C5E`）
+- 同色系（如多个功能分区绿）保留对比度差，不要全合并成一种绿
+
+### 输出
+
+Claude 在对话窗口贴完整 style_spec.json 候选 + 给 codex 一份 GO 信号（见 §7 的"GO 信号格式"）。
+
+---
+
+## 7. Stage 5 · 落 token + 出样卡（codex）
+
+输入：Claude 给的 GO 信号（含完整 style_spec.json 文本 + 样卡 SVG 规格）。输出：3 个文件。
+
+### 文件清单
+
+| 文件 | 位置 | 内容 |
+|---|---|---|
+| Design Tokens | `05_output/style/style_spec.json` | 按 GO 信号原文落盘，`approved_at: null` |
+| Design Asset (SVG) | `05_output/style/style_card.svg` | 按规格手写，800×600，元素见 §8 |
+| Design Asset (PNG) | `05_output/style/style_card.png` | cairosvg 转出来；本机 Cairo 缺则跳过 |
+
+### GO 信号格式（Claude → codex）
+
+```yaml
+target_project: 26-BQ-PARK
+stage: style_lock
+style_spec_json: |
+  {  ...完整 JSON...  }
+style_card_spec:
+  canvas: 800x600
+  background: "{style_spec.palette.background}"
+  sections:
+    - id: title
+      content: "26-BQ-PARK 风格样卡 v1"
+    - id: palette_swatches
+      colors: [primary, secondary, accent, neutral, ...]
+    - id: stroke_samples
+      lines: [primary, secondary, dashed]
+    - id: arrow_samples
+      arrows: [vehicle_flow, pedestrian_flow]
+    - id: entrance_markers
+      types: [main, secondary, freight]
+    - id: legend_example
+      rows: 6
+    - id: scale_bar
+    - id: north_compass
+```
+
+### 不要做的事
+
+- ❌ 不修改 style_spec.json 字段内容（要改回 Claude 改）
+- ❌ 不填 `approved_at`（等用户 Stage 6 OK）
+- ❌ 不写"漂亮但不一致"的样卡 —— 样卡所有元素必须**直接取自 style_spec.json 的值**
+
+---
+
+## 8. Stage 5 样卡 SVG 元素规格
+
+样卡 SVG 必须包含以下区域，从 style_spec.json 取值：
+
+| 区域 | 内容 | 取自字段 |
+|---|---|---|
+| 顶部标题 | "{code} 风格样卡 v1" | typography.title_* |
+| 色块网格 | palette 所有色 + annotation_colors，每块 80×40，标 hex + 用途 | palette |
+| 字号样本 | 标题 / 副标题 / 正文 / 标签四档示例文字 | typography |
+| 线样 | 主线 / 辅线 / 虚线 / 点划线四条样本，标毫米数 | strokes |
+| 箭头 | per_object_type 里每种箭头一个示例 | arrows |
+| 出入口 | 主 / 次 / 货 三种 marker | palette.annotation_colors |
+| 标签样例 | 一个完整 label 样例（含底盒 / 引线 / 文字） | labels |
+| 图例条目 | 6 行 sidebar 示例 | legend |
+| 标尺 | 5 段刻度，标 100m | scale_north |
+| 指北针 | compass / arrow / text，取实际配置 | scale_north |
+
+布局：上左到下右 z 字流，色块网格占最大区。
+
+---
+
+## 9. Stage 6 · 核对+批准（用户）
+
+用户在浏览器打开 `style_card.svg`（或看 PNG）。
+
+**OK 路径**：用户说"过 / OK / 拍板" → codex 把 `style_spec.json` 的 `approved_at` 填上 now()，`updated_at` 同步更新。
+
+**调一两项**：用户说"主色再深一点 / 箭头改小一点"。Claude 在原 spec 基础上局部改字段 → 给 codex 新 GO 信号 → codex 重写 spec + 重出样卡。**不**回头重出 mockup。
+
+**整体不行**：用户说"风格不对，再选" → 回 Stage 3 重新挑 var_N；或回 Stage 0 换对标。
+
+**调整时**：codex 每次更新 spec 必须把 `approved_at` 清回 null，强制重批。
+
+---
+
+## 10. 默认起步值
+
+用户选"从零开始"时用这个；变体派生时也作为字段填补默认：
 
 ```yaml
 palette:
-  primary: "#2E7D5C"        # 深绿
-  accent: "#F97316"         # 橙
-  neutral: "#1F2937"        # 深灰
-  background: "#FFFDF8"     # 暖白
+  primary: "#2E7D5C"
+  accent: "#F97316"
+  neutral: "#1F2937"
+  background: "#FFFDF8"
 typography:
   title_font: "Source Han Sans CN, PingFang SC, sans-serif"
   body_font: "Source Han Sans CN, PingFang SC, sans-serif"
@@ -78,161 +288,92 @@ scale_north:
 
 ---
 
-## 3. Step 2 — 走 7 个字段组
+## 11. vibe_board.md schema
 
-按顺序逐组确认：palette → typography → strokes → arrows → labels → legend → scale_north。
+Claude 在 Stage 1 写、codex 在 Stage 2 追加回执：
 
-每组问一句、给候选、等回。**不要一次性把 7 组都摊开问，那是 form 填表，不是对话**。
+```markdown
+# Vibe Board · {project_code}
 
-### 问法模板
+## Benchmark
 
+- source: qitai
+- ref_pages: [52, 54]
+- ref_pdf: docs/reference_pdfs/report_examples/20260410西藏启泰直销市场建设项目-3.pdf
+- locked_at: 2026-05-26T...
+
+## Base prompt template
+
+[场景]: ...
+[对标]: ...
+[输出要求]: ...
+
+## Variations
+
+### var_1
+
+- axis_varied: ["palette_temperature: +warm"]
+- prompt: |
+  [完整提示词文本，包含 base + 变体 + 输出要求]
+- status: pending | generated | failed
+- file: var_1.png
+- error: null
+
+### var_2
+
+(同上)
+
+### var_3
+### var_4
+### var_5
+
+## Generation log（codex 写）
+
+- attempted_at: 2026-05-26T...
+- imagegen_tool: mcp__plugin_imagegen_imagegen__text-to-image
+- model: gpt-image-1（或实际用的）
+- success: [1, 2, 3, 5]
+- failed: [4]
+- errors:
+  - var_4: "rate limit / model error / ..."
+
+## Selection（用户 + Claude 写）
+
+- picked: var_3
+- picked_at: 2026-05-26T...
+- adjustments_requested: "颜色再暖一档"  # 可选
 ```
-palette：
-  我看 {参考来源} 是 {primary} + {accent}，本次沿用还是换？
-
-typography：
-  字体我建议中文用思源黑体回退到苹方，标题 16pt、正文 9pt、标签 9pt，要调吗？
-
-strokes：
-  主线 0.7mm、辅线 0.4mm、虚线节拍 4-2（毫米）。{参考来源} 主线偏粗约 1.0mm，
-  本次跟参考还是按默认？
-
-arrows：
-  车行 / 人行流线默认开口三角（启泰风）。如果你想要实心箭头（长江风）告诉我。
-
-labels：
-  标签底色圆角矩形 + 透明度 0.88。要不要带引线（leader line）？
-
-legend：
-  图例表格式、放右下、单列。要不要改成散落式（直接贴在对象旁）或横排多列？
-
-scale_north：
-  标尺放左下、指北针放右上，标尺用色块刻度。要换 ratio 格式吗？
-```
-
-### 用户常见说法 → 字段映射
-
-| 用户说 | 映射 |
-|---|---|
-| "深绿+橙" | `palette.primary = "#2E7D5C"`，`palette.accent = "#F97316"` |
-| "颜色再深一点" | `palette.primary` 整体亮度 -10% |
-| "字大一点" | `typography.*_size_pt += 1` 或 +2 |
-| "线粗一点" | `strokes.primary_width_mm += 0.2` |
-| "改实心箭头" | `arrows.default_style = "filled_triangle"` |
-| "图例放右下" | `legend.position = "bottom_right"` |
-| "不要指北针" | `scale_north.north_style = "none"` |
-| "跟启泰一样" | 读启泰 P52/P54，反向抽 palette/strokes/arrows，全套覆写 |
 
 ---
 
-## 4. Step 3 — 试出图确认（关键步骤）
+## 12. 跨项目风格继承
 
-7 组字段都谈完后，**不要直接落 style_spec.json**。先做试出图：
+新项目想沿用旧项目的 style_spec：
 
-### 试出图选项
+1. 用户说"参考 25-XX 项目"
+2. Claude 读 source 项目 style_spec.json
+3. **不**跳到 Stage 5。仍要走 Stage 1-3：把 source spec 作为 var_1，再派生 4 个变体让用户对比
+4. 用户选 → 后续相同
 
-**A. 风格样卡（轻量）**：agent 生成一张 800×600 SVG，包含：
-- 主色 + 辅色 + accent 三个色块
-- 主线 / 辅线 / 虚线 三条线样
-- 默认箭头一支
-- 标签样例一个
-- 图例条目两条
-- 标尺 + 指北针
-
-**B. 真实图试跑（重）**：agent 直接用当前 style_spec 跑一张已存在的草图（比如 BQ-PARK 的 A1 功能分区）。
-
-**默认走 A**。除非用户说"直接出真实图"才走 B。
-
-### 试出图后的对话
-
-```
-agent: 试出图在 {path}，你看一眼，要调哪里？
-user: 主色还是不够深 / 箭头太大 / 图例字号太小 / ...
-agent: 改 {field} 为 {new_value}，重新出图。{再贴新路径}
-user: OK
-```
-
-### 注意
-
-- 试出图 SVG 写到 `projects/{code}/05_output/style/preview/style_card_{timestamp}.svg`
-- 同时把 PNG 也导一份（cairosvg），方便用户在终端 / 编辑器看
-- 试出图迭代过程中**不**频繁覆盖 style_spec.json；只在用户最终拍板时写
+继承不等于复用。每个项目都要走一遍批准，避免风格漂移失控。
 
 ---
 
-## 5. Step 4 — 局部修改（绕过全流程）
+## 13. 边界 / 不做的事
 
-用户已有 style_spec 且只想动一两项时，**不要把整个流程跑一遍**。
-
-```
-user: 把箭头改成实心
-agent: 
-  - 读当前 style_spec
-  - 改 arrows.default_style = "filled_triangle"
-  - 出一张新样卡
-  - 用户确认 → 写 style_spec.json
-```
-
-判断标准：用户只提到 1-2 个字段 → 局部改；提到 3+ 个或"整个风格" → 全流程。
+- ❌ 不在工作台 UI 做 GUI 风格编辑器（调色板 / 滑块全部不要）
+- ❌ 不调 imagegen 出真实技术图（imagegen 只用于 Stage 2 的 vibe board）
+- ❌ 不让 codex 自行决定 style_spec 字段值（必须 Claude 给）
+- ❌ 不把 Stage 2 / Stage 5 失败的产物入仓
+- ❌ 不在 style_spec.json 里写绝对像素（mm/pt 单位描述，渲染时换算）
+- ❌ 不在没批准（`approved_at: null`）时启动 Stage 7 真图生产
+- ❌ 不在 style_spec.json 里塞 drawing_type 特定字段（per-drawing 偏好放在 task_pack 的 user_notes）
 
 ---
 
-## 6. Step 5 — 保存 + 标注 approved_at
+## 14. 关联文档
 
-用户拍板后，agent 写 style_spec.json：
-
-```json
-{
-  "schema_version": "1.0",
-  "palette": {...},
-  "typography": {...},
-  ...
-  "based_on": ["qitai:p52", "qitai:p54"],
-  "approved_at": "2026-05-26T15:30:00+08:00",
-  "updated_at": "2026-05-26T15:30:00+08:00",
-  "notes": "用户偏好启泰主色，调亮一档"
-}
-```
-
-字段说明：
-
-- `based_on`：参考来源数组，格式 `{source}:{ref}`（如 `qitai:p52`、`project:25-XX`、`upload:inspiration1.jpg`）
-- `approved_at`：用户最后一次"OK"的时刻
-- `updated_at`：本次写入时刻（每次 save 都更新）
-- `notes`：一句话说明本次决策要点，方便下次复用
-
-agent 调 `POST /api/style/save`，让 server 跑 `validate_style_spec` 把关。
-
----
-
-## 7. Step 6 — 风格继承（跨项目）
-
-新项目想沿用旧项目时：
-
-```
-agent:
-  1. 读 source 项目的 style_spec.json
-  2. 全字段复制
-  3. 仅改 based_on = [..., "project:{source_code}"]
-  4. approved_at = null（强制用户重新过一遍才算批准）
-  5. 跑一张样卡让用户看
-  6. 用户拍 OK → approved_at 填上
-```
-
-继承不是"copy-and-forget"，永远要让用户走一次确认。
-
----
-
-## 8. 边界 / 不做的事
-
-- ❌ 不在 style_spec 里写绝对像素值（如"字号 36px"）—— 全用 pt/mm，渲染时换算
-- ❌ 不让用户在工作台 UI 里调色（没有 GUI 调色板，本协议是对话产出唯一来源）
-- ❌ 不假装能从 PDF 抽出精确色值 —— 视觉给的是"接近"，要用户确认
-- ❌ 不在 style_spec 里塞 drawing_type 特定的字段（如 `functional_zoning.zone_a_color`）—— 风格是跨图种的，per-drawing 配色在 task_pack 的 user_notes 或 sketch 的 label 里说
-
----
-
-## 9. 关联文档
-
-- `docs/agent_drawing_protocol.md` —— agent 拿 style_spec 出图时怎么用
-- `_tools/drawing_workbench/style_schema.py` —— validate_style_spec 校验逻辑
+- `docs/agent_drawing_protocol.md` —— Stage 7 真图生产时怎么用 style_spec
+- `docs/planning/TECHNICAL_DRAWING_TYPES_ROADMAP_2026-05-25.md` —— 图种全集
+- `_tools/drawing_workbench/style_schema.py` —— validate_style_spec 字段约束
+- `docs/reference_pdfs/page_index.json` —— 参考 PDF 页码索引（Stage 0 用）
