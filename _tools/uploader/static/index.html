@@ -37,8 +37,8 @@
             <span>DWG / 控制点</span>
           </button>
           <button class="stage-tab locked" id="tabWorkbench" data-page="workbench">
-            <b>Drawing</b>
-            <span>Semantic sketch / render</span>
+            <b>图纸</b>
+            <span>图纸工作台</span>
           </button>
           <button class="stage-tab locked" id="tabStatus" data-page="status">
             <b>状态</b>
@@ -283,78 +283,78 @@
           <section class="page" data-page="workbench">
             <div class="page-head">
               <div>
-                <p class="eyebrow">Drawing Workbench</p>
-                <h2>Semantic drawing workbench</h2>
-                <p>Draw functional zoning, traffic flows, entrances, and labels over a base plan. The workbench saves semantic JSON and renders HTML / PNG for later report diagrams.</p>
+                <p class="eyebrow">图纸工作台</p>
+                <h2>语义图纸工作台</h2>
+                <p>在底图上手绘功能分区、交通流线、出入口和标签。工作台保存语义 JSON，并渲染 HTML/PNG 供汇报图使用。</p>
               </div>
-              <button id="workbenchLoad" class="primary">Load drawing</button>
+              <button id="workbenchLoad" class="primary">加载图纸</button>
             </div>
 
             <section id="drawingWorkbench" class="drawing-workbench">
               <div class="workbench-toolbar">
                 <label>
-                  <span>Drawing type</span>
+                  <span>图纸类型</span>
                   <select id="drawingType">
-                    <option value="functional_zoning">Functional zoning</option>
-                    <option value="traffic_analysis">Traffic analysis</option>
+                    <option value="functional_zoning">功能分区</option>
+                    <option value="traffic_analysis">交通组织</option>
                   </select>
                 </label>
                 <label>
-                  <span>Base image path</span>
+                  <span>底图路径</span>
                   <input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off">
                 </label>
-                <button id="workbenchSave">Save JSON</button>
-                <button id="workbenchRender" class="primary">Render PNG</button>
+                <button id="workbenchSave">保存 JSON</button>
+                <button id="workbenchRender" class="primary">渲染 PNG</button>
               </div>
 
               <div class="workbench-layout">
                 <aside class="workbench-side">
                   <label>
-                    <span>Object type</span>
+                    <span>对象类型</span>
                     <select id="objectType">
-                      <option value="functional_zone">Functional zone</option>
-                      <option value="vehicle_flow">Vehicle flow</option>
-                      <option value="pedestrian_flow">Pedestrian flow</option>
-                      <option value="main_entrance">Main entrance</option>
-                      <option value="label">Label</option>
+                      <option value="functional_zone">功能区</option>
+                      <option value="vehicle_flow">车行流线</option>
+                      <option value="pedestrian_flow">人行流线</option>
+                      <option value="main_entrance">主入口</option>
+                      <option value="label">标签</option>
                     </select>
                   </label>
                   <label>
-                    <span>Geometry</span>
+                    <span>几何类型</span>
                     <select id="geometryKind">
-                      <option value="polygon">Polygon</option>
-                      <option value="arrow">Arrow</option>
-                      <option value="polyline">Polyline</option>
-                      <option value="point">Point</option>
+                      <option value="polygon">多边形</option>
+                      <option value="arrow">箭头</option>
+                      <option value="polyline">折线</option>
+                      <option value="point">点</option>
                     </select>
                   </label>
                   <label>
-                    <span>Label</span>
-                    <input id="objectLabel" placeholder="Main entrance / leisure zone">
+                    <span>标签文本</span>
+                    <input id="objectLabel" placeholder="如：主入口 / 休闲活动区">
                   </label>
                   <label>
-                    <span>Source</span>
+                    <span>来源</span>
                     <select id="objectSource">
-                      <option value="user_sketch">User sketch</option>
-                      <option value="vision_inferred">Vision inferred</option>
-                      <option value="cad_extracted">CAD extracted</option>
+                      <option value="user_sketch">用户手绘</option>
+                      <option value="vision_inferred">视觉识别</option>
+                      <option value="cad_extracted">CAD 提取</option>
                     </select>
                   </label>
                   <div class="workbench-actions">
-                    <button id="finishObject" class="primary">Finish object</button>
-                    <button id="undoPoint">Undo point</button>
-                    <button id="deleteObject">Delete selected</button>
-                    <button id="clearDraft">Clear draft</button>
+                    <button id="finishObject" class="primary">完成对象</button>
+                    <button id="undoPoint">撤销最后一点</button>
+                    <button id="deleteObject">删除选中</button>
+                    <button id="clearDraft">清空草图</button>
                   </div>
                   <div id="objectList" class="object-list"></div>
                 </aside>
 
                 <section class="workbench-canvas-panel">
-                  <div class="workbench-status" id="workbenchStatus">Waiting for project and base image.</div>
+                  <div class="workbench-status" id="workbenchStatus">等待项目和底图加载。</div>
                   <div class="workbench-canvas" id="workbenchCanvas">
-                    <img id="baseImage" alt="base drawing">
+                    <img id="baseImage" alt="底图">
                     <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
-                    <div class="workbench-empty" id="workbenchEmpty">Select a project, then load the base drawing.</div>
+                    <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
                   </div>
                   <div class="render-preview" id="renderPreview"></div>
                 </section>

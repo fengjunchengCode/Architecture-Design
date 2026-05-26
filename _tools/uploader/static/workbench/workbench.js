@@ -64,16 +64,16 @@
 
   function objectName(type) {
     return {
-      functional_zone: "Functional zone",
-      vehicle_flow: "Vehicle flow",
-      pedestrian_flow: "Pedestrian flow",
-      main_entrance: "Main entrance",
-      label: "Label",
+      functional_zone: "功能区",
+      vehicle_flow: "车行流线",
+      pedestrian_flow: "人行流线",
+      main_entrance: "主入口",
+      label: "标签",
     }[type] || type;
   }
 
   function geometryName(kind) {
-    return { polygon: "polygon", arrow: "arrow", polyline: "polyline", point: "point" }[kind] || kind;
+    return { polygon: "多边形", arrow: "箭头", polyline: "折线", point: "点" }[kind] || kind;
   }
 
   function setDefaultGeometry() {
@@ -91,7 +91,7 @@
   async function loadDrawing() {
     const project = projectCode();
     if (!project) {
-      setStatus("Open or create a project before loading the workbench.", false);
+      setStatus("请先打开或创建项目，再加载工作台。", false);
       return;
     }
     state.project = project;
@@ -102,25 +102,38 @@
     state.currentPoints = [];
     state.selectedId = "";
     $("#baseImagePath").value = data.drawing.base_image.path || basePath();
-    loadBaseImage(data.base_image_url, data.base_image_exists);
+    const hasBaseImage = loadBaseImage(data.base_image_url, data.base_image_exists);
     renderObjects();
     renderObjectList();
-    setStatus(data.exists ? "Loaded saved semantic drawing." : "Loaded an empty semantic drawing.");
+    if (hasBaseImage) {
+      setStatus(data.exists ? "已加载已保存的语义图纸。" : "已初始化空白语义图纸。");
+    }
   }
 
   function loadBaseImage(url, exists) {
     const image = $("#baseImage");
     const empty = $("#workbenchEmpty");
+    console.log("[workbench] loadBaseImage", { url, exists });
     if (!exists || !url) {
       image.removeAttribute("src");
       state.loadedBaseUrl = "";
       empty.hidden = false;
-      empty.textContent = "Base image not found. Put it under 05_output/drawings/base/master_plan.jpg.";
-      return;
+      empty.textContent = "未找到底图。请把底图放到 05_output/drawings/base/master_plan.jpg。";
+      setStatus("底图不存在，请先把 master_plan.jpg 放到 05_output/drawings/base/。", false);
+      return false;
     }
     state.loadedBaseUrl = `${url}&_=${Date.now()}`;
+    image.onload = () => {
+      setStatus(`底图已加载 ${image.naturalWidth}×${image.naturalHeight}。`);
+      console.log("[workbench] base image loaded", image.naturalWidth, image.naturalHeight);
+    };
+    image.onerror = () => {
+      setStatus(`底图加载失败：${state.loadedBaseUrl}`, false);
+      console.error("[workbench] base image error", state.loadedBaseUrl);
+    };
     image.src = state.loadedBaseUrl;
     empty.hidden = true;
+    return true;
   }
 
   function buildDrawing() {
@@ -154,7 +167,7 @@
   async function saveDrawing() {
     const project = projectCode();
     if (!project) {
-      setStatus("Open or create a project before saving.", false);
+      setStatus("请先打开或创建项目，再保存。", false);
       return;
     }
     state.project = project;
@@ -165,13 +178,13 @@
       body: JSON.stringify({ project, drawing }),
     });
     state.drawing = data.drawing;
-    setStatus(`Saved ${data.path}.`);
+    setStatus(`已保存：${data.path}`);
   }
 
   async function renderDrawing() {
     const project = projectCode();
     if (!project) {
-      setStatus("Open or create a project before rendering.", false);
+      setStatus("请先打开或创建项目，再渲染。", false);
       return;
     }
     state.project = project;
@@ -185,9 +198,9 @@
     const preview = $("#renderPreview");
     preview.innerHTML = `
       <a href="${escapeHtml(data.png_url)}" target="_blank" rel="noreferrer">${escapeHtml(data.paths.png)}</a>
-      <img src="${escapeHtml(data.png_url)}&_=${Date.now()}" alt="rendered drawing">
+      <img src="${escapeHtml(data.png_url)}&_=${Date.now()}" alt="渲染图">
     `;
-    setStatus(`Rendered ${data.paths.png}.`);
+    setStatus(`已渲染：${data.paths.png}`);
   }
 
   function normalizedPoint(event) {
@@ -213,7 +226,7 @@
     const kind = $("#geometryKind").value;
     const minimum = { point: 1, polyline: 2, arrow: 2, polygon: 3 }[kind] || 1;
     if (state.currentPoints.length < minimum) {
-      setStatus(`Need at least ${minimum} point(s) for ${kind}.`, false);
+      setStatus(`${geometryName(kind)} 至少需要 ${minimum} 个点。`, false);
       return;
     }
     const index = state.objects.length + 1;
@@ -233,7 +246,7 @@
     state.currentPoints = [];
     renderObjects();
     renderObjectList();
-    setStatus(`Added ${label}.`);
+    setStatus(`已添加：${label}`);
   }
 
   function undoPoint() {
@@ -247,7 +260,7 @@
     state.selectedId = "";
     renderObjects();
     renderObjectList();
-    setStatus("Deleted selected object.");
+    setStatus("已删除选中对象。");
   }
 
   function clearDraft() {
@@ -256,7 +269,7 @@
     state.selectedId = "";
     renderObjects();
     renderObjectList();
-    setStatus("Cleared current semantic sketch.");
+    setStatus("已清空当前草图。");
   }
 
   function renderObjects() {
@@ -307,7 +320,7 @@
     const list = $("#objectList");
     if (!list) return;
     if (!state.objects.length) {
-      list.innerHTML = '<div class="control-empty">No semantic objects yet.</div>';
+      list.innerHTML = '<div class="control-empty">还没有语义对象。</div>';
       return;
     }
     list.innerHTML = state.objects
@@ -346,8 +359,12 @@
       finishObject();
     });
     window.addEventListener("uploader:state", (event) => {
-      state.project = (event.detail && event.detail.project) || "";
-      if (event.detail && event.detail.page === "workbench" && state.project && !state.drawing) {
+      const newProject = (event.detail && event.detail.project) || "";
+      const newPage = event.detail && event.detail.page;
+      const shouldReload =
+        newPage === "workbench" && newProject && (newProject !== state.project || !state.drawing);
+      state.project = newProject;
+      if (shouldReload) {
         loadDrawing().catch((err) => setStatus(err.message, false));
       }
     });
