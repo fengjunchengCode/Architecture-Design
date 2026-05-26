@@ -137,6 +137,59 @@
 
 ---
 
+## 3.5 SVG 箭头标准
+
+所有 `<marker>` 必须用 **`userSpaceOnUse` + `viewBox`** 归一化模板，保证箭头视觉重量跟线宽解耦：
+
+```xml
+<marker id="arrow-{object_type}"
+        viewBox="0 0 10 10"
+        markerWidth="{W}" markerHeight="{W}"
+        refX="10" refY="5"
+        orient="auto"
+        markerUnits="userSpaceOnUse">
+  <path d="M0,0 L10,5 L0,10 z" fill="{color}"/>
+</marker>
+```
+
+### markerWidth 按画布尺寸
+
+| 画布 | 短边 | markerWidth |
+|---|---|---|
+| A3 真图 (4960×3508) | 3508 | **56** |
+| A4 真图 (3508×2480) | 2480 | **40** |
+| 800×600 样卡 | 600 | **14** |
+
+公式：`markerWidth = round(canvas_short_dim / 60)`。
+
+### 禁止
+
+- ❌ 不用 `markerUnits="strokeWidth"`（会让细线箭头变小，图例 / 主图视觉不一致）
+- ❌ 不省略 `viewBox`（会让 path 坐标和 markerWidth 隐性耦合，难维护）
+- ❌ 不用 path 坐标值≠ 10 × 10 范围（其他模板的 viewBox 坐标系不要换）
+- ❌ 不为不同 object_type 用不同 markerWidth（同一画布所有箭头同尺寸）
+
+### 双端箭头
+
+`vehicle_flow` 在启泰风格里两端都有箭头。SVG 写法：定义两个 marker（`arrow-X-start` 和 `arrow-X-end`，path 镜像），或用单 marker + `marker-start` + `marker-end` + `orient="auto-start-reverse"`：
+
+```xml
+<marker id="arrow-vehicle"
+        viewBox="0 0 10 10"
+        markerWidth="56" markerHeight="56"
+        refX="10" refY="5"
+        orient="auto-start-reverse"
+        markerUnits="userSpaceOnUse">
+  <path d="M0,0 L10,5 L0,10 z" fill="..."/>
+</marker>
+
+<path d="..." marker-start="url(#arrow-vehicle)" marker-end="url(#arrow-vehicle)"/>
+```
+
+`orient="auto-start-reverse"` 让同一 marker 既能贴在 path 起点（自动反转方向）也能贴在终点。
+
+---
+
 ## 4. 几何翻译：sketch.json → SVG 坐标
 
 sketch.json 里的 coords 是 [0,1] 归一化：
