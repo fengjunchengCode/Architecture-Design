@@ -4,110 +4,95 @@
 
 ---
 
-## 2026-05-26 Codex → Claude：Wave Skill-Integration done
+## 2026-05-26 Codex → Claude：S10 style_card arrow marker issue needs review
 
-### Commit
+### Current State
 
-- `c1baa4c docs: integrate S10 technical drawing skill`
+用户已启动 `26-BQ-PARK` S10 风格协商，并选择 `var_4`。
 
-### Implemented
+本轮测试产物均已提交并推送：
 
-已按 `8cc871d` 的 4 个 patch 落盘：
+- `a548152 feat: generate BQ-PARK style vibe board`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board.md`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board/var_1.png`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board/var_2.png`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board/var_3.png`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board/var_4.png`
+  - `projects/26-BQ-PARK/05_output/style/vibe_board/var_5.png`
+- `6df3b9a feat: draft BQ-PARK style spec`
+  - `projects/26-BQ-PARK/05_output/style/style_spec.json`
+  - `projects/26-BQ-PARK/05_output/style/style_card.svg`
+- `3a4dac7 fix: normalize BQ-PARK style card arrows`
+- `902753d fix: anchor style card arrowheads`
 
-- 新增 `skills/S10_technical_drawings/SKILL.md`
-- `SKILL.md` 主路由表新增 S10，并增加 S10 状态补充扫描
-- `skills/S9_report_outline/SKILL.md` 增加技术图前置自检，缺图时 chain S10
-- `skills/S3_area_and_massing/SKILL.md` 增加完成后建议 S10 的对话提示
+`style_spec.json` 仍是草案状态：
 
-未改动：
+- `approved_at: null`
+- 未进入真图生产
+- 用户尚未批准样卡
 
-- `_schema/record.schema.md`
-- `_tools/validate_record.py`
-- `docs/style_spec_negotiation.md`
+### Problem
+
+用户连续指出 `style_card.svg` 的箭头样式不对：
+
+1. 初版：`markerUnits="strokeWidth"` + 较大 marker，导致“线样与箭头 / 车行主环路”的箭头畸形过大。
+2. 第二版：改为 `markerUnits="userSpaceOnUse"` 后，箭头变小，且视觉上没有贴在线条端点，像随意摆放。
+3. 第三版：改回小比例 `strokeWidth` marker，用户仍认为没有改对。
+
+用户担心这个问题会在后续交通流线、消防流线等技术图中反复出现，因此要求交给 Claude 分析。
+
+当前问题不只是 BQ-PARK 样卡局部瑕疵，而是 `agent_drawing_protocol.md` / `style_card.svg` 里缺少稳定 SVG arrow marker 标准。若不明确，Stage 7 真图生产时很可能重复出错。
+
+### Current Files To Review
+
+- `projects/26-BQ-PARK/05_output/style/style_card.svg`
+- `projects/26-BQ-PARK/05_output/style/style_spec.json`
 - `docs/agent_drawing_protocol.md`
-- `projects/26-BQ-PARK/05_output/record.md`
+- `docs/style_spec_negotiation.md`
 
-### Validation
+当前 `style_card.svg` 相关片段：
 
-已运行：
+```xml
+<marker id="arrow-vehicle" markerWidth="3.8" markerHeight="3"
+        refX="3.4" refY="1.5" orient="auto"
+        markerUnits="strokeWidth" overflow="visible">
+  <path d="M0,0 L3.4,1.5 L0,3 Z" fill="#E88A33"/>
+</marker>
 
-```powershell
-python _tools/validate_record.py 26-BQ-PARK
+<path d="M64 356 C120 340, 178 372, 234 352"
+      fill="none" stroke="#E88A33" stroke-width="5.2"
+      stroke-linecap="round" marker-end="url(#arrow-vehicle)"/>
 ```
 
-结果：`✔ 无问题`。
+### What I Need From Claude
 
-`record.md` 本波无 diff。
+请先做 review / 方案判断，不要直接进入大规模重构：
 
-### Scenario Tests
+1. 判断 SVG 箭头应采用哪一种稳定方案：
+   - `markerUnits="strokeWidth"`，但统一 marker viewport/ref/path 比例；
+   - `markerUnits="userSpaceOnUse"`，但按线宽手工设置 marker 尺寸并处理 refX；
+   - 放弃 `<marker>`，改为 agent 手绘 arrowhead polygon，按路径末端切线计算；
+   - 其他更适合后续技术图的方案。
+2. 给出一个最小可落地修法：
+   - 是否只修 `style_card.svg`？
+   - 是否同时要补 `docs/agent_drawing_protocol.md` 的箭头规范，避免 Stage 7 复发？
+   - 是否需要补一个小型 SVG arrow test asset，专门验证不同线宽/曲线/直线端点？
+3. 明确 BQ-PARK 当前 `style_spec.json` 是否需要改：
+   - 我倾向不改 token，因为问题是 SVG marker 表达，不是风格 token。
+4. 如果建议 codex 实施，请给出具体 patch 边界和验证方式。
 
-基于 `26-BQ-PARK` 当前文件状态：
+### Constraints
 
-- `record.md` 存在
-- S1 marker 有有效正文
-- S3 marker 有有效正文
-- `05_output/drawings/base/master_plan.jpg` 存在
-- `05_output/style/style_spec.json` 不存在
-- `05_output/drawings/svg/` 不存在
-- `completeness.ready_for` 包含 `S9`
+- 不改 `record.md`
+- 不 approve `style_spec.json`
+- 不进入 Stage 7 真图生产
+- 不改 schema / validator
+- 不清理用户未提交文件
 
-#### 场景 1：S9 自动 chain
+### Local Note
 
-用户："出 26-BQ-PARK 汇报"
+本地仍有历史遗留未提交改动：
 
-实际触发结果：
+- `projects/26-BQ-PARK/05_output/inventory.json`
 
-- 主路由命中 `S9_report_outline`
-- S9 前置自检发现 `style_spec.json` 不存在，且缺 `functional_zoning.svg` / `traffic_analysis.svg`
-- S9 不写 `s9_report_outline` marker
-- 对话应报告：`S9 检测到技术图准备不足，先 chain S10 完成必要图种`
-- 路由到 `S10_technical_drawings`，期望清单：`functional_zoning + traffic_analysis`
-- S10 扫描 style_spec 不存在，进入 Branch A：`style_spec_negotiation.md Stage 0-6`
-
-#### 场景 2：直接调用
-
-用户："搞 BQ-PARK 风格"
-
-实际触发结果：
-
-- 主路由表命中 `S10_technical_drawings`
-- S10 前置检查通过：S1 有正文，项目有底图
-- style_spec 不存在，进入 Branch A：`style_spec_negotiation.md Stage 0-6`
-
-#### 场景 3：状态检查
-
-用户："BQ-PARK 进度"
-
-实际触发结果：
-
-- 主 router 仍按 `record.md` 报告 ready/blocked
-- S10 状态补充扫描发现：style 未锁、svg 为空、ready_for 包含 S9
-- 应额外报告：`drawings 未出，建议先转 S10（确定项目设计风格 + functional_zoning / traffic_analysis 技术图）`
-- 不写任何 marker
-
-#### 场景 4：S3 建议
-
-用户跑完 S3 或重新调 S3
-
-实际触发结果：
-
-- S3 仍只负责 `s3_area_calc` marker
-- validator 通过后，对话窗口附建议：
-  `S3 已完成。下一步建议：S10（确定项目设计风格 + 出技术图）。理由：S3 已落，可进入图面表达阶段。用户可继续做 S4 问题清单或直接进 S10。`
-- 该建议不阻塞 S4/S9，也不写入 `ready_for` / `blocked`
-
-### Conflicts / Notes
-
-- 未发现路由表与 SKILL 必读路径冲突。
-- S10 不写 `record.md`，drawing 状态仅由文件存在性自证，符合本轮约束。
-- 本地仍有用户/历史遗留的 `projects/26-BQ-PARK/05_output/inventory.json` 未提交改动，未纳入本波 commit。
-
-### Ready For Flow Test
-
-现在可以进入真实流程测试。建议第一条真实测试指令是：
-
-```text
-启动 26-BQ-PARK 风格协商
-```
-
-按 S10 Branch A 进入 `docs/style_spec_negotiation.md` Stage 0。
+该文件与本轮样卡问题无关，未提交。
