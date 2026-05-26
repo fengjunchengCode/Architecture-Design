@@ -145,7 +145,7 @@
 <marker id="arrow-{object_type}"
         viewBox="0 0 10 10"
         markerWidth="{W}" markerHeight="{W}"
-        refX="10" refY="5"
+        refX="5" refY="5"
         orient="auto"
         markerUnits="userSpaceOnUse">
   <path d="M0,0 L10,5 L0,10 z" fill="{color}"/>
@@ -162,12 +162,23 @@
 
 公式：`markerWidth = round(canvas_short_dim / 60)`。
 
+### 为什么 refX=5 不是 refX=10
+
+`refX=5` 把箭头**主体中心**（不是尖端）对齐到路径终点：
+
+- 箭头尖端略超出路径终点，符合启泰参考图和常见技术图的视觉习惯
+- 路径终点落在箭头主体里，箭头宽度能覆盖线的 `stroke-width` 横截面
+- `stroke-linecap="butt"` 只负责截平线帽，不能解决 `refX=10` 时线宽从箭头尖端两侧露出的问题
+
+如果用 `refX=10`，箭头零宽度尖端会钉在路径终点，线的横截面会从尖端两侧漏出。
+
 ### 禁止
 
 - ❌ 不用 `markerUnits="strokeWidth"`（会让细线箭头变小，图例 / 主图视觉不一致）
 - ❌ 不省略 `viewBox`（会让 path 坐标和 markerWidth 隐性耦合，难维护）
 - ❌ 不用 path 坐标值≠ 10 × 10 范围（其他模板的 viewBox 坐标系不要换）
 - ❌ 不为不同 object_type 用不同 markerWidth（同一画布所有箭头同尺寸）
+- ❌ 不用 `refX="10"`（会把箭头零宽度尖端钉到路径终点，线的 `stroke-width` 横截面会从尖端两侧漏出）
 
 ### 双端箭头（flow 类默认要求）
 
@@ -183,13 +194,13 @@
 
 **图例条目里允许单端**：图例只表达“这是一种流线”，不需要展示双向语义。
 
-实现方式：所有 flow 类 marker 用 `orient="auto-start-reverse"`，path 同时挂 `marker-start` 和 `marker-end`。带箭头的 flow path 必须用 `stroke-linecap="butt"`，避免圆端帽在线端越过箭头尖端；不要通过移动 `refX` 遮盖端帽问题。
+实现方式：所有 flow 类 marker 用 `orient="auto-start-reverse"`，path 同时挂 `marker-start` 和 `marker-end`。带箭头的 flow path 必须用 `stroke-linecap="butt"`，并与 `refX="5"` 配合，避免线帽或线宽截面从箭头尖端漏出。
 
 ```xml
 <marker id="arrow-vehicle"
         viewBox="0 0 10 10"
         markerWidth="56" markerHeight="56"
-        refX="10" refY="5"
+        refX="5" refY="5"
         orient="auto-start-reverse"
         markerUnits="userSpaceOnUse">
   <path d="M0,0 L10,5 L0,10 z" fill="..."/>

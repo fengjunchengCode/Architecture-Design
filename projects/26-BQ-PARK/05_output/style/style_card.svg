@@ -3,7 +3,7 @@
     <marker id="arrow-vehicle"
         viewBox="0 0 10 10"
         markerWidth="14" markerHeight="14"
-        refX="10" refY="5"
+        refX="5" refY="5"
         orient="auto-start-reverse"
         markerUnits="userSpaceOnUse">
       <path d="M0,0 L10,5 L0,10 z" fill="#E88A33"/>
@@ -11,7 +11,7 @@
     <marker id="arrow-pedestrian"
         viewBox="0 0 10 10"
         markerWidth="14" markerHeight="14"
-        refX="10" refY="5"
+        refX="5" refY="5"
         orient="auto-start-reverse"
         markerUnits="userSpaceOnUse">
       <path d="M0,0 L10,5 L0,10 z" fill="#65AFC4"/>
