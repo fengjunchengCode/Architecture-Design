@@ -169,9 +169,21 @@
 - ❌ 不用 path 坐标值≠ 10 × 10 范围（其他模板的 viewBox 坐标系不要换）
 - ❌ 不为不同 object_type 用不同 markerWidth（同一画布所有箭头同尺寸）
 
-### 双端箭头
+### 双端箭头（flow 类默认要求）
 
-`vehicle_flow` 在启泰风格里两端都有箭头。SVG 写法：定义两个 marker（`arrow-X-start` 和 `arrow-X-end`，path 镜像），或用单 marker + `marker-start` + `marker-end` + `orient="auto-start-reverse"`：
+技术图里所有 **flow 类对象** 默认双端箭头，单端是例外：
+
+| 对象类型 | 默认双端 | 例外 |
+|---|---|---|
+| `vehicle_flow` | ✅ | 单向出入口短段可单端 |
+| `pedestrian_flow` | ✅ | 同上 |
+| `freight_flow` | ✅ | 同上 |
+| `underground_flow` | ❌（默认单端，指向地库入口） | - |
+| `fire_route` | ✅ | - |
+
+**图例条目里允许单端**：图例只表达“这是一种流线”，不需要展示双向语义。
+
+实现方式：所有 flow 类 marker 用 `orient="auto-start-reverse"`，path 同时挂 `marker-start` 和 `marker-end`：
 
 ```xml
 <marker id="arrow-vehicle"
@@ -186,7 +198,11 @@
 <path d="..." marker-start="url(#arrow-vehicle)" marker-end="url(#arrow-vehicle)"/>
 ```
 
-`orient="auto-start-reverse"` 让同一 marker 既能贴在 path 起点（自动反转方向）也能贴在终点。
+`orient="auto-start-reverse"` 让同一 marker 既能贴在 path 起点（自动反转方向）也能贴在终点，不需要定义 `arrow-start` 和 `arrow-end` 两份。
+
+### Stage 7 出真图时
+
+agent 翻译 sketch.json 到 SVG 时，凡 object_type ∈ {vehicle_flow, pedestrian_flow, freight_flow, fire_route} 的 path，自动套用上面的 marker-start + marker-end 双端模式。不需要用户在草图里特意标“两端有箭头”。
 
 ---
 
