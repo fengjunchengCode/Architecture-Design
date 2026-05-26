@@ -343,10 +343,19 @@
 
                 <section class="workbench-canvas-panel">
                   <div class="workbench-status" id="workbenchStatus">等待项目和底图加载。</div>
+                  <div class="canvas-toolbar" aria-label="画布缩放">
+                    <span>画布缩放</span>
+                    <button id="canvasZoomOut" type="button">−</button>
+                    <button id="canvasZoomReset" type="button">100%</button>
+                    <button id="canvasZoomIn" type="button">+</button>
+                    <button id="canvasZoomFit" type="button">适合宽度</button>
+                  </div>
                   <div class="workbench-canvas" id="workbenchCanvas">
-                    <img id="baseImage" alt="底图">
-                    <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
-                    <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                    <div class="workbench-stage" id="workbenchStage">
+                      <img id="baseImage" alt="底图">
+                      <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
+                      <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                    </div>
                   </div>
                   <div class="svg-draft-panel">
                     <div class="panel-title">当前 SVG 草稿</div>

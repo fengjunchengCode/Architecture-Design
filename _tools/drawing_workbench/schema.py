@@ -23,11 +23,12 @@ CONFIDENCE_LEVELS = {"low", "medium", "high"}
 OBJECT_SOURCES = {"user_sketch", "vision_inferred", "cad_extracted"}
 ZONE_BORDER_STYLES = {"solid", "dashed", "none"}
 ZONE_STROKE_WIDTH_KEYS = {"thin", "medium", "bold"}
+ZONE_STROKE_WIDTH_BY_KEY = {"thin": 0.002, "medium": 0.003, "bold": 0.0045}
 DEFAULT_ZONE_STYLE_HINTS = {
     "fill_color": "#DCE8C8",
     "fill_enabled": True,
     "border_style": "solid",
-    "stroke_width_key": "medium",
+    "stroke_width": 0.003,
 }
 
 
@@ -230,17 +231,35 @@ def _normalize_style_hints(
         ZONE_BORDER_STYLES,
         f"objects[{object_index}].style_hints.border_style",
     )
-    stroke_width_key = _clean_choice(
-        raw.get("stroke_width_key") or DEFAULT_ZONE_STYLE_HINTS["stroke_width_key"],
-        ZONE_STROKE_WIDTH_KEYS,
-        f"objects[{object_index}].style_hints.stroke_width_key",
-    )
+    stroke_width = _normalize_zone_stroke_width(raw, object_index)
     return {
         "fill_color": fill_color.upper(),
         "fill_enabled": fill_enabled,
         "border_style": border_style,
-        "stroke_width_key": stroke_width_key,
+        "stroke_width": stroke_width,
     }
+
+
+def _normalize_zone_stroke_width(raw: dict[str, Any], object_index: int) -> float:
+    if raw.get("stroke_width") is not None:
+        try:
+            width = float(raw.get("stroke_width"))
+        except (TypeError, ValueError) as exc:
+            raise DrawingValidationError(
+                f"objects[{object_index}].style_hints.stroke_width must be numeric"
+            ) from exc
+    elif raw.get("stroke_width_key") is not None:
+        key = _clean_choice(
+            raw.get("stroke_width_key"),
+            ZONE_STROKE_WIDTH_KEYS,
+            f"objects[{object_index}].style_hints.stroke_width_key",
+        )
+        width = ZONE_STROKE_WIDTH_BY_KEY[key]
+    else:
+        width = float(DEFAULT_ZONE_STYLE_HINTS["stroke_width"])
+    if not 0.001 <= width <= 0.012:
+        raise DrawingValidationError(f"objects[{object_index}].style_hints.stroke_width out of range")
+    return round(width, 4)
 
 
 def _is_hex_color(value: str) -> bool:

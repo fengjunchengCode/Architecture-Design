@@ -24,7 +24,7 @@
     fill_color: "#DCE8C8",
     fill_enabled: true,
     border_style: "solid",
-    stroke_width_key: "medium",
+    stroke_width: 0.003,
   };
   const ZONE_STROKE_WIDTHS = {
     thin: 0.002,
@@ -32,8 +32,10 @@
     bold: 0.0045,
   };
   const ZONE_EDIT_WIDTH = 0.003;
-  const ZONE_SELECTED_WIDTH = 0.004;
-  const ZONE_HANDLE_RADIUS = 0.006;
+  const HANDLE_BASE_R_PX = 6;
+  const CANVAS_ZOOM_MIN = 0.5;
+  const CANVAS_ZOOM_MAX = 4;
+  const CANVAS_ZOOM_STEP = 0.25;
   const DRAWING_WORKBENCHES = {
     functional_zoning: {
       status: "enabled",
@@ -106,6 +108,7 @@
     redoStacks: {},
     zoneDraftStyle: { ...DEFAULT_ZONE_STYLE },
     zoneDraftLabel: "",
+    canvasZoom: 1,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -350,6 +353,7 @@
     if (hidden) hidden.value = next;
     syncDrawingUrl(next);
     resetInteraction();
+    setCanvasZoom(1, { render: false });
     state.dirty = false;
     renderDrawingTabs();
     renderDrawingWorkspace();
@@ -520,12 +524,16 @@
         </div>
       </div>
       <div class="zone-tool-group">
-        <span>线宽</span>
-        <div class="segmented-control" id="zoneStrokeWidth">
-          <button type="button" class="${activeStyle.stroke_width_key === "thin" ? "active" : ""}" data-stroke-width="thin">细</button>
-          <button type="button" class="${activeStyle.stroke_width_key === "medium" ? "active" : ""}" data-stroke-width="medium">中</button>
-          <button type="button" class="${activeStyle.stroke_width_key === "bold" ? "active" : ""}" data-stroke-width="bold">粗</button>
-        </div>
+        <span>线宽 <small id="zoneStrokeWidthValue">${formatStrokeWidth(activeStyle.stroke_width)}</small></span>
+        <input
+          id="zoneStrokeWidth"
+          type="range"
+          min="0.001"
+          max="0.012"
+          step="0.0005"
+          value="${escapeHtml(String(activeStyle.stroke_width))}"
+          aria-label="分区边框线宽"
+        >
       </div>
     `;
     bindFunctionalZoningTools();
@@ -550,15 +558,23 @@
     const borderStyle = ["solid", "dashed", "none"].includes(style.border_style)
       ? style.border_style
       : DEFAULT_ZONE_STYLE.border_style;
-    const strokeWidthKey = ["thin", "medium", "bold"].includes(style.stroke_width_key)
-      ? style.stroke_width_key
-      : DEFAULT_ZONE_STYLE.stroke_width_key;
+    const strokeWidth = normalizeStrokeWidth(style.stroke_width ?? ZONE_STROKE_WIDTHS[style.stroke_width_key]);
     return {
       fill_color: fillColor,
       fill_enabled: typeof style.fill_enabled === "boolean" ? style.fill_enabled : DEFAULT_ZONE_STYLE.fill_enabled,
       border_style: borderStyle,
-      stroke_width_key: strokeWidthKey,
+      stroke_width: strokeWidth,
     };
+  }
+
+  function normalizeStrokeWidth(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return DEFAULT_ZONE_STYLE.stroke_width;
+    return Math.min(0.012, Math.max(0.001, Number(number.toFixed(4))));
+  }
+
+  function formatStrokeWidth(value) {
+    return normalizeStrokeWidth(value).toFixed(4);
   }
 
   function isHexColor(value) {
@@ -597,12 +613,14 @@
     $("#zoneBorderStyle")?.querySelectorAll("[data-border-style]").forEach((button) => {
       button.addEventListener("click", () => updateZoneStyle({ border_style: button.dataset.borderStyle }));
     });
-    $("#zoneStrokeWidth")?.querySelectorAll("[data-stroke-width]").forEach((button) => {
-      button.addEventListener("click", () => updateZoneStyle({ stroke_width_key: button.dataset.strokeWidth }));
+    $("#zoneStrokeWidth")?.addEventListener("input", (event) => {
+      updateZoneStyle({ stroke_width: event.target.value }, { renderTools: false });
+      const value = $("#zoneStrokeWidthValue");
+      if (value) value.textContent = formatStrokeWidth(event.target.value);
     });
   }
 
-  function updateZoneStyle(patch) {
+  function updateZoneStyle(patch, options = {}) {
     const selected = selectedObject();
     const current = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
     const next = normalizeZoneStyle({ ...current, ...patch });
@@ -618,7 +636,7 @@
     markDirty();
     renderObjects();
     renderObjectList();
-    renderSpecificTools();
+    if (options.renderTools !== false) renderSpecificTools();
   }
 
   function renderAvailability() {
@@ -634,6 +652,10 @@
       "#clearDraft",
       "#sendToAgent",
       "#exportDrawing",
+      "#canvasZoomOut",
+      "#canvasZoomReset",
+      "#canvasZoomIn",
+      "#canvasZoomFit",
     ].forEach((selector) => {
       const el = $(selector);
       if (el) el.disabled = !enabled || (selector === "#exportDrawing" && !state.svgExists);
@@ -646,6 +668,29 @@
     if (finish) finish.textContent = isFunctionalZoning() ? "完成分区" : "完成对象";
     const undo = $("#undoPoint");
     if (undo) undo.textContent = isFunctionalZoning() ? "撤销" : "撤销最后一点";
+    updateCanvasZoomUi();
+  }
+
+  function setCanvasZoom(value, options = {}) {
+    const next = Math.min(CANVAS_ZOOM_MAX, Math.max(CANVAS_ZOOM_MIN, Number(value) || 1));
+    state.canvasZoom = Number(next.toFixed(2));
+    const stage = $("#workbenchStage");
+    if (stage) stage.style.width = `${state.canvasZoom * 100}%`;
+    updateCanvasZoomUi();
+    if (options.render !== false) renderObjects();
+  }
+
+  function adjustCanvasZoom(delta) {
+    setCanvasZoom(state.canvasZoom + delta);
+  }
+
+  function updateCanvasZoomUi() {
+    const reset = $("#canvasZoomReset");
+    if (reset) reset.textContent = `${Math.round(state.canvasZoom * 100)}%`;
+    const out = $("#canvasZoomOut");
+    const zoomIn = $("#canvasZoomIn");
+    if (out) out.disabled = !isEnabled() || state.canvasZoom <= CANVAS_ZOOM_MIN;
+    if (zoomIn) zoomIn.disabled = !isEnabled() || state.canvasZoom >= CANVAS_ZOOM_MAX;
   }
 
   async function loadStyle() {
@@ -763,10 +808,12 @@
   function loadBaseImage(url, exists) {
     const image = $("#baseImage");
     const empty = $("#workbenchEmpty");
+    const stage = $("#workbenchStage");
     if (!image || !empty) return false;
     console.log("[workbench] loadBaseImage", { url, exists });
     if (!exists || !url) {
       image.removeAttribute("src");
+      if (stage) stage.classList.remove("has-image");
       state.loadedBaseUrl = "";
       empty.hidden = false;
       empty.textContent = "未找到底图。请上传 JPG/PNG，或填写 05_output/drawings/base/ 下的底图路径。";
@@ -775,10 +822,13 @@
     }
     state.loadedBaseUrl = `${url}&_=${Date.now()}`;
     image.onload = () => {
+      if (stage) stage.classList.add("has-image");
       setStatus(`底图已加载 ${image.naturalWidth}×${image.naturalHeight}。`);
       console.log("[workbench] base image loaded", image.naturalWidth, image.naturalHeight);
+      renderObjects();
     };
     image.onerror = () => {
+      if (stage) stage.classList.remove("has-image");
       setStatus(`底图加载失败：${state.loadedBaseUrl}`, false);
       console.error("[workbench] base image error", state.loadedBaseUrl);
     };
@@ -915,8 +965,10 @@
 
   function normalizedPoint(event) {
     const image = $("#baseImage");
+    const stage = $("#workbenchStage");
     if (!image || !image.src || !image.naturalWidth || !isEnabled()) return null;
-    const rect = image.getBoundingClientRect();
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width;
     const y = (event.clientY - rect.top) / rect.height;
     if (x < 0 || x > 1 || y < 0 || y > 1) return null;
@@ -1007,7 +1059,7 @@
       style_hints: style,
     };
     state.objects.push(object);
-    state.selectedId = id;
+    state.selectedId = "";
     state.zoneDraftStyle = style;
     state.zoneDraftLabel = "";
     state.currentPoints = [];
@@ -1099,9 +1151,7 @@
     const strokeWidth =
       style.border_style === "none"
         ? 0
-        : selected
-          ? Math.max(ZONE_SELECTED_WIDTH, ZONE_STROKE_WIDTHS[style.stroke_width_key] || ZONE_EDIT_WIDTH)
-          : ZONE_STROKE_WIDTHS[style.stroke_width_key] || ZONE_EDIT_WIDTH;
+        : style.stroke_width || ZONE_EDIT_WIDTH;
     const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
     const shape = `
       <polygon
@@ -1124,7 +1174,7 @@
     `;
     const handles = selected
       ? coords
-          .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${ZONE_HANDLE_RADIUS}" fill="#fff" stroke="${darkenHex(style.fill_color, 0.28)}" stroke-width="0.0025"></circle>`)
+          .map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28)))
           .join("")
       : "";
     return `${shape}${handles}`;
@@ -1134,11 +1184,37 @@
     if (!state.currentPoints.length) return "";
     const points = state.currentPoints.map((point) => point.join(",")).join(" ");
     const strokeWidth = isFunctionalZoning() ? ZONE_EDIT_WIDTH : 0.006;
-    const handleRadius = isFunctionalZoning() ? ZONE_HANDLE_RADIUS : 0.009;
     const circles = state.currentPoints
-      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${handleRadius}" fill="#111827"></circle>`)
+      .map(([x, y]) =>
+        isFunctionalZoning()
+          ? renderHandleSvg(x, y, "#111827", "none")
+          : `<circle cx="${x}" cy="${y}" r="0.009" fill="#111827"></circle>`,
+      )
       .join("");
     return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="${strokeWidth}" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
+  }
+
+  function renderHandleSvg(x, y, fill, stroke) {
+    const strokeAttr = stroke === "none" ? 'stroke="none"' : `stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}"`;
+    return `<ellipse cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
+  }
+
+  function getHandleRadiusX() {
+    const stage = $("#workbenchStage");
+    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
+    return Number((HANDLE_BASE_R_PX / stageWidth).toFixed(6));
+  }
+
+  function getHandleRadiusY() {
+    const stage = $("#workbenchStage");
+    const stageHeight = (stage && stage.getBoundingClientRect().height) || 1;
+    return Number((HANDLE_BASE_R_PX / stageHeight).toFixed(6));
+  }
+
+  function getHandleStrokeWidth() {
+    const stage = $("#workbenchStage");
+    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
+    return Number((2 / stageWidth).toFixed(6));
   }
 
   function bindOverlaySelection(overlay) {
@@ -1304,8 +1380,12 @@
     $("#redoAction").addEventListener("click", redoHistory);
     $("#deleteObject").addEventListener("click", deleteSelected);
     $("#clearDraft").addEventListener("click", clearDraft);
-    $("#workbenchCanvas").addEventListener("click", addPoint);
-    $("#workbenchCanvas").addEventListener("dblclick", (event) => {
+    $("#canvasZoomOut").addEventListener("click", () => adjustCanvasZoom(-CANVAS_ZOOM_STEP));
+    $("#canvasZoomReset").addEventListener("click", () => setCanvasZoom(1));
+    $("#canvasZoomIn").addEventListener("click", () => adjustCanvasZoom(CANVAS_ZOOM_STEP));
+    $("#canvasZoomFit").addEventListener("click", () => setCanvasZoom(1));
+    $("#sketchOverlay").addEventListener("click", addPoint);
+    $("#sketchOverlay").addEventListener("dblclick", (event) => {
       event.preventDefault();
       finishObject();
     });
