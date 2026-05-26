@@ -17,6 +17,22 @@ description: 建筑设计工作流 S9 汇报大纲与文档草稿。用于用户
 - `skills/_shared/output_style.md`
 - `_schema/record.schema.md`
 
+## 前置自检（技术图）
+
+进入 S9 写大纲前先扫：
+
+1. `projects/{code}/05_output/style/style_spec.json` 是否存在且 `approved_at` 非空
+2. `projects/{code}/05_output/drawings/svg/` 是否至少有 `functional_zoning.svg` 和 `traffic_analysis.svg`
+
+任一缺失：
+
+- 不写 `s9_report_outline` marker
+- 在对话窗口报"S9 检测到技术图准备不足，先 chain S10 完成必要图种"
+- 路由到 S10，附期望清单："至少需要 functional_zoning + traffic_analysis"
+- 等 S10 完成后再回 S9 第二次执行（用户重新喊 S9 或 agent 自动回流均可）
+
+二者齐备 → 正常进入 S9 大纲撰写；大纲里引用已生成的 svg/png 路径。
+
 ## 输入
 
 - `record.md` frontmatter

@@ -140,6 +140,16 @@ S1 和 S2 是两个清晰阶段，不新增 S1.5，也不拆成 a/b/c：
 
 不要因为缺少 `workflow_state.json`、`skill_runs.jsonl`、外部数据库或 Notion 状态而强制从头执行。这些文件如果未来出现，也只能是从 `record.md` 重建的辅助投影。
 
+### S10 状态补充扫描
+
+agent 报状态时除 `ready_for` / `blocked` 外，扫文件系统判断 drawing 进度：
+
+- `projects/{code}/05_output/style/style_spec.json` 存在且 `approved_at` 非空 → "风格已锁"
+- `projects/{code}/05_output/drawings/svg/` 非空 → 列已出图种
+- 任一缺 + ready_for 包含 S9 → 建议先转 S10
+
+drawing 状态**不**进 record.md frontmatter，仅作为 agent 报告的辅助信息。
+
 ## 路由表
 
 | 用户意图 / 状态 | 子 skill | 前置检查 | 阻塞处理 |
@@ -152,6 +162,7 @@ S1 和 S2 是两个清晰阶段，不新增 S1.5，也不拆成 a/b/c：
 | 任务书拆解、面积测算、容积率/强排初判 | `S3_area_and_massing` | 有 `brief.summary` 或类型模板关键信息；强排需要 `site.area_sqm` | 面积缺失时只做已知任务拆解，并标注强排阻塞 |
 | 甲方问题清单、低置信字段归并 | `S4_questions_summary` | 无硬前置 | 任意阶段可跑，只读各阶段结果 |
 | 汇报大纲、汇报文档草稿 | `S9_report_outline` | S1/S3 至少有有效正文 | 前置不足时转 S4 或列缺口 |
+| 出技术图、PPT 用图、确定项目设计风格、画功能分区/交通组织/景观/消防/竖向等 | `S10_technical_drawings` | 至少 S1 完成；项目有底图 | 没 style_spec 走风格协商；已 approved 走 task_pack 出图 |
 | 用户问“下一步/状态/进度” | 本 router + 只读状态检查 | 读 `record.md`、inventory、validation | 给出下一步，不直接写正文 |
 
 ## 执行模板
