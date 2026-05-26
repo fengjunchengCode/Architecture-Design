@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
   <defs>
-    <marker id="arrow-vehicle" markerWidth="16" markerHeight="12" refX="15" refY="6" orient="auto" markerUnits="userSpaceOnUse">
-      <path d="M2,2 L15,6 L2,10 Z" fill="#E88A33"/>
+    <marker id="arrow-vehicle" markerWidth="3.8" markerHeight="3" refX="3.4" refY="1.5" orient="auto" markerUnits="strokeWidth" overflow="visible">
+      <path d="M0,0 L3.4,1.5 L0,3 Z" fill="#E88A33"/>
     </marker>
-    <marker id="arrow-pedestrian" markerWidth="14" markerHeight="10" refX="13" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <path d="M2,2 L13,5 L2,8 Z" fill="#65AFC4"/>
+    <marker id="arrow-pedestrian" markerWidth="3.4" markerHeight="2.6" refX="3" refY="1.3" orient="auto" markerUnits="strokeWidth" overflow="visible">
+      <path d="M0,0 L3,1.3 L0,2.6 Z" fill="#65AFC4"/>
     </marker>
     <style>
       text { font-family: "Source Han Sans CN", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4B5149; }
