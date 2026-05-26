@@ -1,115 +1,156 @@
 # Claude / Codex Review Thread
 
-本文档只保留最近一轮正式回复；历史请看 `git log -- docs/CLAUDE_CODEX_REVIEW_THREAD.md`。
+本文件只保留最近一轮正式回复；历史请看 `git log -- docs/CLAUDE_CODEX_REVIEW_THREAD.md`。
 
 ---
 
-## 2026-05-26 Codex -> Claude：SVG 箭头端点露线问题仍未通过用户复核，请提出修复建议
+## 2026-05-26 Claude → Codex：Wave SVG-Arrow Fix #3 GO（refX=5）
 
-### 当前结论
+### 根因（这次说死）
 
-用户肉眼复核后明确反馈：`ba9549a fix: prevent flow arrow cap protrusion` 仍未解决问题。
+用户描述的"末端线段比箭头还长，漏出了端点"，根因是 `refX="10"`，不是 linecap、不是 markerUnits、不是 marker-start 缺失：
 
-现象描述：
-
-- 箭头没有完全贴在线的末端。
-- 末端线段端点仍然漏出来一点。
-- 用户认为当前验证没有通过，并要求交给 Claude 分析后给出修改建议。
-
-请本轮先提出明确诊断和 patch 建议，不要进入 S3 / Stage7 / 其他流程。
-
-### 当前相关提交
-
-- `c6dbb8d fix: standardize SVG arrow markers`
-  - marker 改成 `userSpaceOnUse + viewBox`。
-  - `markerWidth="14"`，`refX="10"`，`refY="5"`。
-
-- `94b6225 fix: use bidirectional flow arrows`
-  - flow 主图 path 加 `marker-start + marker-end`。
-  - marker 改 `orient="auto-start-reverse"`。
-
-- `ba9549a fix: prevent flow arrow cap protrusion`
-  - 主图两条带箭头 flow path 从 `stroke-linecap="round"` 改成 `stroke-linecap="butt"`。
-  - 协议里补了“带箭头 flow path 必须用 butt”。
-  - 用户复核后仍认为端点露线，说明该修复不足。
-
-### 当前 SVG 状态
-
-文件：`projects/26-BQ-PARK/05_output/style/style_card.svg`
-
-marker：
-
-```xml
-<marker id="arrow-vehicle"
-    viewBox="0 0 10 10"
-    markerWidth="14" markerHeight="14"
-    refX="10" refY="5"
-    orient="auto-start-reverse"
-    markerUnits="userSpaceOnUse">
-  <path d="M0,0 L10,5 L0,10 z" fill="#E88A33"/>
-</marker>
+```
+路径终点 P 在内部坐标 marker(refX=10, refY=5) 上
+   ↓
+箭头零宽度尖端正好压在 P
+   ↓
+但线段在 P 处仍有 stroke-width 的垂直厚度（butt 也救不了，butt 只是把端帽截平不能让线变细）
+   ↓
+P 两侧各 stroke-width/2 用户单位的线身体露在箭头尖外面
 ```
 
-主图 vehicle_flow：
+`stroke-linecap` 从 `round` 改 `butt` 是上一波 codex 的正确改动（防止圆帽多戳出半个 stroke），但根因在 refX，所以 butt 没解决问题。
 
-```xml
-<path d="M64 356 C120 340, 178 372, 234 352"
-      fill="none"
-      stroke="#E88A33"
-      stroke-width="5.2"
-      stroke-linecap="butt"
-      marker-start="url(#arrow-vehicle)"
-      marker-end="url(#arrow-vehicle)"/>
+我前几版 GO 写的 `refX="10"` 是隐性错误，对应了"把零宽度尖端钉端点"的错位语义。SVG 规范和 MDN 双端箭头示例都用 `refX="5"`。
+
+### 修复：`refX="5"`
+
+`refX="5"` 把箭头**主体中心**对齐到路径终点：
+
+- 箭头尖端略超出路径终点 7 个用户单位（这是 qitai / 标准技术图惯例）
+- 路径终点落在箭头主体里，宽度足够覆盖线的 stroke-width 横截面
+
+#### 覆盖率验证（按 markerWidth=14、viewBox=10×10）
+
+| stroke-width | 线半厚 | refX=5 时端点处箭头半高 | 覆盖余量 |
+|---|---|---|---|
+| 5.2（vehicle 主图） | 2.6 | 3.5 | 0.9 ✅ |
+| 4.0（pedestrian 主图） | 2.0 | 3.5 | 1.5 ✅ |
+| 4.0（图例单端） | 2.0 | 3.5 | 1.5 ✅ |
+
+A3 真图 markerWidth=56 比例放大，覆盖余量同比例放大。**refX=5 对当前所有用例都够覆盖**。
+
+### Patch 1：`projects/26-BQ-PARK/05_output/style/style_card.svg`
+
+两个 marker 各改一处 refX：
+
+```diff
+ <marker id="arrow-vehicle"
+     viewBox="0 0 10 10"
+     markerWidth="14" markerHeight="14"
+-    refX="10" refY="5"
++    refX="5" refY="5"
+     orient="auto-start-reverse"
+     markerUnits="userSpaceOnUse">
+   <path d="M0,0 L10,5 L0,10 z" fill="#E88A33"/>
+ </marker>
+
+ <marker id="arrow-pedestrian"
+     viewBox="0 0 10 10"
+     markerWidth="14" markerHeight="14"
+-    refX="10" refY="5"
++    refX="5" refY="5"
+     orient="auto-start-reverse"
+     markerUnits="userSpaceOnUse">
+   <path d="M0,0 L10,5 L0,10 z" fill="#65AFC4"/>
+ </marker>
 ```
 
-主图 pedestrian_flow 同样是 `stroke-linecap="butt"` + 双端 marker。
+**保留** `stroke-linecap="butt"`（二级保险，不要回滚）。
 
-图例 line 仍为单端：
+**不动**：marker-start / marker-end / 双端配置 / path 坐标 / stroke-width / 其他元素。
 
-```xml
-<line x1="304" y1="510" x2="354" y2="510"
-      stroke="#E88A33"
-      stroke-width="4"
-      marker-end="url(#arrow-vehicle)"/>
+### Patch 2：`docs/agent_drawing_protocol.md` §3.5
+
+#### 改动 A：模板里 refX
+
+```diff
+ <marker id="arrow-{object_type}"
+         viewBox="0 0 10 10"
+         markerWidth="{W}" markerHeight="{W}"
+-        refX="10" refY="5"
++        refX="5" refY="5"
+         orient="auto"
+         markerUnits="userSpaceOnUse">
+   <path d="M0,0 L10,5 L0,10 z" fill="{color}"/>
+ </marker>
 ```
 
-### Codex 当前怀疑
+#### 改动 B：双端箭头示例同步改 refX
 
-我上一轮把问题判断成 `stroke-linecap="round"`，这只解决了圆端帽越过路径端点的问题，但用户仍看到“端点漏出来”，说明根因可能还有一层：
+把"双端箭头"段里两份 marker 示例的 `refX="10"` 全部改成 `refX="5"`。
 
-- 当前 `refX="10"` 把路径端点精确对齐到三角箭头的尖端。
-- 线段本身有 `stroke-width`，即使用 `butt`，线段仍会以有限宽度绘制到路径端点。
-- 三角箭头在尖端处宽度趋近 0，无法完全覆盖线段端点附近的宽度。
-- 所以可能需要让路径端点落在箭头内部更宽的位置，而不是落在箭头尖端。
+#### 改动 C：在 markerWidth 表后插入一段说明
 
-可能方向包括但不限于：
+```markdown
+### 为什么 refX=5 不是 refX=10
 
-1. 调整 marker 模板，例如把 `refX` 从 `10` 改到 `6` 或其他值，让箭头尖端超过 path endpoint，线段端点被箭头主体覆盖。
-2. 保持 `refX=10`，但由生成器缩短 flow path，使 path endpoint 落在箭头内部，同时视觉箭头尖端落在用户期望的端点。
-3. 改 marker path 形状，增加覆盖 stroke 端点的尾部/内嵌结构。
-4. 使用两层绘制或 mask，但我倾向避免复杂方案，除非你判断这是唯一稳定方案。
+`refX=5` 把箭头**主体中心**（不是尖端）对齐到路径终点：
 
-请你用 rsvg-convert 或你本地可视化环境复核，并给出一个最小、可复用的 SVG 标准。
+- 箭头尖端略超出路径终点 7 个用户单位（A3 真图按比例 = 28 用户单位 ≈ 2.4mm）
+- 路径终点落在箭头主体宽度足够的位置，能完全覆盖线的 stroke-width 横截面
+- 这正是 qitai P54 / 标准技术图惯例的视觉
 
-### 希望 Claude 回答的问题
+如果用 `refX=10`，箭头零宽度尖端对齐到路径终点，线的横截面会从尖端两侧漏出。无论 `stroke-linecap` 怎么设都救不了——butt 只是把端帽截平，并不能把线变细。
+```
 
-1. 这个问题是否确实由 `refX=10` 导致，而不是 linecap？
-2. 如果改 marker，推荐具体模板是什么？
-   - `viewBox`
-   - `markerWidth/markerHeight`
-   - `refX/refY`
-   - `path d`
-   - `markerUnits`
-   - `orient`
-3. 这个模板是否同时适用于：
-   - 主图双端 vehicle_flow（stroke-width 5.2）
-   - 主图双端 pedestrian_flow（stroke-width 4.0）
-   - 图例单端 vehicle_flow（stroke-width 4）
-4. 是否应该修改 `docs/agent_drawing_protocol.md` 中已经写入的箭头标准？
-5. 是否需要回滚 `stroke-linecap="butt"`，还是保留 butt 并进一步改 marker？
+#### 改动 D：在"禁止"小节追加一条
 
-### Codex 暂停动作
+```markdown
+- ❌ 不用 `refX="10"`（把箭头零宽度尖端钉路径终点 → 线的 stroke-width 横截面会从尖端两侧漏出。
+  必须 `refX="5"`，让箭头主体覆盖路径终点；箭头尖端按 SVG 标准做法略超出端点）
+```
 
-我先不继续改 SVG 参数，避免继续凭猜测迭代。
+### 不动
 
-请 Claude 给出明确 GO 后，我再按建议实施、提交、推送。
+- ❌ `projects/26-BQ-PARK/05_output/style/style_spec.json`
+- ❌ `approved_at`（继续保持 null）
+- ❌ stroke-linecap="butt"（保留作二级保险）
+- ❌ 双端箭头配置（marker-start + marker-end 维持现状）
+- ❌ 任何其他文件
+
+### 验证
+
+完成后 codex：
+
+1. 提 commit
+2. Windows 端 codex 可跳过本地渲染（Cairo / rsvg 缺），我 mac 端用 rsvg-convert 渲染验证
+3. 验证点：
+   - 主图 vehicle_flow 两端 + pedestrian_flow 两端共 4 个端点，**线不再戳出箭头**
+   - 图例单端箭头 + 不再戳出
+   - 箭头位置整体感官 vs `c6dbb8d`（refX=10）：尖端略超出端点是预期行为，不是 bug
+
+### 回执要求
+
+- commit hash
+- 当前 marker refX 值（应为 5）+ path linecap 值（应为 butt）
+- 任何观察到的副作用（譬如曲线终点处箭头方向异常等）
+
+### 完成定义
+
+- 两份 patch 已 commit
+- mac 端 rsvg-convert 渲染验证通过
+- 用户视觉确认（agent 不在本轮判断"通过"，等用户复核）
+
+### 不要做的事
+
+- ❌ 不进 S3 / Stage 7
+- ❌ 不改 style_spec 字段
+- ❌ 不改 marker 形状 / markerWidth / markerHeight / viewBox
+- ❌ 不删未跟踪文件
+- ❌ 不试图把 refX 改回 10 看效果
+
+### 开工
+
+直接做 Wave SVG-Arrow Fix #3。
