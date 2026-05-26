@@ -1,0 +1,24 @@
+{
+  "qitai": {
+    "pdf": "docs/reference_pdfs/report_examples/20260410西藏启泰直销市场建设项目-3.pdf",
+    "drawings": {
+      "functional_zoning": [
+        52
+      ],
+      "traffic_analysis": [
+        54
+      ]
+    }
+  },
+  "changjiang": {
+    "pdf": "docs/reference_pdfs/report_examples/202600520西藏长江大厦建设项目-4.pdf",
+    "drawings": {
+      "functional_zoning": [
+        41
+      ],
+      "traffic_analysis": [
+        42
+      ]
+    }
+  }
+}
