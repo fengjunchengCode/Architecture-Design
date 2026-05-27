@@ -1514,10 +1514,9 @@
     if (selected) {
       // vertex handles
       handles = coords.map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28))).join("");
-      // edge handles + control handles（有 segments 时）
-      if (segments && segments.length > 0) {
-        handles += renderSegmentHandles(obj.id, segments, style);
-      }
+      // 从 coords 初始化 segments（如果还没有）
+      const segs = ensureSegments(obj);
+      handles += renderSegmentHandles(obj.id, segs, style);
     }
     return `${visibleShape}${hitShape}${handles}`;
   }
