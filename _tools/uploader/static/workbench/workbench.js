@@ -625,7 +625,8 @@
       const style = group.style;
       const hasBorder = style.border_style !== "none";
       const borderColor = hasBorder ? style.fill_color : "transparent";
-      const borderWidth = hasBorder ? Math.max(2, Math.round(style.stroke_width * 1000)) : 0;
+      // swatch viewBox 24x16，映射 stroke_width 到 1-3px 范围以区分线宽差异
+      const borderWidth = hasBorder ? Math.max(1, Math.min(3, Math.round(style.stroke_width * 300))) : 0;
       const dashArray = style.border_style === "dashed" ? "4 3" : "";
       return `
         <div class="zone-legend-item">
@@ -1057,8 +1058,39 @@
     const naturalWidth = (image && image.naturalWidth) || (state.drawing && state.drawing.base_image.natural_width) || 1;
     const naturalHeight =
       (image && image.naturalHeight) || (state.drawing && state.drawing.base_image.natural_height) || 1;
+    const objects = state.objects
+      .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon"))
+      .map((obj) => {
+        if (isFunctionalZoning()) {
+          const geometry = { kind: "polygon", coords: obj.geometry.coords };
+          if (obj.geometry.segments && obj.geometry.segments.length > 0) {
+            geometry.segments = obj.geometry.segments;
+            geometry.coords = sampleSegments(obj.geometry.segments);
+          }
+          return {
+            id: obj.id,
+            type: "functional_zone",
+            geometry,
+            label: obj.label || "",
+            confidence: obj.confidence || "medium",
+            source: "user_sketch",
+            style_hints: normalizeZoneStyle(obj.style_hints),
+          };
+        }
+        return {
+          id: obj.id,
+          type: obj.type,
+          geometry: obj.geometry,
+          label: obj.label || "",
+          confidence: obj.confidence || "medium",
+          source: obj.source || "user_sketch",
+          style_hints: {},
+        };
+      });
+    // T1: 条件写版本号 — 仅对象带 segments 才标 1.1
+    const hasSegments = objects.some((obj) => obj.geometry && obj.geometry.segments);
     return {
-      schema_version: "1.0",
+      schema_version: hasSegments ? "1.1" : "1.0",
       drawing_type: drawingType(),
       project_code: state.project || projectCode(),
       base_image: {
@@ -1069,18 +1101,33 @@
       },
       created_at: (state.drawing && state.drawing.created_at) || new Date().toISOString(),
       last_edited_by: "user",
-      objects: state.objects
-        .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon"))
-        .map((obj) => ({
-          id: obj.id,
-          type: isFunctionalZoning() ? "functional_zone" : obj.type,
-          geometry: isFunctionalZoning() ? { kind: "polygon", coords: obj.geometry.coords } : obj.geometry,
-          label: obj.label || "",
-          confidence: obj.confidence || "medium",
-          source: isFunctionalZoning() ? "user_sketch" : obj.source || "user_sketch",
-          style_hints: isFunctionalZoning() ? normalizeZoneStyle(obj.style_hints) : {},
-        })),
+      objects,
     };
+  }
+
+  function sampleSegments(segments) {
+    if (!segments || !segments.length) return [];
+    const coords = [segments[0].from];
+    for (const segment of segments) {
+      if (segment.kind === "line") {
+        coords.push(segment.to);
+      } else if (segment.kind === "quadratic") {
+        const [fx, fy] = segment.from;
+        const [cx, cy] = segment.control;
+        const [tx, ty] = segment.to;
+        const steps = 16;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const mt = 1 - t;
+          coords.push([
+            Number((mt * mt * fx + 2 * mt * t * cx + t * t * tx).toFixed(6)),
+            Number((mt * mt * fy + 2 * mt * t * cy + t * t * ty).toFixed(6)),
+          ]);
+        }
+      }
+    }
+    // T2: 开环 — 不含等于首点的尾点
+    return coords;
   }
 
   async function saveDrawing() {
@@ -1366,66 +1413,195 @@
     const selected = obj.id === state.selectedId;
     const style = normalizeZoneStyle(obj.style_hints);
     const coords = obj.geometry.coords;
-    const points = coords.map((point) => point.join(",")).join(" ");
+    const segments = obj.geometry.segments;
     const fill = style.fill_enabled ? style.fill_color : "none";
     const fillOpacity = style.fill_enabled ? "0.42" : "1";
     const strokeColor = style.border_style === "none" ? "none" : (selected ? darkenHex(style.fill_color, 0.2) : style.fill_color);
-    const strokeWidth =
-      style.border_style === "none"
-        ? 0
-        : style.stroke_width || ZONE_EDIT_WIDTH;
+    const strokeWidth = style.border_style === "none" ? 0 : (style.stroke_width || ZONE_EDIT_WIDTH);
     const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-    const visiblePolygon = `
+
+    // 有 segments 用 <path>，无 segments 用 <polygon>
+    let visibleShape = "";
+    let hitShape = "";
+    if (segments && segments.length > 0) {
+      const pathD = segmentsToPathD(segments);
+      visibleShape = `
+        <path
+          d="${pathD}"
+          fill="${fill}"
+          fill-opacity="${fillOpacity}"
+          stroke="${strokeColor}"
+          stroke-width="${strokeWidth}"
+          stroke-linejoin="round"${dash}
+          pointer-events="none"
+        ></path>
+      `;
+      const isDrawing = state.currentPoints.length > 0;
+      if (!isDrawing) {
+        const hasVisibleBorder = style.border_style !== "none";
+        const hasVisibleFill = style.fill_enabled;
+        if (hasVisibleBorder) {
+          hitShape = `
+            <path
+              class="zone-hit"
+              data-object-id="${escapeHtml(obj.id)}"
+              d="${pathD}"
+              fill="none"
+              stroke="transparent"
+              stroke-width="${getZoneHitStrokeWidth(style)}"
+              pointer-events="stroke"
+            ></path>
+          `;
+        } else if (hasVisibleFill) {
+          hitShape = `
+            <path
+              class="zone-hit"
+              data-object-id="${escapeHtml(obj.id)}"
+              d="${pathD}"
+              fill="transparent"
+              stroke="none"
+              pointer-events="fill"
+            ></path>
+          `;
+        }
+      }
+    } else {
+      const points = coords.map((point) => point.join(",")).join(" ");
+      visibleShape = `
+        <polygon
+          points="${points}"
+          fill="${fill}"
+          fill-opacity="${fillOpacity}"
+          stroke="${strokeColor}"
+          stroke-width="${strokeWidth}"
+          stroke-linejoin="round"${dash}
+          pointer-events="none"
+        ></polygon>
+      `;
+      const isDrawing = state.currentPoints.length > 0;
+      if (!isDrawing) {
+        const hasVisibleBorder = style.border_style !== "none";
+        const hasVisibleFill = style.fill_enabled;
+        if (hasVisibleBorder) {
+          hitShape = `
+            <polygon
+              class="zone-hit"
+              data-object-id="${escapeHtml(obj.id)}"
+              points="${points}"
+              fill="none"
+              stroke="transparent"
+              stroke-width="${getZoneHitStrokeWidth(style)}"
+              pointer-events="stroke"
+            ></polygon>
+          `;
+        } else if (hasVisibleFill) {
+          hitShape = `
+            <polygon
+              class="zone-hit"
+              data-object-id="${escapeHtml(obj.id)}"
+              points="${points}"
+              fill="transparent"
+              stroke="none"
+              pointer-events="fill"
+            ></polygon>
+          `;
+        }
+      }
+    }
+
+    // 选中时显示 handles
+    let handles = "";
+    if (selected) {
+      // vertex handles
+      handles = coords.map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28))).join("");
+      // edge handles + control handles（有 segments 时）
+      if (segments && segments.length > 0) {
+        handles += renderSegmentHandles(obj.id, segments, style);
+      }
+    }
+    return `${visibleShape}${hitShape}${handles}`;
+  }
+
+  function segmentsToPathD(segments) {
+    if (!segments || !segments.length) return "";
+    let d = `M ${segments[0].from[0]} ${segments[0].from[1]}`;
+    for (const seg of segments) {
+      if (seg.kind === "line") {
+        d += ` L ${seg.to[0]} ${seg.to[1]}`;
+      } else if (seg.kind === "quadratic") {
+        d += ` Q ${seg.control[0]} ${seg.control[1]} ${seg.to[0]} ${seg.to[1]}`;
+      }
+    }
+    d += " Z";
+    return d;
+  }
+
+  function renderSegmentHandles(objectId, segments, style) {
+    let html = "";
+    const handleColor = darkenHex(style.fill_color, 0.28);
+    segments.forEach((seg, i) => {
+      const [mx, my] = [(seg.from[0] + seg.to[0]) / 2, (seg.from[1] + seg.to[1]) / 2];
+      if (seg.kind === "line") {
+        // 直线边：中点空心菱形 edge handle
+        html += renderEdgeHandle(mx, my, objectId, i);
+      } else if (seg.kind === "quadratic") {
+        // quadratic 边：control handle + 辅助线
+        html += renderControlHandle(seg.control[0], seg.control[1], objectId, i, handleColor);
+        html += renderControlGuide(seg.from, seg.control, seg.to, handleColor);
+      }
+    });
+    return html;
+  }
+
+  function renderEdgeHandle(x, y, objectId, segmentIndex) {
+    const stage = $("#workbenchStage");
+    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
+    const stageHeight = (stage && stage.getBoundingClientRect().height) || 1;
+    const rx = Number((5 / stageWidth).toFixed(6));
+    const ry = Number((5 / stageHeight).toFixed(6));
+    return `
       <polygon
-        points="${points}"
-        fill="${fill}"
-        fill-opacity="${fillOpacity}"
-        stroke="${strokeColor}"
-        stroke-width="${strokeWidth}"
-        stroke-linejoin="round"${dash}
-        pointer-events="none"
+        class="zone-edge-handle"
+        data-object-id="${escapeHtml(objectId)}"
+        data-segment-index="${segmentIndex}"
+        points="${x},${y - ry} ${x + rx},${y} ${x},${y + ry} ${x - rx},${y}"
+        fill="white"
+        stroke="${darkenHex('#fff', 0.3)}"
+        stroke-width="${getHandleStrokeWidth()}"
+        style="cursor:pointer"
       ></polygon>
     `;
-    // 命中三态：绘制态禁旧 hit、空闲态精确选
-    const isDrawing = state.currentPoints.length > 0;
-    let hitShape = "";
-    if (!isDrawing) {
-      const hasVisibleBorder = style.border_style !== "none";
-      const hasVisibleFill = style.fill_enabled;
-      if (hasVisibleBorder) {
-        // 有边框对象：stroke-only 命中
-        hitShape = `
-          <polygon
-            class="zone-hit"
-            data-object-id="${escapeHtml(obj.id)}"
-            points="${points}"
-            fill="none"
-            stroke="transparent"
-            stroke-width="${getZoneHitStrokeWidth(style)}"
-            pointer-events="stroke"
-          ></polygon>
-        `;
-      } else if (hasVisibleFill) {
-        // 无边框有填充：fill 命中
-        hitShape = `
-          <polygon
-            class="zone-hit"
-            data-object-id="${escapeHtml(obj.id)}"
-            points="${points}"
-            fill="transparent"
-            stroke="none"
-            pointer-events="fill"
-          ></polygon>
-        `;
-      }
-      // 全隐形对象（!fill_enabled && border_style === "none"）不提供画布命中
-    }
-    const handles = selected
-      ? coords
-          .map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28)))
-          .join("")
-      : "";
-    return `${visiblePolygon}${hitShape}${handles}`;
+  }
+
+  function renderControlHandle(cx, cy, objectId, segmentIndex, color) {
+    return `
+      <circle
+        class="zone-control-handle"
+        data-object-id="${escapeHtml(objectId)}"
+        data-segment-index="${segmentIndex}"
+        cx="${cx}"
+        cy="${cy}"
+        r="${getHandleRadiusX()}"
+        fill="${color}"
+        stroke="#fff"
+        stroke-width="${getHandleStrokeWidth()}"
+        style="cursor:grab"
+      ></circle>
+    `;
+  }
+
+  function renderControlGuide(from, control, to, color) {
+    return `
+      <polyline
+        points="${from.join(",")} ${control.join(",")} ${to.join(",")}"
+        fill="none"
+        stroke="${color}"
+        stroke-width="${getHandleStrokeWidth()}"
+        stroke-dasharray="0.006 0.004"
+        opacity="0.5"
+        pointer-events="none"
+      ></polyline>
+    `;
   }
 
   /**
@@ -1519,12 +1695,114 @@
         finishFunctionalZone();
       });
     });
-    overlay.querySelectorAll("[data-object-id]").forEach((shape) => {
+    overlay.querySelectorAll("[data-object-id]:not(.zone-edge-handle):not(.zone-control-handle)").forEach((shape) => {
       shape.addEventListener("click", (event) => {
         event.stopPropagation();
         selectObject(shape.dataset.objectId);
       });
     });
+    // edge handle: 点击直线边转 quadratic
+    overlay.querySelectorAll(".zone-edge-handle").forEach((handle) => {
+      handle.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const objectId = handle.dataset.objectId;
+        const segIndex = Number(handle.dataset.segmentIndex);
+        convertSegmentToQuadratic(objectId, segIndex);
+      });
+    });
+    // control handle: 拖动改弧度，双击恢复直线
+    overlay.querySelectorAll(".zone-control-handle").forEach((handle) => {
+      let dragging = false;
+      let startX, startY;
+      handle.addEventListener("mousedown", (event) => {
+        event.stopPropagation();
+        dragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        handle.style.cursor = "grabbing";
+      });
+      document.addEventListener("mousemove", (event) => {
+        if (!dragging) return;
+        const objectId = handle.dataset.objectId;
+        const segIndex = Number(handle.dataset.segmentIndex);
+        dragControlHandle(objectId, segIndex, event);
+      });
+      document.addEventListener("mouseup", () => {
+        if (dragging) {
+          dragging = false;
+          handle.style.cursor = "grab";
+        }
+      });
+      handle.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        const objectId = handle.dataset.objectId;
+        const segIndex = Number(handle.dataset.segmentIndex);
+        convertSegmentToLine(objectId, segIndex);
+      });
+    });
+  }
+
+  function getSelectedObject() {
+    return state.objects.find((obj) => obj.id === state.selectedId) || null;
+  }
+
+  function ensureSegments(obj) {
+    if (!obj.geometry.segments || obj.geometry.segments.length === 0) {
+      // 从 coords 初始化 segments（全部为 line）
+      const coords = obj.geometry.coords;
+      const segments = [];
+      for (let i = 0; i < coords.length; i++) {
+        segments.push({
+          kind: "line",
+          from: coords[i],
+          to: coords[(i + 1) % coords.length],
+        });
+      }
+      obj.geometry.segments = segments;
+    }
+    return obj.geometry.segments;
+  }
+
+  function convertSegmentToQuadratic(objectId, segIndex) {
+    const obj = state.objects.find((o) => o.id === objectId);
+    if (!obj) return;
+    pushUndoSnapshot();
+    const segments = ensureSegments(obj);
+    const seg = segments[segIndex];
+    if (!seg || seg.kind !== "line") return;
+    // control 初始为边中点
+    const [fx, fy] = seg.from;
+    const [tx, ty] = seg.to;
+    seg.kind = "quadratic";
+    seg.control = [Number(((fx + tx) / 2).toFixed(6)), Number(((fy + ty) / 2).toFixed(6))];
+    markDirty();
+    renderCanvasLayers("convert-to-quadratic");
+    refreshLegendPreview();
+  }
+
+  function convertSegmentToLine(objectId, segIndex) {
+    const obj = state.objects.find((o) => o.id === objectId);
+    if (!obj || !obj.geometry.segments) return;
+    pushUndoSnapshot();
+    const seg = obj.geometry.segments[segIndex];
+    if (!seg || seg.kind !== "quadratic") return;
+    seg.kind = "line";
+    delete seg.control;
+    markDirty();
+    renderCanvasLayers("convert-to-line");
+    refreshLegendPreview();
+  }
+
+  function dragControlHandle(objectId, segIndex, event) {
+    const obj = state.objects.find((o) => o.id === objectId);
+    if (!obj || !obj.geometry.segments) return;
+    const seg = obj.geometry.segments[segIndex];
+    if (!seg || seg.kind !== "quadratic") return;
+    const point = normalizedPoint(event);
+    if (!point) return;
+    seg.control = point;
+    markDirty();
+    renderCanvasLayers("drag-control");
   }
 
   function selectObject(id) {

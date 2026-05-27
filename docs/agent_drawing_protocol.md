@@ -306,6 +306,27 @@ agent 翻译时**允许**对草图做下列清理（用户画得粗时帮忙补�
 - `scatter`：贴在对象旁（agent 自行避让，本协议不强制位置）
 - `sidebar`：单列纵向贴右边
 
+### 弧线渲染规则（schema_version 1.1）
+
+当 `geometry.segments` 存在时：
+
+- **渲染方式**：使用 `<path d="...">` 替代 `<polygon points="...">`
+- **path 命令**：
+  - 首段：`M from.x from.y`
+  - line 段：`L to.x to.y`
+  - quadratic 段：`Q control.x control.y to.x to.y`
+  - 末尾：`Z`
+- **自动平滑排除**：有 `segments` 时，**必须严格按 segment kind 逐边渲染，禁用自动 Catmull-Rom / Bezier 平滑**
+- **兜底**：无 `segments` 的旧 polygon 仍走旧规则（允许自动平滑）
+
+### 自动平滑排除规则
+
+- 如果对象有 `geometry.segments`，所有边必须按 segment kind 精确渲染：
+  - `line` → SVG `L` 命令（直线）
+  - `quadratic` → SVG `Q` 命令（二次贝塞尔）
+- 禁止对有 segments 的对象应用任何额外平滑（Catmull-Rom、smooth polyline 等）
+- 只有无 `segments` 的旧 polygon（schema_version 1.0）才允许自动平滑
+
 ---
 
 ## 6. 标尺 + 指北针
