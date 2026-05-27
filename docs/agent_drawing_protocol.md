@@ -267,6 +267,27 @@ agent 翻译时**允许**对草图做下列清理（用户画得粗时帮忙补�
 - 同 type 同 label 的多个对象合并到一行（不要重复）
 - label 为空的对象 → 用 object_type 中文名（"功能分区" / "车行流线" / ...）
 
+### 功能分区图例特殊规则（按 `style_hints` 合并）
+
+功能分区图例按 **normalized `style_hints`** 分组，**不按 object id**：
+
+- **分组 key**：`{ fill, border, stroke_width }`，其中：
+  - `fill`：`style.fill_enabled ? style.fill_color : null`
+  - `border`：`style.border_style`
+  - `stroke_width`：`style.border_style === "none" ? null : style.stroke_width`
+- **合并规则**：
+  - 两个"关闭填充但 fill_color 不同"的对象 → **合并**（图面上都不显色）
+  - 两个"无边框但 stroke_width 不同"的对象 → **合并**（图面上都不显线宽）
+  - 同一 style group 的多个 polygon → **只生成一条图例**，显示 `x N`
+- **标签规则**（不新增 schema 字段）：
+  - 取该组第一个非空 `object.label` 作为组名
+  - 同一组存在多个不同 label → 显示：`首个 label 等 N 类`
+  - 全组没有 label → 显示 `功能分区`
+- **全隐形对象**（`!fill_enabled && border_style === "none"`）：
+  - 不进入正常图例
+  - 图例底部显示轻提示：`有 N 个不可见对象未进入图例`
+- **样式优先级**：图例样式取对象级 `style_hints`，优先于 `style_spec` 默认
+
 ### 位置
 
 按 `style_spec.legend.position` 放（默认 `bottom_right`）：

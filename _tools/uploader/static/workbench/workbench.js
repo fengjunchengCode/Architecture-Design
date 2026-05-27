@@ -253,6 +253,7 @@
     renderCanvasLayers("restore-snapshot");
     renderObjectList();
     renderSpecificTools();
+    refreshLegendPreview();
     markDirty();
   }
 
@@ -565,8 +566,97 @@
           aria-label="分区边框线宽"
         >
       </div>
+      <div class="zone-legend-preview" id="zoneLegendPreview">
+        <h4>图例预览</h4>
+        ${renderFunctionalZoneLegendPreview()}
+      </div>
+      <div class="zone-tool-group">
+        <h4>对象明细</h4>
+      </div>
     `;
     bindFunctionalZoningTools();
+  }
+
+  function buildFunctionalZoneLegendGroups(objects) {
+    const groups = new Map();
+    let invisibleCount = 0;
+    objects.forEach((obj) => {
+      if (obj.type !== "functional_zone") return;
+      const style = normalizeZoneStyle(obj.style_hints);
+      const isInvisible = !style.fill_enabled && style.border_style === "none";
+      if (isInvisible) {
+        invisibleCount++;
+        return;
+      }
+      // 按可见性归一 key
+      const key = JSON.stringify({
+        fill: style.fill_enabled ? style.fill_color : null,
+        border: style.border_style,
+        stroke_width: style.border_style === "none" ? null : style.stroke_width,
+      });
+      if (!groups.has(key)) {
+        groups.set(key, { style, objects: [] });
+      }
+      groups.get(key).objects.push(obj);
+    });
+    return { groups: Array.from(groups.values()), invisibleCount };
+  }
+
+  function renderFunctionalZoneLegendPreview() {
+    const { groups, invisibleCount } = buildFunctionalZoneLegendGroups(state.objects);
+    if (groups.length === 0 && invisibleCount === 0) {
+      return '<p class="zone-legend-empty">暂无功能分区</p>';
+    }
+    const items = groups.map((group) => {
+      const firstObj = group.objects[0];
+      const labels = group.objects.map((obj) => obj.label).filter(Boolean);
+      const uniqueLabels = [...new Set(labels)];
+      let groupName = "";
+      let nameHint = "";
+      if (uniqueLabels.length === 0) {
+        groupName = "功能分区";
+      } else if (uniqueLabels.length === 1) {
+        groupName = uniqueLabels[0];
+      } else {
+        groupName = `${uniqueLabels[0]} 等 ${uniqueLabels.length} 类`;
+        nameHint = '<p class="zone-legend-hint">同一样式下存在多个名称，最终图例将按样式合并</p>';
+      }
+      const count = group.objects.length;
+      const style = group.style;
+      const hasBorder = style.border_style !== "none";
+      const borderColor = hasBorder ? style.fill_color : "transparent";
+      const borderWidth = hasBorder ? Math.max(2, Math.round(style.stroke_width * 1000)) : 0;
+      const dashArray = style.border_style === "dashed" ? "4 3" : "";
+      return `
+        <div class="zone-legend-item">
+          <svg class="zone-legend-swatch" viewBox="0 0 24 16" aria-hidden="true">
+            <rect x="1" y="1" width="22" height="14" rx="2"
+              fill="${style.fill_enabled ? style.fill_color : 'none'}"
+              fill-opacity="${style.fill_enabled ? '0.42' : '0'}"
+              stroke="${borderColor}"
+              stroke-width="${borderWidth}"
+              ${dashArray ? `stroke-dasharray="${dashArray}"` : ''}
+            />
+          </svg>
+          <span class="zone-legend-label">${escapeHtml(groupName)}</span>
+          ${count > 1 ? `<span class="zone-legend-count">x ${count}</span>` : ''}
+          ${nameHint}
+        </div>
+      `;
+    }).join("");
+    const invisibleHint = invisibleCount > 0
+      ? `<p class="zone-legend-invisible-hint">有 ${invisibleCount} 个不可见对象未进入图例</p>`
+      : "";
+    return `${items}${invisibleHint}`;
+  }
+
+  function refreshLegendPreview() {
+    const container = $("#zoneLegendPreview");
+    if (!container) return;
+    container.innerHTML = `
+      <h4>图例预览</h4>
+      ${renderFunctionalZoneLegendPreview()}
+    `;
   }
 
   function selectedObject() {
@@ -661,6 +751,7 @@
         selected.label = next;
         markDirty();
         renderObjectList();
+        refreshLegendPreview();
         setStatus("已更新分区名称。");
       });
     }
@@ -701,6 +792,7 @@
     renderCanvasLayers("zone-style-update");
     renderObjectList();
     if (options.renderTools !== false) renderSpecificTools();
+    refreshLegendPreview();
   }
 
   function renderAvailability() {
@@ -908,6 +1000,7 @@
     loadStyle().catch((err) => renderStyleStrip(null, err.message));
     renderCanvasLayers("load-drawing-sync");
     renderObjectList();
+    refreshLegendPreview();
     renderAvailability();
     if (hasBaseImage) {
       setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
@@ -1185,7 +1278,7 @@
       style_hints: style,
     };
     state.objects.push(object);
-    state.selectedId = "";
+    state.selectedId = id;
     state.zoneDraftStyle = style;
     state.zoneDraftLabel = "";
     state.currentPoints = [];
@@ -1193,6 +1286,7 @@
     renderCanvasLayers("finish-zone");
     renderObjectList();
     renderSpecificTools();
+    refreshLegendPreview();
     if (!style.fill_enabled && style.border_style === "none") {
       setStatus("该分区在图中不可见（无边框 + 无填充）。", false);
     } else {
@@ -1221,6 +1315,7 @@
     renderCanvasLayers("delete-selected");
     renderObjectList();
     renderSpecificTools();
+    refreshLegendPreview();
     setStatus("已删除选中对象。");
   }
 
@@ -1234,6 +1329,7 @@
     renderCanvasLayers("clear-draft");
     renderObjectList();
     renderSpecificTools();
+    refreshLegendPreview();
     setStatus("已清空当前草图。");
   }
 
@@ -1279,7 +1375,7 @@
         ? 0
         : style.stroke_width || ZONE_EDIT_WIDTH;
     const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-    const shape = `
+    const visiblePolygon = `
       <polygon
         points="${points}"
         fill="${fill}"
@@ -1287,23 +1383,65 @@
         stroke="${strokeColor}"
         stroke-width="${strokeWidth}"
         stroke-linejoin="round"${dash}
-      ></polygon>
-      <polygon
-        class="zone-hit"
-        data-object-id="${escapeHtml(obj.id)}"
-        points="${points}"
-        fill="transparent"
-        stroke="transparent"
-        stroke-width="0.02"
-        pointer-events="all"
+        pointer-events="none"
       ></polygon>
     `;
+    // 命中三态：绘制态禁旧 hit、空闲态精确选
+    const isDrawing = state.currentPoints.length > 0;
+    let hitShape = "";
+    if (!isDrawing) {
+      const hasVisibleBorder = style.border_style !== "none";
+      const hasVisibleFill = style.fill_enabled;
+      if (hasVisibleBorder) {
+        // 有边框对象：stroke-only 命中
+        hitShape = `
+          <polygon
+            class="zone-hit"
+            data-object-id="${escapeHtml(obj.id)}"
+            points="${points}"
+            fill="none"
+            stroke="transparent"
+            stroke-width="${getZoneHitStrokeWidth(style)}"
+            pointer-events="stroke"
+          ></polygon>
+        `;
+      } else if (hasVisibleFill) {
+        // 无边框有填充：fill 命中
+        hitShape = `
+          <polygon
+            class="zone-hit"
+            data-object-id="${escapeHtml(obj.id)}"
+            points="${points}"
+            fill="transparent"
+            stroke="none"
+            pointer-events="fill"
+          ></polygon>
+        `;
+      }
+      // 全隐形对象（!fill_enabled && border_style === "none"）不提供画布命中
+    }
     const handles = selected
       ? coords
           .map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28)))
           .join("")
       : "";
-    return `${shape}${handles}`;
+    return `${visiblePolygon}${hitShape}${handles}`;
+  }
+
+  /**
+   * 计算功能分区命中 stroke-width。
+   * SVG viewBox="0 0 1 1" 且 preserveAspectRatio="none"，单个 stroke-width 无法同时做到 x/y 屏幕恒定。
+   * 此处按 stage 短边换算，是有意的宽松命中容差。
+   */
+  function getZoneHitStrokeWidth(style) {
+    const baseWidth = style.stroke_width || ZONE_EDIT_WIDTH;
+    const stage = $("#workbenchStage");
+    if (!stage) return baseWidth + 0.02;
+    const rect = stage.getBoundingClientRect();
+    const shortSide = Math.min(rect.width, rect.height);
+    // 约 2px 屏幕容差，按短边换算为 viewBox 单位
+    const tolerance = shortSide > 0 ? 2 / shortSide : 0.02;
+    return baseWidth + tolerance;
   }
 
   function renderDraftSvg() {
