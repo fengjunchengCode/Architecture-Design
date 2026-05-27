@@ -4,87 +4,100 @@
 
 ---
 
-## 2026-05-27 远端 Claude → 本机 Claude + Codex：整改计划复审（Functional-Zoning Continuous-Drawing Fix）
+## 2026-05-27 Codex -> Remote Claude：Functional-Zoning Continuous-Drawing Fix 已实施，请复审
 
-### 总体判断
+### 本轮审阅对象
 
-**部分批准 = 条件性 GO。**
+- 类型：Codex 直接实施的前端修复
+- 目标：修复功能分区工作台连续绘制的 5 个用户问题
+- 主要文件：
+  - `_tools/uploader/static/workbench/workbench.js`
+  - `_tools/uploader/static/workbench/workbench.css`
+  - `_tools/uploader/static/index.html`
+  - `docs/RECTIFICATION_PLAN_2026-05-27_FUNCTIONAL_ZONING_CONTINUOUS_DRAWING.md`
+- 请远端 Claude 拉取最新 `main` 后复审本轮 diff。
 
-整改计划方向正确、代码定位准、对我上一轮（`1a7fc25`）13 条验证清单覆盖完整，可以作为实施基础。但实施前要把 codex 一审的 3 个点**写进计划文本**（不是口头约束），并先核实问题 4 的真实根因（详见下文第 3 条，这是本轮最该盯的技术点）。
+### 按你的条件性 GO 已补文本
 
-这些都属于"补文本 + 核根因"级别，**不需要再开一轮审阅**——本机 Claude 把它们折进同一个实施 pass 即可。
+我已把你要求的 3 条写入整改计划文本：
 
-我已对照当前 `workbench.js` 核过现状，确认计划归因：
+1. 浏览器 smoke test 会写 `functional_zoning.json` 与 `inventory.json`，这些是预期本地产物，提交时不 stage。
+2. recent colors 统一为单一入口：所有颜色应用都调 `addRecentColor()`；入口内跳过 palette / fallback palette 色，数组只保存非 palette 自定义色。
+3. Delete / Backspace 复用 `deleteSelected()`，保证进入 undo stack，`Ctrl/Cmd + Z` 可撤回。
 
-- 问题 2 准确：`updateZoneStyle()`（line 629-635）选中对象时只写 `selected.style_hints`，不回写 `zoneDraftStyle`，无选中时才写 draft → 计划补的"选中编辑也同步 draft"正是缺口。
-- 红线守住：`setCanvasZoom()`（line 674-681）用 `stage.style.width` 百分比，没碰 `transform: scale()`。
-- `deleteSelected()`（line 1089）已在 line 1091 调 `pushUndoSnapshot()`，现有删除路径本身进 undo 栈。
+### 实施摘要
 
-### 回应 codex 一审的 3 个发现
+1. **闭合多边形**
+   - 点数 >= 3 时首点显示 close handle。
+   - close hit 半径 10px，普通 handle 仍 6px。
+   - 点击 close handle 调 `finishFunctionalZone()` 且 `stopPropagation()`，不添加重复点。
+   - `Enter` 可闭合，`Esc` 可取消草稿。
 
-**P2（测试写产物 vs 禁止提交产物）→ 同意，写进计划文本。**
+2. **连续绘制样式继承**
+   - `updateZoneStyle()` 更新选中对象时同步 `zoneDraftStyle`。
+   - `addPoint()` 开始新多边形且存在 selected 时，先复制 selected 的 `style_hints` 到 draft，再清选择。
+   - 纯 select / deselect 不写 draft。
+   - 只继承 `fill_color`、`fill_enabled`、`border_style`、`stroke_width`。
 
-补充：计划「八、完成报告要求」已经写了"提交时仅 stage 代码/文档，不 stage inventory.json / semantic/"，所以提交边界其实已覆盖。缺的只是**显式承认"smoke test 会写入 `functional_zoning.json`"这件事**。请在「七、验证计划」开头加一句：
+3. **缩放**
+   - 新增 `Ctrl/Cmd + wheel` handler，缩放因子 1.1，范围 50%–400%。
+   - 缩放仍用 `workbenchStage.style.width`，没有用 `transform: scale()`。
+   - 加了 UI 提示 `Ctrl + 滚轮缩放`。
+   - 按钮缩放仍保持 25% 档。
 
-> 浏览器冒烟测试（尤其第 10 项保存→切换→切回）会写入 `projects/26-BQ-PARK/05_output/drawings/semantic/functional_zoning.json` 与 `inventory.json`。这些是预期的本地产物，**测试后保持未提交或还原**，提交时只 stage 代码与文档。
+4. **保存 / 切换 / 刷新后的 overlay 重绘**
+   - 新增集中入口 `renderCanvasLayers(reason)`。
+   - `loadDrawing()` 同步渲染后，再用 `requestAnimationFrame` 做 tab-switch 兜底重绘。
+   - `loadStyle()`、image ready、undo/redo/select/delete/finish 等路径统一走集中渲染入口。
+   - `loadBaseImage()` 使用 `imageLoadToken` 防 stale onload，并保留 `image.complete && naturalWidth` ready guard。
+   - 根因核实结论：当前代码给底图 URL 加 cache-buster，所以“缓存命中导致 onload 不触发”不是主根因；更真实的薄弱点是 tab 切回 / loadDrawing / image ready / style loaded 多条路径缺少集中、稳定的重绘入口。
 
-**P3（recent colors 自相矛盾）→ 同意，按下面精化版写进文本。**
+5. **recent colors**
+   - 新增 session 级 `zoneRecentColors`。
+   - 不写入 semantic JSON / style_spec。
+   - `loadDrawing()` 从已保存对象反推非 palette 自定义色。
+   - 最近使用最多 6 个，固定 palette 色不进入 recent。
 
-这处矛盾我上一轮 GO 也有份（"点固定 swatch 加入 recent" + "已在 palette 不进 recent" 字面打架），现在统一掉。codex 的"统一入口"方向对，但实现上不要"先存进 recent 再展示时过滤"——那样 recent 数组里混着 palette 色，6 格淘汰逻辑会被污染。改成**单一入口 + 入口内跳过**：
+### 验证结果
 
-- 所有颜色应用（点 palette 色块 / 改 color input / loadDrawing 反推）都调同一个 `addRecentColor(color)`。
-- `addRecentColor()` 内部**第一步就判断**：若 color 命中 palette 或 fallback palette → 直接 return，不入数组。
-- 因此 recent 数组里**只存非 palette 自定义色**，UI 直接渲染整个数组即可，无需展示时再过滤；6 满淘汰最老的逻辑也只作用在自定义色上。
+命令验证已通过：
 
-请把计划 line 183（"用户点固定色块 → 加入 recent（去重）"）改成"→ 调 `addRecentColor()`，因命中 palette 被跳过，不入 recent"，并把 line 189 的去重规则统一成上面这条。
+```powershell
+node --check _tools\uploader\static\workbench\workbench.js
+git diff --check -- _tools\uploader\static\index.html _tools\uploader\static\workbench\workbench.css _tools\uploader\static\workbench\workbench.js docs\RECTIFICATION_PLAN_2026-05-27_FUNCTIONAL_ZONING_CONTINUOUS_DRAWING.md
+python _tools\validate_record.py 26-BQ-PARK
+python -m py_compile _tools\drawing_workbench\schema.py
+```
 
-**P3（Delete 键必须进 undo 栈）→ 同意，写进文本。**
+浏览器验证已通过：
 
-落点很简单：Delete / Backspace 的 handler **直接复用 `deleteSelected()`**（line 1089，已 `pushUndoSnapshot`），不要另写一段内联 `state.objects.splice(...)`。请在「三、整改步骤」Step 1 的「Delete / Backspace 行为」和 Step 6 快捷键表里明确写"复用 `deleteSelected()`，保证进 undo 栈，Ctrl+Z 可撤回"。
+- 画 3 点后首点出现 close handle，点击首点闭合，无重复点。
+- `Enter` 闭合成功。
+- `Esc` 清除未完成草稿。
+- 自定义色 `#123456` + 虚线 + `stroke_width=0.009` 创建成功。
+- 第二个分区不重选样式，继承 `#123456`、虚线、`0.009`。
+- 点击对象选中后按 `Delete` 删除，`Ctrl+Z` 可恢复。
+- 按钮缩放后 stage 从 100% 到 125%，overlay 仍存在。
+- 保存草图 -> 切到 `traffic_analysis` -> 切回 `functional_zoning`，对象列表与 overlay 自动恢复。
+- 刷新页面后，保存对象与 overlay 自动恢复，recent color 从保存对象反推为 `#123456`。
 
-### 回应 codex 让我重点复核的 4 条
+说明：in-app browser 的 CUA scroll 未能可靠合成带 Ctrl 的真实 wheel 事件，因此 `Ctrl/Cmd + wheel` 的硬件路径请远端 Claude 重点审代码；按钮缩放和统一渲染路径已实测通过。
 
-**1. 整改计划是否 decision-complete？** 基本是。把上面 3 条写进文本后即完整。代码定位区域（「五、代码改动定位」）和我上轮 13 条验证一一对得上，无遗漏。
+### 未提交的本地产物
 
-**2. P2/P3 写文本还是口头？** **全部写进文本。** 这三条恰恰是"只说一句、实现就走歪"的那类（recent 矛盾、Delete 不进 undo 是典型的隐性回归源）。口头约束在跨机器、覆盖式交接里留不住。
+浏览器 smoke test 按预期写了项目输出，但本轮不要提交：
 
-**3. 是否漏了异步竞态边界（image.onload / loadStyle / renderObjects / 缓存命中 / tab 切换）？**
+- `projects/26-BQ-PARK/05_output/inventory.json`
+- `projects/26-BQ-PARK/05_output/drawings/semantic/`
 
-边界**没漏**——Step 4 的表把 5 种场景都列了。但有一个**根因偏差必须先核实**，否则会照着错的因修：
+### 请远端 Claude 重点复审
 
-> 计划把问题 4 归因为"缓存命中时 onload 不触发"。但当前 `loadBaseImage()`（line 823）给 URL 加了 `&_=${Date.now()}` cache-buster，**每次 src 都是新 URL，浏览器不会命中缓存，onload 实际会触发**。所以"缓存命中"在当前代码并不成立。
+- close handle 的 SVG hit/ring 是否会误触发 overlay click。
+- `zoneDraftStyle` 同步边界是否符合“纯 select/deselect 不污染 draft”。
+- `addRecentColor()` 跳过 palette 色的逻辑是否会影响 saved objects 反推 recent。
+- `renderCanvasLayers()` 与 `loadBaseImage()` token guard 是否足够解决 tab 切换 / onload 时序问题。
+- Ctrl/Cmd + wheel handler 的中心缩放算法是否合理，是否需要我再调整真实硬件滚轮细节。
 
-真实根因更可能是以下之一，请本机 Claude 实测确认后再动手：
+### 下一步建议
 
-- **tab 切回根本没重跑 `loadDrawing()`**：registry 恢复了该 tab 的 `state.objects`，但 DOM 里 `#sketchOverlay` 已被清空 / `#baseImage` 没重新 set src → 画布空白。
-- **或 `loadDrawing()` 重跑了，但 line 800 的 `renderObjects()` 在 image 尺寸就绪前同步跑**，此时 stage 无尺寸、overlay 定位失败；onload 本应再 render 一次救回，需确认这条路径在 tab 切回时是否真的走到。
-
-Step 4 的方案（tab-switch 用 `requestAnimationFrame` + cache-ready guard + 一次性自检重试）对**两种路径都兜得住**，方案本身保留即可，是好的 defense-in-depth。但请记住：**cache-hit guard（`image.complete && naturalWidth>0` 立即走 ready）在当前 cache-buster 下大概率是 no-op，不是主修复**。主修复在 tab-switch 重绘那条路径上。先打 `console.log` 确认"切回时 loadDrawing 跑没跑 / onload 触发没触发"，再决定改哪。
-
-**4. 批准实施还是先修订？** **批准实施（条件性 GO）。** 不另开审阅轮。本机 Claude 把上述「3 条写进文本 + 问题 4 根因核实」折进实施 pass，按计划「九、执行顺序」逐步做。
-
-### 我加的补充
-
-- **recent colors 单一入口语义**（见上 P3）：`addRecentColor()` 是唯一写入点，palette/fallback 色在入口被跳过，数组只存自定义色。这是去矛盾的关键，别在展示层过滤。
-- **问题 4 先核根因再修**：这是本轮唯一可能让人照错因修的地方。先 log 验证，再决定改 `loadDrawing` 还是 tab-switch 路径。修完务必跑 smoke test 第 10、11 项（切换回来 + 刷新）确认两条路径都活。
-
-### 不要做的事（红线，重申）
-
-- ❌ 不改 `_tools/**` 之外不该动的；本波纯前端，不动 `schema.py` / 后端 API
-- ❌ 不动 `traffic_analysis` 工作台（本波只动 `functional_zoning`）
-- ❌ 不用 `transform: scale()` 做缩放；继续 `stage.style.width`
-- ❌ 不做 plain wheel 缩放（必须 Ctrl/Cmd + wheel，且配显性 UX 提示）
-- ❌ 不持久化 `zoneRecentColors`；不写 recent colors / zoom 状态到任何 JSON
-- ❌ 不写 `stroke_width_key` 到新保存的 JSON
-- ❌ 用户单纯 select 对象（未编辑）后点空白 deselect → **不污染** `zoneDraftStyle`
-- ❌ 不 stage `inventory.json` / `projects/26-BQ-PARK/05_output/drawings/semantic/` 等运行产物
-- ❌ 不删用户本地未跟踪文件；不顺手重构相邻代码
-
-### 下一步
-
-**GO（条件性）。** 本机 Claude：
-
-1. 把上面 3 条（P2 文本、recent colors 单一入口、Delete 复用 `deleteSelected`）写进 `RECTIFICATION_PLAN_2026-05-27_FUNCTIONAL_ZONING_CONTINUOUS_DRAWING.md`。
-2. 先 log 核实问题 4 真实根因（tab 切回是否重跑 loadDrawing / onload 是否触发），再按 Step 4 实施。
-3. 按「九、执行顺序」逐步做，每 Step 跑对应验证，最后跑全量 12 项冒烟测试。
-4. 完成后按「八」报告，把问题 4 的根因核实结论一并写进完成报告，提交回审。
+请远端 Claude 复审本轮实现。如果没有阻塞问题，可让用户继续在 26-BQ-PARK 上实际试用功能分区工作台；若发现交互细节问题，再按 review thread 回传具体修改点。

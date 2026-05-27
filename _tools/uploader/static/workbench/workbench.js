@@ -33,9 +33,12 @@
   };
   const ZONE_EDIT_WIDTH = 0.003;
   const HANDLE_BASE_R_PX = 6;
+  const CLOSE_HANDLE_R_PX = 10;
+  const RECENT_COLOR_LIMIT = 6;
   const CANVAS_ZOOM_MIN = 0.5;
   const CANVAS_ZOOM_MAX = 4;
   const CANVAS_ZOOM_STEP = 0.25;
+  const CANVAS_WHEEL_ZOOM_FACTOR = 1.1;
   const DRAWING_WORKBENCHES = {
     functional_zoning: {
       status: "enabled",
@@ -108,7 +111,10 @@
     redoStacks: {},
     zoneDraftStyle: { ...DEFAULT_ZONE_STYLE },
     zoneDraftLabel: "",
+    zoneRecentColors: [],
     canvasZoom: 1,
+    imageLoadToken: 0,
+    overlayRetryPending: false,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -244,7 +250,7 @@
     state.selectedId = snapshot.selectedId || "";
     state.zoneDraftStyle = normalizeZoneStyle(snapshot.zoneDraftStyle || state.zoneDraftStyle);
     state.zoneDraftLabel = snapshot.zoneDraftLabel || "";
-    renderObjects();
+    renderCanvasLayers("restore-snapshot");
     renderObjectList();
     renderSpecificTools();
     markDirty();
@@ -480,6 +486,7 @@
     const selected = selectedObject();
     const activeStyle = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
     const palette = zonePaletteItems();
+    const recentColors = state.zoneRecentColors.filter(isHexColor);
     const label = selected ? selected.label || "" : state.zoneDraftLabel || "";
     tools.innerHTML = `
       <label class="zone-name-field">
@@ -506,6 +513,29 @@
             )
             .join("")}
         </div>
+        ${
+          recentColors.length
+            ? `
+              <div class="zone-recent-colors" aria-label="最近使用颜色">
+                <span class="zone-recent-label">最近使用</span>
+                ${recentColors
+                  .map(
+                    (color) => `
+                      <button
+                        type="button"
+                        class="zone-swatch zone-swatch-recent ${color === activeStyle.fill_color ? "active" : ""}"
+                        style="--swatch:${escapeHtml(color)}"
+                        title="最近使用颜色"
+                        aria-label="选择最近使用颜色 ${escapeHtml(color)}"
+                        data-zone-color="${escapeHtml(color)}"
+                      ></button>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
         <input id="zoneCustomColor" type="color" value="${escapeHtml(activeStyle.fill_color)}" aria-label="自定义填充颜色">
       </div>
       <div class="zone-tool-group">
@@ -549,6 +579,38 @@
       .map((color) => color.toUpperCase());
     const colors = fromSpec.length >= 10 ? fromSpec.slice(0, 10) : [...fromSpec, ...PALETTE_FALLBACK].slice(0, 10);
     return colors.map((color, index) => ({ color, fallback: index >= fromSpec.length }));
+  }
+
+  function zonePaletteColorSet() {
+    return new Set(zonePaletteItems().map((item) => item.color.toUpperCase()));
+  }
+
+  function normalizeHexColor(value) {
+    return isHexColor(value) ? String(value).trim().toUpperCase() : "";
+  }
+
+  function addRecentColor(value) {
+    const color = normalizeHexColor(value);
+    if (!color || zonePaletteColorSet().has(color)) return;
+    state.zoneRecentColors = state.zoneRecentColors.filter((item) => item !== color);
+    state.zoneRecentColors.push(color);
+    if (state.zoneRecentColors.length > RECENT_COLOR_LIMIT) {
+      state.zoneRecentColors = state.zoneRecentColors.slice(-RECENT_COLOR_LIMIT);
+    }
+  }
+
+  function pruneRecentColors() {
+    const palette = zonePaletteColorSet();
+    state.zoneRecentColors = state.zoneRecentColors
+      .map(normalizeHexColor)
+      .filter((color, index, colors) => color && !palette.has(color) && colors.indexOf(color) === index)
+      .slice(-RECENT_COLOR_LIMIT);
+  }
+
+  function rebuildRecentColorsFromObjects() {
+    if (!isFunctionalZoning()) return;
+    state.objects.forEach((obj) => addRecentColor(obj.style_hints && obj.style_hints.fill_color));
+    pruneRecentColors();
   }
 
   function normalizeZoneStyle(style = {}) {
@@ -603,7 +665,7 @@
       });
     }
 
-    $("#zonePalette")?.querySelectorAll("[data-zone-color]").forEach((button) => {
+    document.querySelectorAll("#zonePalette [data-zone-color], .zone-recent-colors [data-zone-color]").forEach((button) => {
       button.addEventListener("click", () => updateZoneStyle({ fill_color: button.dataset.zoneColor }));
     });
     $("#zoneCustomColor")?.addEventListener("change", (event) => updateZoneStyle({ fill_color: event.target.value }));
@@ -628,13 +690,15 @@
     pushUndoSnapshot();
     if (selected) {
       selected.style_hints = next;
+      state.zoneDraftStyle = next;
       setStatus("已更新选中分区样式。");
     } else {
       state.zoneDraftStyle = next;
       setStatus("已更新新分区默认样式。");
     }
+    if (Object.prototype.hasOwnProperty.call(patch, "fill_color")) addRecentColor(next.fill_color);
     markDirty();
-    renderObjects();
+    renderCanvasLayers("zone-style-update");
     renderObjectList();
     if (options.renderTools !== false) renderSpecificTools();
   }
@@ -674,10 +738,14 @@
   function setCanvasZoom(value, options = {}) {
     const next = Math.min(CANVAS_ZOOM_MAX, Math.max(CANVAS_ZOOM_MIN, Number(value) || 1));
     state.canvasZoom = Number(next.toFixed(2));
+    applyCanvasZoom();
+    updateCanvasZoomUi();
+    if (options.render !== false) renderCanvasLayers("zoom");
+  }
+
+  function applyCanvasZoom() {
     const stage = $("#workbenchStage");
     if (stage) stage.style.width = `${state.canvasZoom * 100}%`;
-    updateCanvasZoomUi();
-    if (options.render !== false) renderObjects();
   }
 
   function adjustCanvasZoom(delta) {
@@ -691,6 +759,45 @@
     const zoomIn = $("#canvasZoomIn");
     if (out) out.disabled = !isEnabled() || state.canvasZoom <= CANVAS_ZOOM_MIN;
     if (zoomIn) zoomIn.disabled = !isEnabled() || state.canvasZoom >= CANVAS_ZOOM_MAX;
+  }
+
+  function renderCanvasLayers(reason = "", options = {}) {
+    applyCanvasZoom();
+    renderObjects();
+    if (options.selfHeal !== false) scheduleOverlaySelfHeal(reason);
+  }
+
+  function scheduleOverlaySelfHeal(reason) {
+    if (state.overlayRetryPending || !state.objects.length) return;
+    const overlay = $("#sketchOverlay");
+    if (!overlay || overlay.children.length) return;
+    state.overlayRetryPending = true;
+    requestAnimationFrame(() => {
+      state.overlayRetryPending = false;
+      const currentOverlay = $("#sketchOverlay");
+      if (state.objects.length && currentOverlay && !currentOverlay.children.length) {
+        console.warn("[workbench] overlay empty after render; retrying", reason);
+        renderObjects();
+      }
+    });
+  }
+
+  function handleCanvasWheel(event) {
+    if (!workbenchIsActive() || !isEnabled() || !(event.ctrlKey || event.metaKey)) return;
+    const viewport = $("#workbenchCanvas");
+    const stage = $("#workbenchStage");
+    if (!viewport || !stage) return;
+    event.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const xRatio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const yRatio = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const factor = event.deltaY < 0 ? CANVAS_WHEEL_ZOOM_FACTOR : 1 / CANVAS_WHEEL_ZOOM_FACTOR;
+    setCanvasZoom(state.canvasZoom * factor, { render: false });
+    const nextRect = stage.getBoundingClientRect();
+    viewport.scrollLeft += nextRect.left + xRatio * nextRect.width - event.clientX;
+    viewport.scrollTop += nextRect.top + yRatio * nextRect.height - event.clientY;
+    renderCanvasLayers("wheel-zoom");
   }
 
   async function loadStyle() {
@@ -708,9 +815,10 @@
       state.objects = state.objects.map((obj) =>
         obj.type === "functional_zone" ? { ...obj, style_hints: normalizeZoneStyle(obj.style_hints) } : obj,
       );
+      rebuildRecentColorsFromObjects();
       renderSpecificTools();
       renderObjectList();
-      renderObjects();
+      renderCanvasLayers("style-loaded");
     }
   }
 
@@ -786,6 +894,7 @@
         .filter((obj) => obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon")
         .map((obj) => ({ ...obj, source: "user_sketch", style_hints: normalizeZoneStyle(obj.style_hints) }));
       state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
+      rebuildRecentColorsFromObjects();
     }
     resetInteraction();
     resetHistory();
@@ -797,11 +906,12 @@
     const hasBaseImage = loadBaseImage(data.base_image_url, data.base_image_exists);
     renderSvgDraft();
     loadStyle().catch((err) => renderStyleStrip(null, err.message));
-    renderObjects();
+    renderCanvasLayers("load-drawing-sync");
     renderObjectList();
     renderAvailability();
     if (hasBaseImage) {
       setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
+      requestAnimationFrame(() => renderCanvasLayers("load-drawing-raf"));
     }
   }
 
@@ -810,6 +920,8 @@
     const empty = $("#workbenchEmpty");
     const stage = $("#workbenchStage");
     if (!image || !empty) return false;
+    const token = state.imageLoadToken + 1;
+    state.imageLoadToken = token;
     console.log("[workbench] loadBaseImage", { url, exists });
     if (!exists || !url) {
       image.removeAttribute("src");
@@ -821,18 +933,28 @@
       return false;
     }
     state.loadedBaseUrl = `${url}&_=${Date.now()}`;
-    image.onload = () => {
+    let readyRendered = false;
+    const markReady = (reason) => {
+      if (token !== state.imageLoadToken || readyRendered) return;
+      readyRendered = true;
       if (stage) stage.classList.add("has-image");
       setStatus(`底图已加载 ${image.naturalWidth}×${image.naturalHeight}。`);
-      console.log("[workbench] base image loaded", image.naturalWidth, image.naturalHeight);
-      renderObjects();
+      console.log("[workbench] base image ready", reason, image.naturalWidth, image.naturalHeight);
+      requestAnimationFrame(() => renderCanvasLayers(`base-image-${reason}`));
+    };
+    image.onload = () => {
+      markReady("onload");
     };
     image.onerror = () => {
+      if (token !== state.imageLoadToken) return;
       if (stage) stage.classList.remove("has-image");
       setStatus(`底图加载失败：${state.loadedBaseUrl}`, false);
       console.error("[workbench] base image error", state.loadedBaseUrl);
     };
     image.src = state.loadedBaseUrl;
+    if (image.complete && image.naturalWidth > 0) {
+      markReady("complete");
+    }
     empty.hidden = true;
     return true;
   }
@@ -980,12 +1102,16 @@
     if (!point) return;
     pushUndoSnapshot();
     if (!state.currentPoints.length && state.selectedId) {
+      const selected = selectedObject();
+      if (isFunctionalZoning() && selected) {
+        state.zoneDraftStyle = normalizeZoneStyle(selected.style_hints);
+      }
       state.selectedId = "";
     }
     if (isFunctionalZoning()) {
       state.currentPoints.push(point);
       markDirty();
-      renderObjects();
+      renderCanvasLayers("add-zone-point");
       renderObjectList();
       renderSpecificTools();
       return;
@@ -1032,7 +1158,7 @@
     state.selectedId = id;
     state.currentPoints = [];
     markDirty();
-    renderObjects();
+    renderCanvasLayers("finish-object");
     renderObjectList();
     setStatus(`已添加：${label}`);
   }
@@ -1064,7 +1190,7 @@
     state.zoneDraftLabel = "";
     state.currentPoints = [];
     markDirty();
-    renderObjects();
+    renderCanvasLayers("finish-zone");
     renderObjectList();
     renderSpecificTools();
     if (!style.fill_enabled && style.border_style === "none") {
@@ -1092,7 +1218,7 @@
     state.objects = state.objects.filter((obj) => obj.id !== state.selectedId);
     state.selectedId = "";
     markDirty();
-    renderObjects();
+    renderCanvasLayers("delete-selected");
     renderObjectList();
     renderSpecificTools();
     setStatus("已删除选中对象。");
@@ -1105,7 +1231,7 @@
     state.currentPoints = [];
     state.selectedId = "";
     markDirty();
-    renderObjects();
+    renderCanvasLayers("clear-draft");
     renderObjectList();
     renderSpecificTools();
     setStatus("已清空当前草图。");
@@ -1184,10 +1310,13 @@
     if (!state.currentPoints.length) return "";
     const points = state.currentPoints.map((point) => point.join(",")).join(" ");
     const strokeWidth = isFunctionalZoning() ? ZONE_EDIT_WIDTH : 0.006;
+    const zoneStyle = normalizeZoneStyle(state.zoneDraftStyle);
     const circles = state.currentPoints
-      .map(([x, y]) =>
+      .map(([x, y], index) =>
         isFunctionalZoning()
-          ? renderHandleSvg(x, y, "#111827", "none")
+          ? index === 0 && state.currentPoints.length >= 3
+            ? renderCloseHandleSvg(x, y, zoneStyle.fill_color)
+            : renderHandleSvg(x, y, "#111827", "none")
           : `<circle cx="${x}" cy="${y}" r="0.009" fill="#111827"></circle>`,
       )
       .join("");
@@ -1199,16 +1328,43 @@
     return `<ellipse cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
   }
 
-  function getHandleRadiusX() {
-    const stage = $("#workbenchStage");
-    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
-    return Number((HANDLE_BASE_R_PX / stageWidth).toFixed(6));
+  function renderCloseHandleSvg(x, y, fill) {
+    return `
+      <ellipse
+        class="zone-close-hit"
+        data-close-zone="true"
+        cx="${x}"
+        cy="${y}"
+        rx="${getHandleRadiusX(CLOSE_HANDLE_R_PX)}"
+        ry="${getHandleRadiusY(CLOSE_HANDLE_R_PX)}"
+        fill="transparent"
+        pointer-events="all"
+      ></ellipse>
+      <ellipse
+        class="zone-close-ring"
+        data-close-zone="true"
+        cx="${x}"
+        cy="${y}"
+        rx="${getHandleRadiusX()}"
+        ry="${getHandleRadiusY()}"
+        fill="${fill}"
+        stroke="${darkenHex(fill, 0.35)}"
+        stroke-width="${getHandleStrokeWidth()}"
+        pointer-events="all"
+      ></ellipse>
+    `;
   }
 
-  function getHandleRadiusY() {
+  function getHandleRadiusX(radiusPx = HANDLE_BASE_R_PX) {
+    const stage = $("#workbenchStage");
+    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
+    return Number((radiusPx / stageWidth).toFixed(6));
+  }
+
+  function getHandleRadiusY(radiusPx = HANDLE_BASE_R_PX) {
     const stage = $("#workbenchStage");
     const stageHeight = (stage && stage.getBoundingClientRect().height) || 1;
-    return Number((HANDLE_BASE_R_PX / stageHeight).toFixed(6));
+    return Number((radiusPx / stageHeight).toFixed(6));
   }
 
   function getHandleStrokeWidth() {
@@ -1218,6 +1374,13 @@
   }
 
   function bindOverlaySelection(overlay) {
+    overlay.querySelectorAll("[data-close-zone]").forEach((shape) => {
+      shape.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        finishFunctionalZone();
+      });
+    });
     overlay.querySelectorAll("[data-object-id]").forEach((shape) => {
       shape.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1229,7 +1392,7 @@
   function selectObject(id) {
     state.selectedId = id || "";
     state.currentPoints = [];
-    renderObjects();
+    renderCanvasLayers("select-object");
     renderObjectList();
     renderSpecificTools();
   }
@@ -1344,22 +1507,42 @@
   function handleShortcuts(event) {
     if (!workbenchIsActive() || !isEnabled()) return;
     const modifier = event.ctrlKey || event.metaKey;
+    const editable = isEditableElement(document.activeElement);
     if (modifier && event.key.toLowerCase() === "z" && !isEditableElement(document.activeElement)) {
       event.preventDefault();
       if (event.shiftKey) redoHistory();
       else undoHistory();
       return;
     }
-    if (!modifier && event.key === "Escape" && !isEditableElement(document.activeElement)) {
-      if (state.currentPoints.length || state.selectedId) {
+    if (!modifier && event.key === "Enter" && !editable && isFunctionalZoning() && state.currentPoints.length >= 3) {
+      event.preventDefault();
+      finishFunctionalZone();
+      return;
+    }
+    if (!modifier && (event.key === "Delete" || event.key === "Backspace") && !editable) {
+      if (event.key === "Backspace") event.preventDefault();
+      if (state.selectedId) {
+        event.preventDefault();
+        deleteSelected();
+      }
+      return;
+    }
+    if (!modifier && event.key === "Escape" && !editable) {
+      if (state.currentPoints.length) {
         pushUndoSnapshot();
         state.currentPoints = [];
         state.selectedId = "";
         markDirty();
-        renderObjects();
+        renderCanvasLayers("escape-cancel-draft");
         renderObjectList();
         renderSpecificTools();
-        setStatus("已取消当前选择或未完成点位。");
+        setStatus("已取消未完成点位。");
+      } else if (state.selectedId) {
+        state.selectedId = "";
+        renderCanvasLayers("escape-clear-selection");
+        renderObjectList();
+        renderSpecificTools();
+        setStatus("已取消当前选择。");
       }
     }
   }
@@ -1387,8 +1570,9 @@
     $("#sketchOverlay").addEventListener("click", addPoint);
     $("#sketchOverlay").addEventListener("dblclick", (event) => {
       event.preventDefault();
-      finishObject();
+      if (!isFunctionalZoning()) finishObject();
     });
+    $("#workbenchCanvas").addEventListener("wheel", handleCanvasWheel, { passive: false });
     document.addEventListener("keydown", handleShortcuts);
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";

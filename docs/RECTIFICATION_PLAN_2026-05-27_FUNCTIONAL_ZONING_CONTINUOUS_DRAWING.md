@@ -16,7 +16,7 @@
 | 1 | 多边形只能通过点击"完成分区"按钮闭合 | 画布内无闭合手势，dblclick 不可靠 |
 | 2 | 完成一个对象后，下一个对象不继承颜色/边框/填充/线宽 | `updateZoneStyle()` 不同步 draft；`addPoint()` 清 selectedId 但未复制 style |
 | 3 | 鼠标滚轮不能缩放底图 | 没有 wheel handler |
-| 4 | 保存草图后切走再切回，对象列表存在但画布空白 | image.onload / loadStyle / renderObjects 三者异步竞态，缓存命中时 onload 不触发 |
+| 4 | 保存草图后切走再切回，对象列表存在但画布空白 | tab 切回、loadDrawing、image.onload、loadStyle、renderObjects 的重绘时序不稳定；当前有 cache-buster，缓存命中不是主根因，但仍保留 ready guard 做防御 |
 | 5 | 调色板自定义颜色不被记住 | 无 recent colors 体系 |
 
 ---
@@ -69,7 +69,8 @@
 
 **Delete / Backspace 行为**：
 
-- 有选中对象且焦点不在 input 时 → 删除选中对象
+- 有选中对象且焦点不在 input 时 → 直接复用 `deleteSelected()` 删除选中对象
+- `deleteSelected()` 已写入 undo stack，键盘删除必须可被 `Ctrl/Cmd + Z` 撤回
 - 阻止 Backspace 触发浏览器后退
 
 **验收标准**：
@@ -153,7 +154,7 @@
 
 | 场景 | 行为 |
 |------|------|
-| 图片缓存命中 | `image.complete && image.naturalWidth > 0` 时立即走 ready 分支，不等 onload |
+| 图片缓存命中 | `image.complete && image.naturalWidth > 0` 时立即走 ready 分支，不等 onload；当前 URL 带 cache-buster，该分支主要是防御逻辑 |
 | 正常图片加载 | `image.onload` 走 ready 分支 |
 | 切回功能分区 tab | `loadDrawing()` resolve 后 `requestAnimationFrame(() => renderCanvasLayers("tab-switch"))` |
 | 样式加载 | `loadStyle()` 不影响 overlay 可见性 |
@@ -180,13 +181,13 @@
 
 | 场景 | 行为 |
 |------|------|
-| 用户点固定色块 | 加入 recent（去重） |
+| 用户点固定色块 | 调用 `addRecentColor()`，因命中 palette / fallback palette 被跳过，不进入 recent |
 | 用户用 `<input type="color">` 改色 | 加入 recent |
 | `loadDrawing()` 扫描 `objects[].style_hints.fill_color` | 非 palette 色加入 recent |
 | 切换 tab / Stage 7 出图 | 不清空 |
 | 页面刷新 | 清空（从 saved objects 重建） |
 
-**去重规则**：已在 palette 中的颜色不进 recent；recent 已满 6 个时踢出最老的
+**去重规则**：所有颜色应用都走同一个 `addRecentColor(color)` 入口；入口第一步判断是否命中 palette / fallback palette，命中则直接 return。recent 数组只保存非 palette 自定义色；recent 已满 6 个时踢出最老的。
 
 **UI 布局**：
 
@@ -216,7 +217,7 @@
 | `Esc` | 有草稿点 → 清空；无草稿点但有选中对象 → 清除选中 |
 | `Ctrl/Cmd + Z` | 撤销（已有） |
 | `Ctrl/Cmd + Shift + Z` | 重做（已有） |
-| `Delete` / `Backspace` | 删除选中对象 |
+| `Delete` / `Backspace` | 复用 `deleteSelected()` 删除选中对象，并保证 `Ctrl/Cmd + Z` 可撤回 |
 | `Ctrl/Cmd + Wheel` | 缩放 |
 
 不加方向键微移、空格拖拽平移。
@@ -272,6 +273,8 @@
 ---
 
 ## 七、验证计划
+
+浏览器冒烟测试（尤其第 10 项“保存→切换→切回”）会写入 `projects/26-BQ-PARK/05_output/drawings/semantic/functional_zoning.json` 与 `inventory.json`。这些是预期的本地产物，测试后保持未提交或还原；提交时只 stage 代码与文档。
 
 ### 命令验证
 
