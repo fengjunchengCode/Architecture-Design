@@ -115,6 +115,7 @@
     canvasZoom: 1,
     imageLoadToken: 0,
     overlayRetryPending: false,
+    arcDrag: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -1704,74 +1705,25 @@
         selectObject(shape.dataset.objectId);
       });
     });
-    // arc handle: pointer capture 单手势拖拽
-    const stage = $("#workbenchStage");
-    const stageRect = stage ? stage.getBoundingClientRect() : { width: 1, height: 1 };
-    const shortSide = Math.min(stageRect.width, stageRect.height) || 1;
-    const START_THRESHOLD = 3 / shortSide;
-    const CHORD_EPS = 4 / shortSide;
+    // arc handle: pointerdown 设状态 + 捕获到 overlay（持久节点）
     overlay.querySelectorAll(".zone-arc-handle").forEach((handle) => {
-      let drag = null;
       handle.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
         event.preventDefault();
-        handle.setPointerCapture(event.pointerId);
-        pushUndoSnapshot();
-        drag = {
+        overlay.setPointerCapture(event.pointerId);
+        state.arcDrag = {
           objectId: handle.dataset.objectId,
           segIndex: Number(handle.dataset.segmentIndex),
           startX: event.clientX,
           startY: event.clientY,
           moved: false,
         };
-        handle.style.cursor = "grabbing";
       });
-      handle.addEventListener("pointermove", (event) => {
-        if (!drag) return;
-        const p = clampUnit(normalizedPoint(event));
-        if (!p) return;
-        const curRect = stage ? stage.getBoundingClientRect() : { width: 1, height: 1 };
-        const dx = (event.clientX - drag.startX) / curRect.width;
-        const dy = (event.clientY - drag.startY) / curRect.height;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!drag.moved && dist < START_THRESHOLD) return;
-        drag.moved = true;
-        const obj = state.objects.find((o) => o.id === drag.objectId);
-        if (!obj) return;
-        const seg = obj.geometry.segments
-          ? obj.geometry.segments[drag.segIndex]
-          : null;
-        if (!seg || seg.kind === "line") {
-          // 直线边：首次移动时实例化 quadratic
-          materializeQuadratic(drag.objectId, drag.segIndex, p);
-        } else {
-          // 已是 quadratic：更新 control
-          seg.control = [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))];
-        }
-        markDirty();
-        renderCanvasLayers("arc-drag");
-      });
-      handle.addEventListener("pointerup", (event) => {
-        if (!drag) return;
-        handle.releasePointerCapture(event.pointerId);
-        const obj = state.objects.find((o) => o.id === drag.objectId);
-        if (obj && obj.geometry.segments) {
-          const seg = obj.geometry.segments[drag.segIndex];
-          if (seg && seg.kind === "quadratic" && controlNearChord(seg, obj, CHORD_EPS)) {
-            convertSegmentToLine(drag.objectId, drag.segIndex);
-          }
-        }
-        drag = null;
-        handle.style.cursor = "grab";
-        markDirty();
-        refreshLegendPreview();
-      });
-      handle.addEventListener("pointercancel", (event) => {
-        if (drag) {
-          handle.releasePointerCapture(event.pointerId);
-          drag = null;
-          handle.style.cursor = "grab";
-        }
+      handle.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        const objectId = handle.dataset.objectId;
+        const segIndex = Number(handle.dataset.segmentIndex);
+        convertSegmentToLine(objectId, segIndex);
       });
     });
   }
@@ -1784,19 +1736,6 @@
     ];
   }
 
-  function controlNearChord(seg, obj, eps) {
-    if (!seg.control) return false;
-    const [fx, fy] = seg.from;
-    const [tx, ty] = seg.to;
-    const [cx, cy] = seg.control;
-    // 垂直距离（归一坐标，各向异性修正用 stage 比例）
-    const dx = tx - fx;
-    const dy = ty - fy;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1e-9) return false;
-    const dist = Math.abs(dy * cx - dx * cy + tx * fy - fx * ty) / len;
-    return dist < eps;
-  }
 
   function getSelectedObject() {
     return state.objects.find((obj) => obj.id === state.selectedId) || null;
@@ -2036,6 +1975,46 @@
     });
     $("#workbenchCanvas").addEventListener("wheel", handleCanvasWheel, { passive: false });
     document.addEventListener("keydown", handleShortcuts);
+    // arc drag: one-time document-level pointer handlers (survive re-render)
+    document.addEventListener("pointermove", (event) => {
+      if (!state.arcDrag) return;
+      const stage = $("#workbenchStage");
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const p = clampUnit(normalizedPoint(event));
+      if (!p) return;
+      const dx = (event.clientX - state.arcDrag.startX) / rect.width;
+      const dy = (event.clientY - state.arcDrag.startY) / rect.height;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const shortSide = Math.min(rect.width, rect.height) || 1;
+      const START_THRESHOLD = 3 / shortSide;
+      if (!state.arcDrag.moved && dist < START_THRESHOLD) return;
+      if (!state.arcDrag.moved) {
+        state.arcDrag.moved = true;
+        pushUndoSnapshot();
+      }
+      const obj = state.objects.find((o) => o.id === state.arcDrag.objectId);
+      if (!obj) return;
+      const seg = obj.geometry.segments
+        ? obj.geometry.segments[state.arcDrag.segIndex]
+        : null;
+      if (!seg || seg.kind === "line") {
+        materializeQuadratic(state.arcDrag.objectId, state.arcDrag.segIndex, p);
+      } else {
+        seg.control = [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))];
+      }
+      markDirty();
+      renderCanvasLayers("arc-drag");
+    });
+    document.addEventListener("pointerup", () => {
+      if (!state.arcDrag) return;
+      state.arcDrag = null;
+      markDirty();
+      refreshLegendPreview();
+    });
+    document.addEventListener("pointercancel", () => {
+      state.arcDrag = null;
+    });
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";
       const newPage = event.detail && event.detail.page;
