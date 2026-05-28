@@ -187,3 +187,45 @@ Wave B 当前处于打回状态（T1/T2 未落地）。**把本方案与 T1/T2 �
 5. round-trip 稳定性检查 + 浏览器冒烟（§8）。
 
 完成后回推 diff，由 mac claude 最终核验。
+
+---
+
+## 11. 修订 v2（基于 `99a951d` 实测 bug）
+
+`99a951d` 已正确修好 T1/T2，但一步交互有一个**阻塞 bug**导致"圆点只能拖一点点 / 经常拖不动"。本节修正事件模型，并按用户偏好把"自动还原直线"改为"双击还原"。
+
+### 11.1 根因：pointer capture 绑在被重渲染销毁的元素上
+
+现 `bindOverlaySelection`（line 1713-1776）把 `setPointerCapture` 和 `pointermove/up` 都绑在**每条 segment 的 handle 元素**上；而 `pointermove`（line 1752）每次都 `renderCanvasLayers` → `renderObjects`（line 1394）`overlay.innerHTML = …` **重建整个 overlay**。
+
+后果：第一次 move 触发重渲染 → 持有 capture 的 handle 节点被销毁 → pointer capture 失效 → 后续 pointermove 不再路由到它；新建的 handle 节点既没 capture、其 `drag` 闭包又是 `null`（`if (!drag) return`）。**于是拖一下、重渲染一次，就拖不动了。** 这跟"自动还原直线"无关（那只在 pointerup 触发）。
+
+### 11.2 修法：捕获 + move/up 放到"重渲染中存活"的元素上
+
+把拖拽状态提到模块级、把 move/up 监听**在初始化时一次性**绑到持久节点（`document`），不要随每次 render 绑到 handle：
+
+- **拖拽状态**：用 `state.arcDrag = { objectId, segIndex, startX, startY, moved }`（存活于 `state`，重渲染不丢）。
+- **`pointerdown`**：仍**每渲染绑在 handle 上**（监听器随元素回收，无泄漏）。职责仅：`stopPropagation`/`preventDefault`；`overlay.setPointerCapture(e.pointerId)`（捕获**到 overlay 这个持久节点**，不是 handle）；写 `state.arcDrag`。**不在此 pushUndoSnapshot**（见 11.4）。
+- **`pointermove` / `pointerup` / `pointercancel`**：在 `init` 阶段（同 `#workbenchSave` 等一次性绑定处，约 line 1971+）**各绑一次**到 `document`，开头 `if (!state.arcDrag) return` 守卫。move 更新 control（首次越过 `START_THRESHOLD` 时 `materializeQuadratic`，并在此刻 `pushUndoSnapshot` 一次），然后 `renderCanvasLayers`；up 清 `state.arcDrag` + `refreshLegendPreview`。
+- 因为 capture 在 overlay（innerHTML 变但元素本身不被替换）、move/up 在 document，**重渲染不再打断拖拽**。
+- CSS：给 `.zone-arc-handle` 和/或 overlay 加 `touch-action: none`，避免触屏拖拽时页面滚动。
+
+> 备选实现（同样可接受）：拖拽中**不重建 innerHTML**，只就地改被拖 segment 对应 `<path>` 的 `d` 和 handle 的 `cx/cy`，pointerup 时再全量渲染。更省重绘，但改动更碎。优先用上面的"持久节点捕获"法。
+
+### 11.3 自动还原直线 → 改为双击还原（按用户偏好）
+
+- **移除** pointerup 里的 `controlNearChord` 自动还原（line 1760-1762），拖拽期间**自由拖动**、松手不自动变直。
+- **恢复**双击圆点 → `convertSegmentToLine`（显式还原直线）。
+- `controlNearChord`（line 1787-1799）若无其他调用处则**删除**（其垂距还有未落实的各向异性问题，正好一并清掉）。
+- T1 不变量不受影响：`convertSegmentToLine` 仍在还原最后一条弧时 `delete obj.geometry.segments`，双击还原即回到 `1.0`/无 segments。轻微弯曲的 quadratic 仍算真弧（持久化 + 1.1），符合"用户确实弯了一下"的语义。
+
+### 11.4 顺带修：纯点击不应塞空 undo
+
+现 `pointerdown` 无条件 `pushUndoSnapshot`（line 1719），纯点击圆点（不拖）也会压一条空快照。改为**在首次真正移动（`drag.moved` 置真）时才 `pushUndoSnapshot` 一次**。
+
+### 11.5 验收补充（在 §8 基础上）
+
+- 圆点可**全程自由拖动**到画布任意位置（钳在 `[0,1]`），不会拖一下就卡住；多次来回拖动持续跟手。
+- 松手**不**自动变直；**双击**圆点才还原直线；还原最后一条弧后 save 回到 `1.0`/无 segments。
+- 纯点击圆点（不拖）→ 无变化、**不产生** undo 步；一次拖拽 = 一步 undo。
+- 触屏/笔拖动同样顺滑，页面不跟随滚动。

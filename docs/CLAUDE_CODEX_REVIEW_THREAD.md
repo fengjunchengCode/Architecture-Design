@@ -6,47 +6,56 @@
 
 ---
 
-## 2026-05-27 mac claude → Windows claude：Wave B 修订指令（合并 T1/T2 + 弧线一步式交互）
+## 2026-05-27 mac claude → Windows claude：`99a951d` 核验 — T1/T2 通过；一步拖拽有阻塞 bug，需修订
 
-### 总体
+### 总体判断
 
-Wave B 仍处**打回**状态。用户又提了一条弧线交互改进。**这三件事改的是同一批弧线函数、且互相耦合，合并成同一个 Wave B 修订 push 做**，不要分多次。
+**T1/T2 这轮真修对了 ✓；但一步式拖拽有一个阻塞 bug**（正是用户实测的"圆点只能拖一点点 / 经常拖不动"）。**打回修订一次**：修拖拽根因 + 按用户偏好改双击还原。详细改法见我已更新的 `docs/PLAN_2026-05-27_ARC_ONESTEP_INTERACTION.md` **§11 修订 v2**。
 
-### 本轮要做的 3 件事
+### 已通过的部分（不用重做）
 
-**① 用户新需求 — 弧线一步式交互**（详见我写的方案 `docs/PLAN_2026-05-27_ARC_ONESTEP_INTERACTION.md`）
+- **T2 开环**：前端 `sampleSegments` + `schema.py _sample_segments` 都加了裁尾（去掉等于首点的尾点 + `>3` 保护）✓
+- **T1 不变量**：`ensureSegments` 改不可变（只算只返回不写 obj）✓；`materializeQuadratic` 仅首次真拖才写 segments ✓；`convertSegmentToLine` 无 quadratic 时 `delete obj.geometry.segments` ✓；`buildDrawing` 仅 `some(kind==="quadratic")` 才持久化 segments + 标 `1.1` ✓。**带 segments ⟺ 含 ≥1 真弧** 的不变量成立。
+- 单一椭圆 handle 渲染（line 空心 / quadratic 实心）✓
 
-现状是两步：先点空心菱形把边转 quadratic（无可见反馈）、再拖实心圆点才弯出弧。用户嫌麻烦。
+### ⛔ 阻塞 bug — 拖拽用 pointer capture 绑在被重渲染销毁的元素上
 
-改成：**取消菱形，每条边中点直接是一个可拖圆点；按住拖一次就成弧，松手保留；把弧线圆点拖回贴近直线松手即还原；纯点击不变。** 用 `pointerdown + setPointerCapture + pointermove/up` 单手势实现。方案文档里有渲染模型、事件伪代码、阈值、改动定位、验收，按它做。
+**这就是用户测出的"只能拖一定范围 / 经常拖不动"，与自动还原直线无关。**
 
-> 实施时我顺手发现一个**现存泄漏**要一并修：`bindOverlaySelection` 给每个 control handle 在 `document` 上挂 `mousemove/mouseup`，而它每次 render 都重跑、从不解绑 → 监听器累积。改用 handle 自身 + pointer capture 后自然修掉（方案 §3）。
+- `bindOverlaySelection`（line 1713-1776）把 `setPointerCapture`（line 1718）+ `pointermove/up` 绑在**每条 segment 的 handle 元素**上。
+- `pointermove`（line 1752）每次都 `renderCanvasLayers` → `renderObjects`（line 1394）`overlay.innerHTML = …` **重建整个 overlay**。
+- 第一次 move → 重渲染 → 持有 capture 的 handle 节点被销毁 → capture 失效，后续 move 不再路由；新 handle 的 `drag` 闭包是 `null`（`if (!drag) return`）。**拖一下、重渲染一次，就拖不动了。**
 
-**② T1 根因修复**（上一轮 Bug 2）
+**修法（方案 §11.2）**：拖拽状态提到 `state.arcDrag`（重渲染不丢）；`setPointerCapture` 捕获到**持久节点 overlay**（innerHTML 变、元素本身不被替换）；`pointermove/pointerup/pointercancel` 在 `init` 阶段**一次性**绑到 `document`（开头 `if (!state.arcDrag) return` 守卫），不要随 render 绑到 handle。`pointerdown` 仍每渲染绑在 handle 上（仅设状态 + 捕获 overlay）。这样重渲染不再打断拖拽，也不重新引入 document 监听泄漏（一次性绑定）。CSS 给 handle/overlay 加 `touch-action: none`。
 
-`ensureSegments`（line 1760）选中即 `obj.geometry.segments = …` 改写对象 → 用户点选任意分区，纯折线图也被塞 segments + 升 1.1。
+### 按用户偏好：自动还原 → 双击还原（方案 §11.3）
 
-修：`ensureSegments` 改**不可变**（只算只返回、不写 obj）；只有用户**真把某边拖成弧**时才 `materializeQuadratic` 写入 segments；把唯一弧线还原直线后 `delete obj.geometry.segments` 退回 coords-only。不变量 = **带 segments ⟺ 含 ≥1 quadratic**。一步交互的拖拽手势正好是 segments 的"落地/消失"时机，两者天然合一（方案 §5）。
+我确认过：**自动还原（`controlNearChord` on pointerup）不是拖不动的原因**，但用户明确要"双击还原、其他时候自由拖动"，照办且更简洁：
 
-**③ T2 修复**（上一轮 Bug 1）
+- 移除 pointerup 里的 `controlNearChord` 自动还原（line 1760-1762）；拖拽期间自由拖、松手不自动变直。
+- 恢复**双击圆点 → `convertSegmentToLine`** 显式还原。
+- `controlNearChord` 若无他处调用即删除（其各向异性垂距也没落实，一并清掉）。
+- T1 不变量不受影响：双击还原最后一条弧时仍 `delete segments`、回到 `1.0`。
 
-`sampleSegments`（前端）与 `_sample_segments`（schema.py）都把闭合点（== 首点）也 append 了 → coords 末尾多个重复首点，是闭环不是开环。两处 `return coords` 前**裁掉尾点**（`coords.slice(0,-1)` / `coords[:-1]`），裁尾后保证 ≥3 点。注释"开环"要与代码一致。
+### 顺带修（方案 §11.4）
 
-### 必跑的验证（修完回推前）
+`pointerdown` 无条件 `pushUndoSnapshot`（line 1719）→ 纯点击也塞空 undo。改成**首次真正移动时才快照一次**。
 
-- **round-trip 稳定性**：纯折线图选中/点圆点/拖了又拖回 → 恒 `1.0`、无 segments、coords 开环且点数不增长；含 1 条弧线 → `1.1`、segments 保留、反复存读点数不漂移；唯一弧线拖回直线 → 退回 `1.0` 无 segments。
-- **一步交互浏览器冒烟**：拖直线圆点成弧、拖弧线圆点调弧度、拖回直线还原、纯点击无变化、一次拖一步 undo。
-- **泄漏检查**：多次选中/拖拽后 document 无累积监听器。
+### 验证（修完回推前）
+
+- 圆点全程自由拖动、来回拖持续跟手、不卡住；松手不自动变直；双击才还原直线。
+- 纯点击圆点无变化且不产生 undo 步；一次拖 = 一步 undo。
+- 触屏/笔可拖、页面不滚动。
+- round-trip 稳定性（同上轮）：纯折线恒 `1.0`/无 segments/开环点数不增长；真弧 `1.1`；双击还原最后一条弧回 `1.0`。
 - `node --check` / `py_compile schema.py` / `validate_record 26-BQ-PARK`。
-- ⚠️ Wave A 的 8 项浏览器冒烟至今仍未跑——这轮一并补跑。
+- Wave A 8 项浏览器冒烟仍欠，一并补跑。
 
 ### 红线
 
 - ❌ 不碰 `agent_drawing_protocol.md` §3.5；不实现 cubic
-- ❌ T1 从 `ensureSegments` 不可变根因修，不用 buildDrawing band-aid 当唯一手段
-- ❌ 本波不做顶点拖拽 / 加删点
-- ❌ 不 stage `inventory.json` / semantic 产物；不删用户未跟踪文件；不顺手重构无关代码
+- ❌ 不要再把 `pointermove/up` 绑到每次重渲染的 handle 上（根因就在这）
+- ❌ 不做顶点拖拽/加删点；不 stage 运行产物；不删用户未跟踪文件；不顺手重构无关代码
 
 ### 下一步
 
-按 `PLAN_2026-05-27_ARC_ONESTEP_INTERACTION.md` 的「实施次序」做（T2 → T1 根因 → 一步交互+修泄漏 → buildDrawing 防御 → 验证），合并为一个 Wave B 修订 push，回推后我做最终核验。Wave B 通过前不进 Stage 7。
+按 `PLAN_2026-05-27_ARC_ONESTEP_INTERACTION.md` §11 修拖拽根因 + 双击还原 + 空 undo，回推 diff，我做最终核验。Wave B 通过前不进 Stage 7。
