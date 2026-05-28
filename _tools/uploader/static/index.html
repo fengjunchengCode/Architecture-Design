@@ -156,19 +156,10 @@
           </section>
 
           <section class="page" data-page="s1">
-            <div class="page-head">
-              <div>
-                <p class="eyebrow">S1 Input</p>
-                <h2>S1 区位输入</h2>
-                <p>S1 需要区位图和地块中心点。中心点来自高德拾取器，只生成地图证据包；最终区位判断由 agent 结合区位图、现场照片和 S2 几何写入 record。</p>
-              </div>
-              <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
-            </div>
-
-            <section class="spatial-grid">
-              <div class="spatial-box">
-                <div class="box-head">
-                  <b>地块中心点</b>
+            <div class="studio-page-grid">
+              <aside class="studio-card">
+                <div class="amap-head">
+                  <h3>地块中心点</h3>
                   <span id="amapStatus">等待项目</span>
                 </div>
                 <label>
@@ -179,28 +170,27 @@
                   <button id="checkAmap">检查高德 Key</button>
                   <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
                 </div>
-                <div class="amap-panel" id="s1AmapPanel">
-                  <div class="amap-head">
-                    <b>内嵌高德地图</b>
-                    <span id="s1AmapStatus">等待中心点</span>
-                  </div>
-                  <div class="amap-map" id="s1AmapMap">
-                    <div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div>
-                  </div>
-                  <p class="map-hint" id="s1AmapHint">点击地图会把 GCJ-02 坐标写入上方中心点输入框。</p>
+                <article class="bucket required" data-bucket="location_map">
+                  <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
+                  <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                  <div class="bucket-state">未选择文件</div>
+                  <button>上传到当前项目</button>
+                </article>
+                <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
+                <div class="handoff-note">
+                  S1 输入完成后，回到对话里说"执行 S1"。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
                 </div>
-              </div>
-
-              <article class="bucket required" data-bucket="location_map">
-                <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
-                <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-            </section>
-
-            <div class="handoff-note">
-              S1 输入完成后，回到对话里说"执行 S1"。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
+              </aside>
+              <section class="amap-panel" id="s1AmapPanel">
+                <div class="amap-head">
+                  <b>内嵌高德地图</b>
+                  <span id="s1AmapStatus">等待中心点</span>
+                </div>
+                <div class="amap-map" id="s1AmapMap">
+                  <div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div>
+                </div>
+                <p class="map-hint" id="s1AmapHint">点击地图会把 GCJ-02 坐标写入上方中心点输入框。</p>
+              </section>
             </div>
           </section>
 

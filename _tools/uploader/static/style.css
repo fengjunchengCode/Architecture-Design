@@ -217,6 +217,7 @@ button:disabled,input:disabled,select:disabled{
 .amap-head span,.map-hint,.map-fallback{color:var(--muted); font-size:12px}
 .amap-map{width:100%; min-height:300px; border:1px solid var(--line); background:#fff; border-radius:6px; overflow:hidden; position:relative}
 .s2-map-panel .amap-map{min-height:340px}
+#s1AmapMap{min-height:max(420px,calc(100vh - var(--top-h) - 96px))}
 .map-empty{position:absolute; inset:0; display:grid; place-items:center; padding:18px; color:var(--muted); font-size:13px; text-align:center; line-height:1.55}
 .map-hint{margin:0; line-height:1.45}
 .map-hint.warn{color:var(--accent-2)}
