@@ -394,6 +394,7 @@
         const active = key === drawingType();
         const planned = config.status !== "enabled";
         const suffix = config.status === "planned" ? " · 待设计" : config.status === "deprecated" ? " · 已停用" : "";
+        const glyph = (config.label || key).trim().charAt(0) || "图";
         return `
           <button
             class="drawing-tab ${active ? "active" : ""} ${planned ? "planned" : "enabled"}"
@@ -402,8 +403,8 @@
             aria-selected="${active ? "true" : "false"}"
             data-drawing-type="${escapeHtml(key)}"
           >
-            <span>${escapeHtml(config.label)}</span>
-            ${suffix ? `<small>${escapeHtml(suffix)}</small>` : ""}
+            ${escapeHtml(glyph)}
+            <span class="wb3-tip">${escapeHtml(config.label)}${escapeHtml(suffix)}</span>
           </button>
         `;
       })
@@ -423,6 +424,8 @@
 
   function renderWorkspaceMeta() {
     const config = drawingConfig();
+    const crumb = $("#wbCrumb");
+    if (crumb) crumb.textContent = projectCode() || "未选择项目";
     const title = $("#drawingWorkspaceTitle");
     const description = $("#drawingWorkspaceDescription");
     const stateEl = $("#drawingWorkspaceState");
@@ -816,7 +819,6 @@
       "#canvasZoomOut",
       "#canvasZoomReset",
       "#canvasZoomIn",
-      "#canvasZoomFit",
     ].forEach((selector) => {
       const el = $(selector);
       if (el) el.disabled = !enabled || (selector === "#exportDrawing" && !state.svgExists);
@@ -1971,7 +1973,6 @@
     $("#canvasZoomOut").addEventListener("click", () => setCanvasZoom(state.canvasZoom / CANVAS_BUTTON_ZOOM_FACTOR));
     $("#canvasZoomReset").addEventListener("click", () => setCanvasZoom(1));
     $("#canvasZoomIn").addEventListener("click", () => setCanvasZoom(state.canvasZoom * CANVAS_BUTTON_ZOOM_FACTOR));
-    $("#canvasZoomFit").addEventListener("click", () => setCanvasZoom(1));
     $("#sketchOverlay").addEventListener("click", addPoint);
     $("#sketchOverlay").addEventListener("dblclick", (event) => {
       event.preventDefault();
@@ -2045,6 +2046,21 @@
     // Default: left open, right collapsed (give canvas more room on load)
     setRailCollapsed("left", false);
     setRailCollapsed("right", true);
+
+    // v3 inspector accordion
+    document.querySelectorAll(".wb3-sect-h").forEach((h) => {
+      h.addEventListener("click", () => h.parentElement.classList.toggle("open"));
+    });
+    // v3 inspector collapse
+    const inspBtn = $("#toggleInspector");
+    if (inspBtn) {
+      inspBtn.addEventListener("click", () => {
+        const work = $("#workbenchLayout");
+        if (!work) return;
+        const collapsed = work.classList.toggle("insp-collapsed");
+        inspBtn.classList.toggle("on", !collapsed);
+      });
+    }
 
     // Base image popover
     const basePanelBtn = $("#toggleBasePanel");
