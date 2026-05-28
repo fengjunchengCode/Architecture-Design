@@ -281,110 +281,116 @@
           </section>
 
           <section class="page" data-page="workbench">
-            <section id="drawingWorkbench" class="drawing-workbench">
+            <div class="wb3" id="drawingWorkbench">
 
-              <!-- TOP BAR -->
-              <header class="workbench-topbar">
-                <div class="wb-title"><small>图纸工作台</small><b id="drawingWorkspaceTitle">功能分区工作台</b></div>
-                <div class="drawing-tabs" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
+              <!-- LEFT ACTIVITY RAIL -->
+              <nav class="wb3-act">
+                <button class="wb3-logo" id="wbHome" type="button" title="返回阶段">建</button>
+                <div class="wb3-act-scroll" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
                 <input id="drawingType" type="hidden" value="functional_zoning">
-                <span class="wb-spacer"></span>
-                <div class="wb-basepanel">
-                  <button id="toggleBasePanel" class="wb-iconbtn" type="button" aria-expanded="false" title="底图设置">底图</button>
-                  <div class="wb-popover" id="basePanel" hidden>
-                    <label>底图路径<input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
+                <div class="wb3-act-sep"></div>
+                <div class="wb3-basewrap">
+                  <button class="wb3-act-btn" id="toggleBasePanel" type="button" aria-expanded="false" title="底图设置">▦</button>
+                  <div class="wb3-pop" id="basePanel" hidden>
+                    <h5>底图设置</h5>
+                    <label>底图路径<input id="baseImagePath" type="text" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
                     <label>上传底图<input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png"></label>
-                    <button id="uploadBaseImage" class="wb-btn">上传底图</button>
+                    <button id="uploadBaseImage" class="wb3-btn">上传底图</button>
                   </div>
                 </div>
-                <button id="toggleLeftRail" class="wb-iconbtn" type="button" aria-pressed="true" title="工具栏">⬓ 工具</button>
-                <button id="toggleRightRail" class="wb-iconbtn" type="button" aria-pressed="false" title="图例/对象">图例 ⬔</button>
-                <span class="wb-state" id="drawingWorkspaceState">可编辑</span>
-                <button id="workbenchLoad" class="wb-btn">加载图纸</button>
-                <button id="workbenchSave" class="wb-btn primary">保存草图</button>
-              </header>
+              </nav>
 
-              <!-- BODY: 3 columns -->
-              <div class="workbench-body" id="workbenchLayout">
-
-                <!-- LEFT: 怎么画 -->
-                <aside class="workbench-rail workbench-rail-left">
-                  <div class="wb-card">
-                    <h4>风格 <span class="wb-tag">作用于新建/选中分区</span></h4>
-                    <div class="drawing-specific-tools" id="drawingSpecificTools"></div>
+              <!-- MAIN -->
+              <div class="wb3-main">
+                <header class="wb3-top">
+                  <div class="wb3-title">
+                    <span class="crumb" id="wbCrumb">未选择项目</span>
+                    <b><span id="drawingWorkspaceTitle">功能分区工作台</span> <span class="wb3-badge workspace-state enabled" id="drawingWorkspaceState">可编辑</span></b>
                   </div>
-                  <div class="wb-card">
-                    <h4>绘图操作</h4>
-                    <div class="workbench-actions">
-                      <button id="finishObject" class="primary">完成分区</button>
-                      <button id="undoPoint">撤销</button>
-                      <button id="redoAction">重做</button>
-                      <button id="deleteObject">删除选中</button>
-                      <button id="clearDraft">清空草图</button>
+                  <span class="wb3-spacer"></span>
+                  <button class="wb3-btn" id="workbenchLoad" type="button">加载图纸</button>
+                  <button class="wb3-btn primary" id="workbenchSave" type="button">保存草图</button>
+                  <span class="wb3-topdiv"></span>
+                  <button class="wb3-btn wb3-iconbtn on" id="toggleInspector" type="button" title="检查器面板">▭</button>
+                </header>
+
+                <div class="wb3-work" id="workbenchLayout">
+
+                  <!-- CANVAS -->
+                  <div class="wb3-stage-wrap">
+                    <div class="workbench-canvas" id="workbenchCanvas">
+                      <div class="workbench-stage" id="workbenchStage">
+                        <img id="baseImage" alt="底图">
+                        <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
+                        <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                      </div>
                     </div>
-                    <p class="wb-hint">Enter 闭合 · Esc 取消 · Del 删除 · 双击弧点还原直线 · Ctrl+滚轮缩放</p>
-                  </div>
-                </aside>
-
-                <!-- CENTER: 画布主角 -->
-                <main class="workbench-canvas-panel">
-                  <div class="canvas-toolbar" aria-label="画布缩放">
-                    <small class="canvas-zoom-hint">Ctrl + 滚轮</small>
-                    <button id="canvasZoomOut" class="zoom-step" type="button">−</button>
-                    <button id="canvasZoomReset" type="button">100%</button>
-                    <button id="canvasZoomIn" class="zoom-step" type="button">+</button>
-                    <button id="canvasZoomFit" type="button">适合宽度</button>
-                  </div>
-                  <div class="workbench-canvas" id="workbenchCanvas">
-                    <div class="workbench-stage" id="workbenchStage">
-                      <img id="baseImage" alt="底图">
-                      <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
-                      <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                    <div class="wb3-zoom">
+                      <button id="canvasZoomOut" type="button">−</button>
+                      <button class="wb3-zoomval" id="canvasZoomReset" type="button">100%</button>
+                      <button id="canvasZoomIn" type="button">+</button>
+                      <span class="wb3-zoomhint">Ctrl+滚轮</span>
                     </div>
+                    <div class="wb3-dock">
+                      <button class="key" id="finishObject" type="button">完成分区</button>
+                      <span class="wb3-dockdiv"></span>
+                      <button id="undoPoint" type="button">撤销</button>
+                      <button id="redoAction" type="button">重做</button>
+                      <span class="wb3-dockdiv"></span>
+                      <button id="deleteObject" type="button">删除选中</button>
+                      <button id="clearDraft" type="button">清空草图</button>
+                    </div>
+                    <div class="workbench-status" id="workbenchStatus" role="status" aria-live="polite"></div>
                   </div>
-                  <div class="workbench-status" id="workbenchStatus" role="status" aria-live="polite"></div>
-                </main>
 
-                <!-- RIGHT: 画了什么 -->
-                <aside class="workbench-rail workbench-rail-right">
-                  <div class="wb-card" id="legendCard">
-                    <h4>图例预览 <span class="wb-tag">按样式合并</span></h4>
-                    <div id="zoneLegendPreview"></div>
-                  </div>
-                  <div class="wb-card wb-card-grow">
-                    <h4>对象明细</h4>
-                    <div id="objectList" class="object-list"></div>
-                  </div>
-                </aside>
+                  <!-- RIGHT INSPECTOR -->
+                  <aside class="wb3-insp" id="workbenchInspector">
+                    <div class="wb3-insp-head"><span>检查器</span></div>
+                    <div class="wb3-insp-body">
+
+                      <section class="wb3-sect open" data-sect="style">
+                        <button class="wb3-sect-h" type="button"><b>风格 <span class="tag">作用于新建/选中</span></b><span class="chev">▸</span></button>
+                        <div class="wb3-sect-c"><div class="drawing-specific-tools" id="drawingSpecificTools"></div></div>
+                      </section>
+
+                      <section class="wb3-sect open" data-sect="legend">
+                        <button class="wb3-sect-h" type="button"><b>图例预览 <span class="tag">按样式合并</span></b><span class="chev">▸</span></button>
+                        <div class="wb3-sect-c"><div id="zoneLegendPreview"></div></div>
+                      </section>
+
+                      <section class="wb3-sect open" data-sect="objects">
+                        <button class="wb3-sect-h" type="button"><b>对象明细</b><span class="chev">▸</span></button>
+                        <div class="wb3-sect-c"><div id="objectList" class="object-list"></div></div>
+                      </section>
+
+                      <section class="wb3-sect" data-sect="export">
+                        <button class="wb3-sect-h" type="button"><b>出图工作流</b><span class="chev">▸</span></button>
+                        <div class="wb3-sect-c">
+                          <textarea id="taskUserNotes" rows="2" placeholder="给 agent 的说明：如『橙色箭头=车行流线，绿色=活动草坪』"></textarea>
+                          <div class="wb3-flowrow">
+                            <span class="wb3-flowstat" id="taskPackStatus">尚未生成 task_pack。</span>
+                            <span class="wb3-flowstat" id="svgDraftStatus">等待 agent 生成。</span>
+                          </div>
+                          <object id="svgDraftPreview" type="image/svg+xml" data="" hidden></object>
+                          <div class="wb3-flowbtns">
+                            <button id="exportDrawing" class="wb3-btn" disabled>导出 PNG/PDF</button>
+                            <button id="sendToAgent" class="wb3-btn primary">发给 agent 出图</button>
+                          </div>
+                        </div>
+                      </section>
+
+                    </div>
+                  </aside>
+                </div>
               </div>
 
-              <!-- FOOTER: 出图工作流（可折叠） -->
-              <footer class="workbench-footer" id="workbenchFooter">
-                <button class="wb-footer-toggle" id="footerToggle" type="button"><span class="chev">▸</span>出图工作流</button>
-                <div class="wb-footer-body" id="footerBody">
-                  <textarea id="taskUserNotes" rows="2" placeholder="给 agent 的说明：如『橙色箭头=车行流线，绿色=活动草坪』"></textarea>
-                  <div class="wb-footer-row">
-                    <span class="wb-footer-status" id="taskPackStatus">尚未生成 task_pack。</span>
-                    <span class="wb-footer-status" id="svgDraftStatus">等待 agent 生成。</span>
-                    <object id="svgDraftPreview" type="image/svg+xml" data="" hidden></object>
-                    <span class="wb-spacer"></span>
-                    <button id="exportDrawing" class="wb-btn" disabled>导出 PNG/PDF</button>
-                    <button id="sendToAgent" class="wb-btn primary">发给 agent 出图</button>
-                  </div>
-                </div>
-              </footer>
-
-              <!-- Hidden elements JS depends on -->
+              <!-- hidden elements JS depends on -->
               <div class="style-strip" id="styleStrip" hidden>当前风格：未加载</div>
               <p class="eyebrow" id="drawingWorkspaceDescription" hidden>标注功能区边界、名称和必要标签。</p>
-
-              <!-- Planned workspace (hidden) -->
               <div class="planned-workspace" id="plannedWorkspace" hidden>
                 <b id="plannedTitle">该图纸工作台待设计</b>
                 <p id="plannedDescription">请在对话中定义该图纸的对象类型、输入方式和输出目标后再启用。</p>
               </div>
-
-              <!-- Dirty dialog -->
               <div class="dirty-dialog" id="dirtyDialog" hidden role="dialog" aria-modal="true" aria-labelledby="dirtyDialogTitle">
                 <div class="dirty-dialog-panel">
                   <b id="dirtyDialogTitle">当前图纸有未保存修改</b>
@@ -396,7 +402,7 @@
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
           </section>
 
           <section class="page" data-page="status">
