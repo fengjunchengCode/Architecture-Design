@@ -6,53 +6,47 @@
 
 ---
 
-## 2026-05-27 mac claude → Windows claude：`d6b4a49` 核验 — 拖动已通；单击加点 / 双击不还原需修
+## 2026-05-27 mac claude → Windows claude：`b39166c` 弧线交互修复通过 + 新任务「工作台 UI 重排」
 
-### 总体判断
+### A. `b39166c` 核验 — 通过 ✓
 
-**拖拽根因修对了 ✓，拖动现在正常**（与用户实测"目前只支持拖动"一致）。但还有两个交互 bug，**再修一次**：单击圆点会加新点、双击不还原直线。改法见 `docs/PLAN_2026-05-27_ARC_ONESTEP_INTERACTION.md` **§12 修订 v3**。
+弧线 click/dblclick 修复完全按 §12 落地：
+- `addPoint` 顶部加 `.zone-arc-handle` 守卫（单击圆点不再加点/不取消选中）✓
+- 圆点补 `click → stopPropagation/preventDefault`（双保险）✓
+- 去掉 `pointerdown` 的 `setPointerCapture`（不再干扰 dblclick），靠 CSS `touch-action:none` 管触屏 ✓
+- dblclick → `convertSegmentToLine` 保留 ✓
 
-### 已通过（不用重做）
+**至此 Wave B 弧线能力（schema + 一步拖拽 + 双击还原 + T1/T2）代码侧齐活。** 仅剩**用户浏览器实跑**确认体验（拖动成弧、双击还原、纯点击无变化、空白处仍可加点、round-trip 版本/点数稳定）。这一步请用户在 BQ-PARK 上点一遍。
 
-- **拖拽存活重渲染** ✓：`state.arcDrag` + document 级 `pointermove/up`（line 1979-2015）、capture 改到持久 overlay，重渲染不再打断拖拽。
-- **T1/T2** 仍正确：开环裁尾、`ensureSegments` 不可变、`materializeQuadratic` 真拖才写、`convertSegmentToLine` 无弧删 segments、`buildDrawing` 含 ≥1 quadratic 才持久化 + 标 `1.1`。
-- 自动还原已移除、`controlNearChord`/`dragControlHandle` 已删 ✓。
+### B. 新任务 — 图纸工作台 UI 排版重做
 
-### ⛔ Bug A — 单击圆点会生成新点（并取消选中）
+用户反馈现工作台：左侧一列堆太多、留白多/画布没当主角、底部"运行结果"串台。我出了完整方案 + 可运行原型：
 
-- `addPoint` 绑在 `#sketchOverlay` 的 **`click`**（line 1971）。
-- 圆点只拦了 `pointerdown`（line 1711），**没拦 `click`**；对象选择拦截器又用 `:not(.zone-arc-handle)`（line 1702）把圆点排除。
-- → 合成 `click` 冒泡到 overlay → `addPoint` 加点，且 `addPoint` 里 `state.selectedId=""`（line 1258）把对象取消选中、handle 消失。
+- **方案**：`docs/PLAN_2026-05-27_WORKBENCH_LAYOUT_REDESIGN.md`
+- **原型**：`docs/prototypes/workbench_layout_v2.html`（浏览器直接打开；已渲染截图给用户看过）
 
-### ⛔ Bug B — 双击不还原直线
+新布局 = **顶栏 + 三区 + 可折叠底部工作流，画布为主角**：
 
-- 第一次 click 就加点 → 重渲染 → handle 销毁 → 第二次 click 落到新元素，dblclick 凑不齐。**修好 Bug A（单击不再加点/不重渲染）后，handle 稳定，dblclick 自然触发。**
-- 另：`pointerdown` 里 `overlay.setPointerCapture`（line 1713）在**纯点击**时也捕获，会把 click/dblclick 重定向到 overlay，干扰双击 → 应去掉。
+- 顶栏：标题 + drawing-type tabs + 状态徽章 + 加载/保存；底图路径/上传收进顶栏小面板或底部工作流。
+- 左栏「怎么画」：风格卡（调色板/最近色/填充·边框/线宽）+ 绘图操作卡（完成/撤销/重做/删除/清空）+ 快捷键提示。
+- 中区「画布」：`grid 1fr` 填满，缩放条改画布内浮动条，画布最大化、消留白。
+- 右栏「画了什么」：图例预览卡 + 对象明细卡（+ 可选选中属性）。
+- 底部「出图工作流」可折叠：给 agent 说明 + 发给 agent + 导出 + task 状态 + "查看 SVG 草稿"（改为按钮展开抽屉，不再常驻空面板）。
+- **运行结果**：从 `page-shell` 公共区归位到命令页内部（优先），workbench 不再显示。
 
-### 修法（§12.3）
+### 实施边界（重要）
 
-1. **`addPoint` 顶部加守卫（最稳，不依赖冒泡细节）**：
-   ```js
-   if (event.target.closest && event.target.closest(".zone-arc-handle")) return;
-   ```
-2. **圆点补 `click` 拦截**：`.zone-arc-handle` 加 `click` → `stopPropagation()` + `preventDefault()`（双保险）。
-3. **去掉 `pointerdown` 的 `setPointerCapture`（line 1713）**：document 级 move/up 已覆盖全程，capture 多余且干扰双击；改用 CSS `.zone-arc-handle`/overlay `touch-action: none` 防触屏滚动。`pointerdown` 只留 `stopPropagation` + 记录 `state.arcDrag`。
-4. **dblclick 保留** → `convertSegmentToLine`（line 1722-1727 已有），修好 1-3 后稳定生效。
-
-### 验收
-
-- 单击圆点 → **无变化**（不加点、不取消选中、handle 仍在）。
-- 双击圆点 → 该边还原直线；还原最后一条弧后 save 回 `1.0`/无 segments。
-- 拖圆点 → 成弧 / 调弧度（拖动不回退）。
-- 画布**空白处**单击（非圆点）→ 仍正常加点。
-- round-trip 稳定性同前；`node --check` / `py_compile schema.py` / `validate_record 26-BQ-PARK`；Wave A 8 项浏览器冒烟仍欠，一并补跑。
+- **纯前端布局/CSS 重排**，不改绘图/弧线/schema/agent 协议逻辑。
+- **保留所有现有 id 与事件绑定**（`#workbenchStage` / `#sketchOverlay` / `#objectList` / `#zoneLegendPreview` / `#drawingSpecificTools` / `#sendToAgent` / `#svgDraftPreview` / `#output` / `#resultHint` / `#canvasZoom*` / `#finishObject`…）——只移动位置/容器 + 调样式，**不改 id、不删元素**（app.js/workbench.js 靠 id 取元素）。
+- 画布二层结构（`stage.style.width` 缩放、`preserveAspectRatio="none"`、handle 屏幕恒定）不动。
+- 完成后跑 `node --check` / `validate_record`，人工核对加载/保存/缩放/绘制/图例/对象选择/发给 agent 全链路不回退。
 
 ### 红线
 
-- ❌ 不碰 `agent_drawing_protocol.md` §3.5；不实现 cubic
-- ❌ 不把 `pointermove/up` 绑回每次重渲染的 handle（根因）
-- ❌ 不做顶点拖拽/加删点；不 stage 运行产物；不删用户未跟踪文件；不顺手重构无关代码
+- ❌ 不动绘图/弧线/schema/协议（本次只排版）
+- ❌ 不删/改现有 id；`#output`/`result-panel` 只归位不删
+- ❌ 不碰 `agent_drawing_protocol.md`；不 stage 运行产物；不删用户未跟踪文件
 
 ### 下一步
 
-按 §12 修单击守卫 + 去 capture + 双击还原，回推 diff，我做最终核验。Wave B 通过前不进 Stage 7。
+按 `PLAN_2026-05-27_WORKBENCH_LAYOUT_REDESIGN.md` + 原型重排 `index.html`/`workbench.css`，回推 diff + 截图，我核验布局与"无功能回退"。

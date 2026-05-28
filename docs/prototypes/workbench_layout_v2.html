@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图纸工作台 · 排版原型 v2</title>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#1c2530; --muted:#6b7785;
+    --line:#dde3ea; --line2:#eaeef3; --brand:#2f6d57; --brand-soft:#e7f1ec;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 18px rgba(20,30,45,.05);
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  .app{display:flex;flex-direction:column;height:100vh;padding:14px;gap:12px}
+
+  /* ---------- TOP BAR ---------- */
+  .topbar{display:flex;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--line);
+          border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 16px}
+  .topbar .title small{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+  .topbar .title b{font-size:16px}
+  .tabs{display:flex;gap:6px;margin-left:8px}
+  .tabs button{border:1px solid var(--line);background:#f7f9fb;color:var(--muted);padding:7px 14px;border-radius:999px;cursor:pointer;font-size:13px}
+  .tabs button.active{background:var(--brand);border-color:var(--brand);color:#fff}
+  .tabs button.ghost{opacity:.55}
+  .topbar .spacer{flex:1}
+  .topbar .state{display:flex;align-items:center;gap:6px;color:var(--brand);font-size:12px;background:var(--brand-soft);padding:5px 10px;border-radius:999px}
+  .topbar .state i{width:7px;height:7px;border-radius:50%;background:var(--brand)}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:#c7d0da}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* ---------- BODY: 3 zones ---------- */
+  .body{flex:1;display:grid;grid-template-columns:264px 1fr 300px;gap:12px;min-height:0}
+  .rail{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+  .card h4{margin:0 0 10px;font-size:13px;display:flex;align-items:center;justify-content:space-between}
+  .card h4 .tag{font-weight:500;color:var(--muted);font-size:11px}
+  .sub{color:var(--muted);font-size:12px;margin:0 0 8px}
+
+  /* palette */
+  .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+  .sw{aspect-ratio:1;border-radius:8px;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .sw.sel{box-shadow:0 0 0 2px var(--brand)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chip{border:1px solid var(--line);background:#f7f9fb;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+  .chip.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+  .field{margin-top:10px}
+  .field label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+  .field input[type=range]{width:100%}
+  .recent{display:flex;gap:6px;margin-top:8px}
+  .recent i{width:20px;height:20px;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
+
+  /* draw actions */
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .actions .btn{width:100%;text-align:center}
+  .actions .btn.span{grid-column:1 / -1}
+
+  /* ---------- CENTER canvas ---------- */
+  .canvaswrap{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+              box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+  .canvasbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:6px;
+             background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:999px;padding:5px 8px;box-shadow:var(--shadow)}
+  .canvasbar .hint{color:var(--muted);font-size:11px;padding:0 6px}
+  .canvasbar button{border:1px solid var(--line);background:#fff;border-radius:7px;width:30px;height:28px;cursor:pointer;font-size:14px}
+  .canvasbar button.wide{width:auto;padding:0 10px;font-size:12px}
+  .canvas{flex:1;display:flex;align-items:center;justify-content:center;
+          background:
+            linear-gradient(45deg,#f3f5f8 25%,transparent 25%,transparent 75%,#f3f5f8 75%) 0 0/22px 22px,
+            linear-gradient(45deg,#f3f5f8 25%,#fff 25%,#fff 75%,#f3f5f8 75%) 11px 11px/22px 22px,#fafbfc;
+          min-height:0}
+  .mockmap{position:relative;width:74%;height:80%;border-radius:10px;
+           background:linear-gradient(135deg,#dCe8df,#e9f0ea);border:1px dashed #b9c8bf;overflow:hidden}
+  .zone{position:absolute;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#1f3a2e}
+  .z1{left:6%;top:10%;width:40%;height:42%;background:rgba(124,179,128,.55);border:2px solid #4f9a5e}
+  .z2{right:7%;top:8%;width:38%;height:30%;background:rgba(96,160,196,.45);border:2px dashed #3f86c4}
+  .z3{left:18%;bottom:9%;width:48%;height:34%;background:rgba(212,167,106,.45);border:2px solid #c08a3e}
+  .vtx{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #2c5e49;transform:translate(-50%,-50%)}
+  .arc{position:absolute;width:13px;height:13px;border-radius:50%;background:#2c5e49;box-shadow:0 0 0 2px #fff;transform:translate(-50%,-50%);cursor:grab}
+  .arc.hollow{background:#fff;box-shadow:0 0 0 2px #2c5e49}
+
+  /* ---------- RIGHT rail ---------- */
+  .legend-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line2)}
+  .legend-item:last-child{border-bottom:0}
+  .legend-sw{width:30px;height:18px;border-radius:5px;flex:none}
+  .legend-item b{font-size:13px}
+  .legend-item .cnt{margin-left:auto;color:var(--muted);font-size:12px;background:#f1f4f7;border-radius:999px;padding:1px 8px}
+  .legend-note{color:var(--muted);font-size:11px;margin-top:8px}
+  .obj{display:flex;align-items:center;gap:9px;padding:8px;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;cursor:pointer}
+  .obj.active{border-color:var(--brand);background:var(--brand-soft)}
+  .obj i{width:14px;height:14px;border-radius:4px;flex:none;box-shadow:0 0 0 1px var(--line)}
+  .obj b{font-size:13px}
+  .obj .del{margin-left:auto;color:#b1454a;font-size:12px}
+
+  /* ---------- FOOTER workflow ---------- */
+  .footer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+          padding:10px 14px;display:flex;align-items:center;gap:12px}
+  .footer .lab{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;font-weight:600}
+  .footer .lab .chev{color:var(--muted)}
+  .footer input.notes{flex:1;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font:inherit;background:#fafbfc}
+  .footer .grp{display:flex;gap:8px;align-items:center}
+  .footer .status{color:var(--muted);font-size:12px}
+  .footer .linklike{color:var(--brand);font-size:12px;cursor:pointer;border:0;background:none;text-decoration:underline}
+
+  .pill{font-size:11px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 7px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="title"><small>图纸工作台</small><b>功能分区工作台</b></div>
+    <nav class="tabs">
+      <button class="active">功能分区</button>
+      <button>交通分析</button>
+      <button class="ghost">消防（待设计）</button>
+      <button class="ghost">竖向（待设计）</button>
+    </nav>
+    <div class="spacer"></div>
+    <span class="state"><i></i>可编辑 · 已批准风格</span>
+    <button class="btn">加载图纸</button>
+    <button class="btn primary">保存草图</button>
+  </header>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- LEFT: 怎么画 -->
+    <aside class="rail">
+      <section class="card">
+        <h4>风格 <span class="tag">作用于新建/选中分区</span></h4>
+        <p class="sub">调色板（来自 style_spec）</p>
+        <div class="swatches">
+          <span class="sw sel" style="background:#7CB380"></span>
+          <span class="sw" style="background:#5aa0c4"></span>
+          <span class="sw" style="background:#D4A76A"></span>
+          <span class="sw" style="background:#9B6AD6"></span>
+          <span class="sw" style="background:#c96a6a"></span>
+          <span class="sw" style="background:#4fb0a3"></span>
+        </div>
+        <div class="recent">
+          <span class="pill" style="margin-right:4px">最近</span>
+          <i style="background:#86c08a"></i><i style="background:#b98f5a"></i><i style="background:#6f9fd0"></i>
+        </div>
+        <div class="row">
+          <span class="chip on">填充开</span><span class="chip">实线</span><span class="chip">虚线</span><span class="chip">无边框</span>
+        </div>
+        <div class="field"><label>线宽 0.009</label><input type="range" value="40"></div>
+      </section>
+
+      <section class="card">
+        <h4>绘图操作</h4>
+        <div class="actions">
+          <button class="btn primary span">完成分区</button>
+          <button class="btn">撤销</button>
+          <button class="btn">重做</button>
+          <button class="btn">删除选中</button>
+          <button class="btn">清空草图</button>
+        </div>
+        <p class="sub" style="margin-top:12px">快捷键：Enter 闭合 · Esc 取消 · Del 删除 · 双击弧点还原直线 · Ctrl+滚轮缩放</p>
+      </section>
+    </aside>
+
+    <!-- CENTER: 画布主角 -->
+    <main class="canvaswrap">
+      <div class="canvasbar">
+        <span class="hint">Ctrl + 滚轮缩放</span>
+        <button>−</button><button class="wide">100%</button><button>+</button><button class="wide">适合宽度</button>
+      </div>
+      <div class="canvas">
+        <div class="mockmap">
+          <div class="zone z1">活动草坪</div>
+          <div class="zone z2">林下休憩</div>
+          <div class="zone z3">儿童活动</div>
+          <!-- 选中 z1 的顶点 + 弧线圆点示意 -->
+          <span class="vtx" style="left:6%;top:10%"></span>
+          <span class="vtx" style="left:46%;top:10%"></span>
+          <span class="vtx" style="left:46%;top:52%"></span>
+          <span class="vtx" style="left:6%;top:52%"></span>
+          <span class="arc hollow" style="left:26%;top:10%"></span>
+          <span class="arc" style="left:46%;top:31%"></span>
+          <span class="arc hollow" style="left:26%;top:52%"></span>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT: 画了什么 -->
+    <aside class="rail">
+      <section class="card">
+        <h4>图例预览 <span class="tag">按样式合并</span></h4>
+        <div class="legend-item"><span class="legend-sw" style="background:rgba(124,179,128,.55);border:2px solid #4f9a5e"></span><b>活动草坪</b><span class="cnt">x3</span></div>
+        <div class="legend-item"><span class="legend-sw" style="background:rgba(96,160,196,.45);border:2px dashed #3f86c4"></span><b>林下休憩</b><span class="cnt">x1</span></div>
+        <div class="legend-item"><span class="legend-sw" style="background:rgba(212,167,106,.45);border:2px solid #c08a3e"></span><b>儿童活动 等2类</b><span class="cnt">x2</span></div>
+        <p class="legend-note">有 1 个不可见对象未进入图例</p>
+      </section>
+
+      <section class="card" style="flex:1;min-height:0;display:flex;flex-direction:column">
+        <h4>对象明细 <span class="tag">6 个</span></h4>
+        <div style="overflow:auto">
+          <div class="obj active"><i style="background:#7CB380"></i><b>活动草坪</b><span class="del">删除</span></div>
+          <div class="obj"><i style="background:#5aa0c4"></i><b>林下休憩</b><span class="del">删除</span></div>
+          <div class="obj"><i style="background:#D4A76A"></i><b>儿童活动</b><span class="del">删除</span></div>
+          <div class="obj"><i style="background:#D4A76A"></i><b>儿童活动 2</b><span class="del">删除</span></div>
+          <div class="obj"><i style="background:#9B6AD6"></i><b>多功能广场</b><span class="del">删除</span></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- FOOTER: 出图工作流（折叠态，画图时不占地方） -->
+  <footer class="footer">
+    <span class="lab"><span class="chev">▸</span>出图工作流</span>
+    <input class="notes" placeholder="给 agent 的说明：如『橙色箭头=车行流线，绿色=活动草坪』">
+    <div class="grp">
+      <button class="linklike">查看 SVG 草稿</button>
+      <span class="status">尚未生成 task_pack</span>
+      <button class="btn">导出 PNG/PDF</button>
+      <button class="btn primary">发给 agent 出图</button>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
