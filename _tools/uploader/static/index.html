@@ -195,15 +195,6 @@
           </section>
 
           <section class="page" data-page="s2">
-            <div class="page-head">
-              <div>
-                <p class="eyebrow">S2 Input</p>
-                <h2>S2 地形与配准输入</h2>
-                <p>S2 需要 DWG/DXF/PDF 红线资料；精确合成底图时，再录入地图点 ↔ CAD 点控制点。</p>
-              </div>
-              <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
-            </div>
-
             <section class="s2-upload-row">
               <article class="bucket" data-bucket="topography">
                 <div class="bucket-head"><b>地形图 / 红线图</b><span>DWG / DXF / PDF</span></div>
@@ -215,11 +206,11 @@
 
             <div class="stale-banner" id="controlPointStaleBanner" hidden></div>
 
-            <section class="s2-workbench">
-              <section class="cad-preview-panel">
+            <div class="studio-page-grid wide-left">
+              <section class="studio-card cad-preview-panel">
                 <div class="box-head">
                   <div>
-                    <b>CAD 地形图与候选控制点</b>
+                    <h3>CAD 地形图与候选控制点</h3>
                     <span id="cadPreviewStatus">尚未生成 CAD 预览</span>
                   </div>
                   <div class="cad-preview-actions">
@@ -241,7 +232,7 @@
                 </div>
               </section>
 
-              <div class="spatial-box s2-control-panel">
+              <aside class="spatial-box s2-control-panel">
                 <div class="amap-panel s2-map-panel" id="s2AmapPanel">
                   <div class="amap-head">
                     <b>地图拾取</b>
@@ -267,8 +258,8 @@
                   <span class="save-hint">保存后写入项目文件</span>
                   <button id="saveControlPoints" class="primary">保存控制点与配准报告</button>
                 </div>
-              </div>
-            </section>
+              </aside>
+            </div>
 
             <div class="handoff-note">
               S2 输入完成后，按候选点卡片上的建议去高德拾取坐标，粘贴后加入控制点并保存。地物类型由 agent/视觉模型预判，只有坐标需要你确认。
