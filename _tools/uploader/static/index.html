@@ -289,6 +289,14 @@
                 <div class="drawing-tabs" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
                 <input id="drawingType" type="hidden" value="functional_zoning">
                 <span class="wb-spacer"></span>
+                <div class="wb-basepanel">
+                  <button id="toggleBasePanel" class="wb-iconbtn" type="button" aria-expanded="false" title="底图设置">底图</button>
+                  <div class="wb-popover" id="basePanel" hidden>
+                    <label>底图路径<input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
+                    <label>上传底图<input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png"></label>
+                    <button id="uploadBaseImage" class="wb-btn">上传底图</button>
+                  </div>
+                </div>
                 <button id="toggleLeftRail" class="wb-iconbtn" type="button" aria-pressed="true" title="工具栏">⬓ 工具</button>
                 <button id="toggleRightRail" class="wb-iconbtn" type="button" aria-pressed="false" title="图例/对象">图例 ⬔</button>
                 <span class="wb-state" id="drawingWorkspaceState">可编辑</span>
@@ -334,6 +342,7 @@
                       <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
                     </div>
                   </div>
+                  <div class="workbench-status" id="workbenchStatus" role="status" aria-live="polite"></div>
                 </main>
 
                 <!-- RIGHT: 画了什么 -->
@@ -367,12 +376,6 @@
 
               <!-- Hidden elements JS depends on -->
               <div class="style-strip" id="styleStrip" hidden>当前风格：未加载</div>
-              <div class="workbench-status" id="workbenchStatus" hidden>等待项目和底图加载。</div>
-              <div class="workbench-toolbar" hidden>
-                <label><span>底图路径</span><input id="baseImagePath" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
-                <label><span>上传底图</span><input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png"></label>
-                <button id="uploadBaseImage">上传底图</button>
-              </div>
               <p class="eyebrow" id="drawingWorkspaceDescription" hidden>标注功能区边界、名称和必要标签。</p>
 
               <!-- Planned workspace (hidden) -->

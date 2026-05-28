@@ -178,11 +178,15 @@
     return (input && input.value.trim()) || "05_output/drawings/base/master_plan.jpg";
   }
 
+  let statusToastTimer = null;
   function setStatus(message, ok = true) {
     const el = $("#workbenchStatus");
     if (!el) return;
     el.textContent = message;
-    el.style.color = ok ? "var(--muted)" : "var(--accent-2)";
+    el.classList.toggle("error", !ok);
+    el.classList.add("show");
+    if (statusToastTimer) clearTimeout(statusToastTimer);
+    statusToastTimer = setTimeout(() => el.classList.remove("show"), 2600);
   }
 
   function setTaskStatus(message, ok = true) {
@@ -429,8 +433,12 @@
     if (description) description.textContent = config.description || "";
     if (stateEl) {
       stateEl.className = `eyebrow workspace-state ${config.status}`;
-      stateEl.textContent =
-        config.status === "enabled" ? (state.dirty ? "有未保存修改" : "可编辑") : "待设计";
+      let label = config.status === "enabled" ? (state.dirty ? "有未保存修改" : "可编辑") : "待设计";
+      if (config.status === "enabled") {
+        const approved = state.styleSpec && state.styleSpec.approved_at;
+        label += approved ? " · 已批准风格" : " · 未建立风格";
+      }
+      stateEl.textContent = label;
     }
     if (planned) {
       planned.hidden = config.status === "enabled";
@@ -895,6 +903,7 @@
     const data = await api(`/api/style/load?${params}`);
     state.styleSpec = data.exists ? data.style_spec : null;
     renderStyleStrip(data);
+    renderWorkspaceMeta();
     if (isFunctionalZoning()) {
       state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
       state.objects = state.objects.map((obj) =>
@@ -2036,6 +2045,25 @@
     // Default: left open, right collapsed (give canvas more room on load)
     setRailCollapsed("left", false);
     setRailCollapsed("right", true);
+
+    // Base image popover
+    const basePanelBtn = $("#toggleBasePanel");
+    const basePanel = $("#basePanel");
+    if (basePanelBtn && basePanel) {
+      basePanelBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const open = basePanel.hidden;
+        basePanel.hidden = !open;
+        basePanelBtn.setAttribute("aria-expanded", String(open));
+      });
+      document.addEventListener("click", (event) => {
+        if (basePanel.hidden) return;
+        if (!basePanel.contains(event.target) && event.target !== basePanelBtn) {
+          basePanel.hidden = true;
+          basePanelBtn.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
 
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";
