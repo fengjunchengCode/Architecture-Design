@@ -2,13 +2,17 @@
 
 日期：2026-05-29
 
-状态：待 Mac Claude 二审。本文是给 Windows Claude 使用 `/goal` 模式长时间自主实施的详细计划，不是讨论稿。
+状态：已通过 Mac Claude 二审，并由 Mac Claude 直接吸收二审意见（M1/M2/S1 + N1/N2/N3）定稿。本文是给 Windows Claude 使用 `/goal` 模式长时间自主实施的详细计划，可直接执行。
 
 依据：
 
 - 需求讨论稿：`docs/PLAN_2026-05-28_REMAINING_DRAWING_WORKBENCHES_DISCUSSION.md`
-- 终审意见：`docs/CLAUDE_CODEX_REVIEW_THREAD.md`
-- 终审结论：需求层面通过，可写 `/goal` 实施计划。
+- 二审意见：`docs/CLAUDE_CODEX_REVIEW_THREAD.md`（2026-05-29 二审）
+- 二审结论：计划质量高，已定稿；本文已把以下修订写入正文：
+  - M1：旧单坐标 `point`/`label` 对象的兼容迁移规则（见 §4.5）。
+  - M2：schema 当前已是 `1.1`、多版本机制已存在；registry 化必须同步改 `task_pack.py` 的 import（见 §4.1/§6 B1）。
+  - S1：浏览器 smoke 降级为 best-effort，API smoke 为硬门禁（见 §11.3/§11.4/§12/§14）。
+  - N1：分阶段提交（见 §10/§14）。N2：四个 schema_version 字段不要混（见 §4.1）。N3：回归必须用真实 `functional_zoning.json`（见 §11/§13）。
 
 ## 0. 给执行 agent 的总指令
 
@@ -25,7 +29,9 @@
 - 不提交 `projects/26-BQ-PARK/05_output/` 下已有运行输出脏文件，除非用户明确要求。
 - 不重置、不清理用户未要求清理的工作区改动。
 - 修改前先按本文建立测试和 fixture，实施过程中持续跑测试。
-- 所有新图纸都必须通过自动验收脚本，不允许用“看起来应该可以”作为完成证据。
+- 所有新图纸都必须通过**无视觉硬门禁**（Python 单测 + Node 模型测试 + API smoke）。**浏览器 smoke 为 best-effort**：装了 Playwright 就跑，没装就记录 `skipped + 原因`，**不要为它从零手搓 CDP 客户端、也不要因为它缺失就判定整轮失败**（见 §11.4/§12）。
+- 不允许用“看起来应该可以”作为完成证据；用硬门禁测试的实际输出作为证据。
+- **分阶段提交**：每完成一个 Phase（§10）就提交一次，不要把全部改动堆到最后一个 commit（见 §14）。
 
 ## 1. 完成定义
 
@@ -106,11 +112,13 @@
 
 ### 4.1 Schema 版本
 
-将 `_tools/drawing_workbench/schema.py` 中：
+现状（不要按"当前是 1.0"的旧假设来做）：`schema.py` **当前 `SCHEMA_VERSION = "1.1"`，且 `ACCEPTED_SCHEMA_VERSIONS = {"1.0", "1.1"}` 多版本接受机制已经存在**（schema.py:11-12,87 用的是集合成员判断，不是严格相等）。所以你只需在已有机制上做加法：
 
 - `SCHEMA_VERSION` 提升为 `"1.2"`。
-- `ACCEPTED_SCHEMA_VERSIONS` 变为 `{"1.0", "1.1", "1.2"}`。
-- `normalize_drawing()` 输出统一使用 `"1.2"`，除非你有非常强理由保留旧版本输出；如果保留旧版本输出，测试必须证明所有新对象仍能被识别。
+- `ACCEPTED_SCHEMA_VERSIONS` 扩为 `{"1.0", "1.1", "1.2"}`。
+- `normalize_drawing()` 输出统一使用 `"1.2"`，但必须仍接受并迁移 1.0/1.1 旧文件；测试要证明旧对象仍能被识别。
+
+**注意四个不同的 `schema_version` 字段，不要相互串用**：drawing semantic JSON = `"1.2"`；supporting manifest = `"1.0"`（§6.3）；task pack = `"1.1"`（§9.1）；`/api/drawing/registry` 响应包络 = `"1.0"`（§6 B1）。它们各自独立。
 
 ### 4.2 Drawing registry
 
@@ -195,18 +203,23 @@ Registry 必须包含：
 
 ### 4.5 Geometry kinds
 
-`GEOMETRY_KINDS` 至少包含：
+`GEOMETRY_KINDS` 至少包含（新建工具用）：
 
 - `path`
 - `circle`
 - `triangle`
+
+并**保留 `point` 作为兼容读取专用 kind**（最少 1 个坐标；不作为任何新建工具暴露，只为读旧文件不崩）。
 
 允许兼容读入旧值：
 
 - `polygon` -> `path` + `closed=true`
 - `polyline` -> `path` + `closed=false`
 - `arrow` -> `path` + `closed=false`
-- `point` -> 按 object type 迁移。旧 `main_entrance` point 迁移为 `entrance_marker` triangle，使用默认 `size` 和 `rotation_deg=0`。
+- `point` -> 按 object type 迁移，规则必须确定、不能让加载抛异常：
+  - 旧 `main_entrance`（point）-> `entrance_marker`（triangle），使用默认 `size` 和 `rotation_deg=0`。
+  - 其它任意旧单坐标 `point`/`label` 对象（例如旧 `label`）-> **保留为 `point` geometry kind 原样读入**，`object_type` 维持原值（`label` 等），不强行迁成 path/circle/triangle（它们只有 1 个坐标，迁过去会触发"path 至少 2 点 / circle 缺 radius / triangle 缺 size"校验失败）。这类对象本轮不提供新建工具，仅保证旧文件能加载、保存、再加载不丢。
+- **硬性要求**：normalize 遇到任何无法识别的旧 `point` 对象，必须走"保留为 point"而不是抛 `DrawingValidationError`。Schema 单测要专门覆盖"旧单坐标 point/label 对象加载-保存-再加载不崩、不丢"。
 
 #### Path geometry
 
@@ -1089,7 +1102,7 @@ Create unit tests with fixtures:
 - Slope arrow with inline text.
 - Supporting image manifest.
 
-Tests may initially fail. Commit is not required per phase, but do not move to final until all pass.
+Tests may initially fail. **每个 Phase 完成（其相关测试转绿）后提交一次**——Phase 2/3/4/5/6/7 各一个 commit，避免把全部改动堆到最后、也方便分段回退和审阅。不要在测试全红时硬推；但允许带"该 Phase 已绿、后续 Phase 未做"的中间状态提交。
 
 ### Phase 2: Registry + schema
 
@@ -1133,6 +1146,7 @@ Create `_tools/tests/test_drawing_workbench_schema.py`.
 Must test:
 
 1. `functional_zoning` old polygon with quadratic segments normalizes to schema 1.2 path closed true.
+   - **额外硬性**：若仓库存在真实文件 `projects/26-BQ-PARK/05_output/drawings/semantic/functional_zoning.json`，测试必须直接读它跑一遍 `normalize_drawing()` 并断言不抛异常、对象数不变、弧线 `segments` 控制点不丢；不要只用合成 fixture（合成 fixture 仍保留作为基础用例）。该测试**只读不写**那个真实文件。
 2. Open path with 4 coords and 3 segments accepts.
 3. Open path with 1 coord rejects.
 4. Closed path with 2 coords rejects.
@@ -1144,6 +1158,8 @@ Must test:
 10. `main_entrance` migrates to `entrance_marker`.
 11. `turning_radius` has default `label_box.text == "R=9M"` when missing.
 12. `slope_arrow` has default `inline_text.text == "0.3%"` when missing.
+13. 旧单坐标 `point` 对象（非 `main_entrance`，如 `label`）加载-保存-再加载不抛异常、不丢，且仍是 `point` geometry（M1 规则）。
+14. 旧 `main_entrance`（point）迁移为 `entrance_marker`（triangle），带默认 `size`、`rotation_deg=0`。
 
 Create `_tools/tests/test_drawing_workbench_task_pack.py`.
 
@@ -1197,25 +1213,21 @@ This test must not require visual perception.
 
 Create `_tools/tests/drawing_workbench_browser_smoke.py`.
 
-This test is mandatory. It must run without visual inspection and must fail if it cannot automate a browser.
+**这是 best-effort 测试，不是硬门禁。** 无视觉硬门禁由 §11.1/§11.2/§11.3（Python 单测 + Node 模型测试 + API smoke）承担——它们已覆盖 registry/schema/迁移/load/save/supporting/task-pack/图例 的全部逻辑，不需要浏览器即可证明语义层正确。
 
-- Use installed Chrome or Edge headless. On Windows, try these paths in order:
+浏览器 smoke 的定位：**锦上添花的端到端确认，能跑就跑，不能跑就跳过并记录原因**。明确规则：
+
+- 如果执行环境**已安装 Playwright**（或其它现成的确定性 headless 自动化），就用它跑下面的断言。
+- 如果**没有**现成自动化方法：**直接跳过本测试，打印 `BROWSER_SMOKE_SKIPPED: <原因>` 并以退出码 0 结束**。
+- **不要为这个测试从零手搓 CDP 客户端**；不要因为它缺失就判定整轮失败或声明"未完成"。功能正确性以硬门禁为准。
+- 若选择尝试浏览器，Windows 上按序探测：
   - `C:\Program Files\Google\Chrome\Application\chrome.exe`
   - `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
   - `C:\Program Files\Microsoft\Edge\Application\msedge.exe`
   - `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
-- Start server.
-- Navigate to workbench page for test project.
-- Use browser automation to execute JavaScript in page context.
-- Assert DOM state and internal data, not screenshots.
+- 跑起来时：启动 server → 打开测试项目的工作台页 → 在页面上下文执行 JS → 断言 DOM 状态和内部数据（不截图）。
 
-Implementation options:
-
-- If Playwright is already available in the execution environment, use it.
-- If Playwright is not available, implement a minimal Chrome DevTools Protocol client inside the Python script or use another deterministic headless browser automation method available on the machine.
-- Do not skip this test silently. The final acceptance command includes this script and it must exit 0.
-
-Minimum assertions:
+如果跑成功，最小断言：
 
 - Left drawing tabs contain all enabled drawing types.
 - Selecting each drawing type updates hidden `#drawingType`.
@@ -1241,11 +1253,12 @@ python _tools\validate_record.py 26-BQ-PARK
 git status --short --branch
 ```
 
-Expected:
+Expected：
 
-- All commands pass.
-- Final `git status --short --branch` shows only intended source/doc/test files before staging.
-- It must not show staged or unstaged `projects/26-BQ-PARK/05_output/` files caused by this task.
+- **硬门禁必须全过**：`py_compile`、三个 `node --check`、`python -m unittest ...`、`node ...workbench_model_test.cjs`、`drawing_workbench_api_smoke.py`、`validate_record.py`。
+- **`drawing_workbench_browser_smoke.py` 是 best-effort**：它要么断言通过、要么以退出码 0 打印 `BROWSER_SMOKE_SKIPPED: <原因>`。**只要它没有以非 0 退出，就算满足**；不允许因为它缺浏览器而判定整轮失败。
+- Final `git status --short --branch` 只显示本次预期的源码/文档/测试文件（staging 前）。
+- 不得出现本任务造成的 `projects/26-BQ-PARK/05_output/` staged/unstaged 文件。
 
 If `projects/26-BQ-PARK/05_output/` files were dirty before starting, leave them unstaged and explicitly mention they were pre-existing.
 
@@ -1322,22 +1335,23 @@ Use these payloads in tests and API smoke.
 
 ## 14. Commit and review handoff
 
-After all tests pass:
+实施过程中按 §10 **分阶段提交**（Phase 2-7 各一次）。全部硬门禁通过后：
 
-1. Stage only intended files.
-2. Commit with:
+1. Stage only intended files（源码/文档/测试；不 stage `projects/26-BQ-PARK/05_output/`）。
+2. 最后一个收口 commit：
 
 ```powershell
 git commit -m "feat(workbench): implement semantic drawing workbenches"
 ```
 
-3. Push current branch.
-4. Update or append `docs/CLAUDE_CODEX_REVIEW_THREAD.md` only if the user asks; otherwise leave review thread to Mac Claude.
-5. Final message must include:
-   - commit hash
-   - tests run
-   - explicit statement that no required checks were skipped; if any required check is blocked, do not claim completion
-   - note that `projects/26-BQ-PARK/05_output/` pre-existing dirty files were not staged
+3. Push current branch。
+4. 不要自己写 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`，把 review thread 留给 Mac Claude（除非用户明确要求）。
+5. 最终汇报必须包含：
+   - 全部 commit hash（含分阶段的）。
+   - 跑了哪些测试 + 实际结果。
+   - **硬门禁**（§11.1/11.2/11.3 + py_compile/node --check/validate_record）是否全过；任一硬门禁被阻塞 = 不得声明完成。
+   - 浏览器 smoke 是"通过"还是"`BROWSER_SMOKE_SKIPPED: <原因>`"——后者**不影响**完成判定。
+   - 说明 `projects/26-BQ-PARK/05_output/` 既有脏文件未被 stage。
 
 ## 15. Common failure modes to avoid
 

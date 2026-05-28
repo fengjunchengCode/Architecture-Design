@@ -46,4 +46,4 @@
 
 ### 结论
 
-计划**通过**，改完 M1/M2、按 S1 降级浏览器 smoke 即可让 Windows claude 开 `/goal`。M1/M2/S1 都很明确，不必再等我整轮复审这三点；实施完成回推后我做最终代码审 + 看 API smoke 输出和真实数据回归结果。
+计划**通过**。应用户要求，Mac Claude 已**直接把 M1/M2/S1 + N1/N2/N3 改写进计划正文并定稿**（见 `docs/PLAN_2026-05-29_REMAINING_DRAWING_WORKBENCHES_GOAL_IMPLEMENTATION.md` 头部"状态"与各节修订）。Windows claude 可直接按该计划开 `/goal`，无需再改计划。实施完成回推后 Mac Claude 做最终代码审 + 看硬门禁/真实数据回归结果。
