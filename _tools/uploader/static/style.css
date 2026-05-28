@@ -996,3 +996,15 @@ pre {
     max-height: none;
   }
 }
+
+/* ===== WORKBENCH STUDIO MODE: full-bleed ===== */
+body.workbench-mode{overflow:hidden}
+body.workbench-mode .mast,
+body.workbench-mode .stage-nav{display:none}
+body.workbench-mode .shell{
+  width:100vw;max-width:none;margin:0;padding:0;
+}
+body.workbench-mode .workspace{display:block;margin:0;gap:0}
+body.workbench-mode .page-shell{margin:0;padding:0;border:0;background:none}
+body.workbench-mode .page[data-page="workbench"]{margin:0;padding:0}
+body.workbench-mode .result-panel{display:none}

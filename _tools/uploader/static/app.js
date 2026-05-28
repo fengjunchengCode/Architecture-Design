@@ -841,6 +841,7 @@ function setControls() {
   document.querySelectorAll(".page").forEach((pageEl) => {
     pageEl.classList.toggle("active", pageEl.dataset.page === state.page);
   });
+  document.body.classList.toggle("workbench-mode", state.page === "workbench");
 
   document.querySelectorAll("[data-page].stage-tab").forEach((tab) => {
     tab.disabled = !canOpenPage(tab.dataset.page);
@@ -1478,6 +1479,7 @@ async function saveControlPoints() {
 function bind() {
   $("#createProject").addEventListener("click", () => createProject().catch((err) => writeOutput(err.message)));
   $("#refreshProjects").addEventListener("click", () => loadProjects().catch((err) => writeOutput(err.message)));
+  $("#wbHome")?.addEventListener("click", () => setPage("project"));
   $("#runInventory").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
   $("#runValidate").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
   $("#runInventoryStatus").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
