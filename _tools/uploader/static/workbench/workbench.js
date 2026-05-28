@@ -567,14 +567,12 @@
           aria-label="分区边框线宽"
         >
       </div>
-      <div class="zone-legend-preview" id="zoneLegendPreview">
-        <h4>图例预览</h4>
-        ${renderFunctionalZoneLegendPreview()}
-      </div>
-      <div class="zone-tool-group">
-        <h4>对象明细</h4>
-      </div>
     `;
+    // Move legend preview to right rail if container exists
+    const legendContainer = $("#zoneLegendPreview");
+    if (legendContainer) {
+      legendContainer.innerHTML = renderFunctionalZoneLegendPreview();
+    }
     bindFunctionalZoningTools();
   }
 
@@ -655,10 +653,7 @@
   function refreshLegendPreview() {
     const container = $("#zoneLegendPreview");
     if (!container) return;
-    container.innerHTML = `
-      <h4>图例预览</h4>
-      ${renderFunctionalZoneLegendPreview()}
-    `;
+    container.innerHTML = renderFunctionalZoneLegendPreview();
   }
 
   function selectedObject() {
@@ -2019,6 +2014,15 @@
     document.addEventListener("pointercancel", () => {
       state.arcDrag = null;
     });
+    // Footer toggle (collapsible workflow bar)
+    const footerEl = $("#workbenchFooter");
+    const footerToggleEl = $("#footerToggle");
+    if (footerEl && footerToggleEl) {
+      footerToggleEl.addEventListener("click", () => {
+        footerEl.classList.toggle("open");
+      });
+    }
+
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";
       const newPage = event.detail && event.detail.page;

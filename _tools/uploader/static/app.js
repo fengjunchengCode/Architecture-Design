@@ -877,6 +877,7 @@ function setControls() {
   setTab("#tabS0", !hasProject ? "locked" : state.page === "s0" ? "active" : "ready");
   setTab("#tabS1", !hasProject ? "locked" : state.page === "s1" ? "active" : "ready");
   setTab("#tabS2", !hasProject ? "locked" : state.page === "s2" ? "active" : "ready");
+  setTab("#tabWorkbench", !hasProject ? "locked" : state.page === "workbench" ? "active" : "ready");
   setTab("#tabStatus", !hasProject ? "locked" : state.page === "status" ? "active" : "ready");
 
   updateBucketStates();
