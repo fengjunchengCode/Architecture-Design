@@ -36,8 +36,8 @@
   const CLOSE_HANDLE_R_PX = 10;
   const RECENT_COLOR_LIMIT = 6;
   const CANVAS_ZOOM_MIN = 0.5;
-  const CANVAS_ZOOM_MAX = 4;
-  const CANVAS_ZOOM_STEP = 0.25;
+  const CANVAS_ZOOM_MAX = 8;
+  const CANVAS_BUTTON_ZOOM_FACTOR = 1.25;
   const CANVAS_WHEEL_ZOOM_FACTOR = 1.1;
   const DRAWING_WORKBENCHES = {
     functional_zoning: {
@@ -835,10 +835,6 @@
   function applyCanvasZoom() {
     const stage = $("#workbenchStage");
     if (stage) stage.style.width = `${state.canvasZoom * 100}%`;
-  }
-
-  function adjustCanvasZoom(delta) {
-    setCanvasZoom(state.canvasZoom + delta);
   }
 
   function updateCanvasZoomUi() {
@@ -1963,9 +1959,9 @@
     $("#redoAction").addEventListener("click", redoHistory);
     $("#deleteObject").addEventListener("click", deleteSelected);
     $("#clearDraft").addEventListener("click", clearDraft);
-    $("#canvasZoomOut").addEventListener("click", () => adjustCanvasZoom(-CANVAS_ZOOM_STEP));
+    $("#canvasZoomOut").addEventListener("click", () => setCanvasZoom(state.canvasZoom / CANVAS_BUTTON_ZOOM_FACTOR));
     $("#canvasZoomReset").addEventListener("click", () => setCanvasZoom(1));
-    $("#canvasZoomIn").addEventListener("click", () => adjustCanvasZoom(CANVAS_ZOOM_STEP));
+    $("#canvasZoomIn").addEventListener("click", () => setCanvasZoom(state.canvasZoom * CANVAS_BUTTON_ZOOM_FACTOR));
     $("#canvasZoomFit").addEventListener("click", () => setCanvasZoom(1));
     $("#sketchOverlay").addEventListener("click", addPoint);
     $("#sketchOverlay").addEventListener("dblclick", (event) => {
