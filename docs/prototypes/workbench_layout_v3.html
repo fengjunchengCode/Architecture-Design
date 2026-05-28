@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图纸工作台 · 布局原型 v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#efe9dc;
+    --panel:#fbf8f1;
+    --panel-2:#f3eee2;
+    --ink:#2b2722;
+    --muted:#8a8173;
+    --faint:#b4ab99;
+    --line:#ddd5c5;
+    --line-soft:#e8e1d2;
+    --accent:#1f6f5b;
+    --accent-soft:rgba(31,111,91,.10);
+    --accent-line:rgba(31,111,91,.32);
+    --accent-2:#c2502f;
+    --canvas:#fcfaf4;
+    --grid:rgba(43,39,34,.055);
+    --grid-strong:rgba(43,39,34,.10);
+    --shadow:0 1px 2px rgba(43,39,34,.06),0 8px 26px rgba(43,39,34,.08);
+    --shadow-pop:0 10px 34px rgba(43,39,34,.16);
+    --r:9px;
+    --act-w:64px;
+    --insp-w:330px;
+    --top-h:54px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"IBM Plex Sans SC","IBM Plex Sans",system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    font-size:13px;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-feature-settings:"tnum"}
+
+  /* ===== APP SHELL : full bleed, no centered max-width ===== */
+  .app{
+    display:grid;
+    grid-template-columns:var(--act-w) 1fr;
+    height:100vh;
+    width:100vw;
+  }
+
+  /* ===== LEFT ACTIVITY RAIL ===== */
+  .act{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:10px 0;
+    gap:4px;
+    z-index:30;
+  }
+  .act-logo{
+    width:40px;height:40px;border-radius:11px;
+    background:linear-gradient(150deg,var(--accent),#15493b);
+    color:#f4efe4;display:grid;place-items:center;
+    font-weight:700;font-size:17px;letter-spacing:.02em;
+    box-shadow:0 4px 12px rgba(31,111,91,.32);
+    margin-bottom:8px;
+  }
+  .act-sep{width:26px;height:1px;background:var(--line);margin:6px 0}
+  .act-scroll{flex:1;display:flex;flex-direction:column;gap:4px;overflow:auto;align-items:center;width:100%}
+  .act-scroll::-webkit-scrollbar{width:0}
+  .act-btn{
+    position:relative;
+    width:44px;height:44px;border-radius:10px;border:1px solid transparent;
+    background:none;cursor:pointer;color:var(--muted);
+    display:grid;place-items:center;transition:.16s;
+    font-size:0;
+  }
+  .act-btn svg{width:21px;height:21px}
+  .act-btn:hover{background:var(--panel-2);color:var(--ink)}
+  .act-btn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+  .act-btn.on::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--accent)}
+  .act-btn.todo{opacity:.4}
+  .act-btn .tip{
+    position:absolute;left:54px;top:50%;transform:translateY(-50%) translateX(-4px);
+    background:var(--ink);color:#f6f1e7;padding:5px 9px;border-radius:7px;
+    font-size:11.5px;white-space:nowrap;opacity:0;pointer-events:none;transition:.14s;z-index:60;
+    box-shadow:var(--shadow-pop);
+  }
+  .act-btn .tip::after{content:"";position:absolute;right:100%;top:50%;transform:translateY(-50%);border:5px solid transparent;border-right-color:var(--ink)}
+  .act-btn:hover .tip{opacity:1;transform:translateY(-50%) translateX(0)}
+
+  /* ===== MAIN COLUMN ===== */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+
+  /* ===== TOP BAR (slim) ===== */
+  .top{
+    height:var(--top-h);flex-shrink:0;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:16px;
+    padding:0 16px;
+  }
+  .top-title{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .top-title .crumb{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .top-title b{font-size:15px;font-weight:600;letter-spacing:.01em;display:flex;align-items:center;gap:9px}
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:11.5px;color:var(--accent);background:var(--accent-soft);
+    padding:3px 10px;border-radius:999px;font-weight:500;
+  }
+  .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .top-spacer{flex:1}
+  .btn{
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    height:34px;padding:0 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:12.5px;
+    display:inline-flex;align-items:center;gap:7px;transition:.15s;white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#f5f0e4}
+  .btn.primary:hover{background:#1a5d4c;color:#fff}
+  .btn svg{width:15px;height:15px}
+  .icon-btn{
+    width:34px;height:34px;padding:0;justify-content:center;color:var(--muted);
+  }
+  .icon-btn.on{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+  .top-div{width:1px;height:24px;background:var(--line)}
+
+  /* ===== WORK AREA ===== */
+  .work{flex:1;display:grid;grid-template-columns:1fr var(--insp-w);min-height:0;transition:grid-template-columns .22s cubic-bezier(.4,0,.2,1)}
+  .work.insp-collapsed{grid-template-columns:1fr 0}
+
+  /* ===== CANVAS (hero) ===== */
+  .stage-wrap{position:relative;min-width:0;min-height:0;overflow:hidden;
+    background:
+      linear-gradient(var(--grid) 1px,transparent 1px) 0 0/26px 26px,
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/26px 26px,
+      linear-gradient(var(--grid-strong) 1px,transparent 1px) 0 0/130px 130px,
+      linear-gradient(90deg,var(--grid-strong) 1px,transparent 1px) 0 0/130px 130px,
+      var(--canvas);
+  }
+  .stage-wrap::after{content:"";position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 0 0 0 1px var(--line-soft), inset 0 0 80px rgba(43,39,34,.04)}
+
+  .sheet{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:min(74%,860px);aspect-ratio:1.5/1;
+    background:#fdfcf8;border:1px solid var(--line);
+    box-shadow:0 2px 4px rgba(43,39,34,.05),0 18px 50px rgba(43,39,34,.13);
+  }
+  .sheet svg{position:absolute;inset:0;width:100%;height:100%}
+  .sheet .corner{position:absolute;width:16px;height:16px;border:1.5px solid var(--faint);opacity:.6}
+  .sheet .corner.tl{top:8px;left:8px;border-right:0;border-bottom:0}
+  .sheet .corner.tr{top:8px;right:8px;border-left:0;border-bottom:0}
+  .sheet .corner.bl{bottom:8px;left:8px;border-right:0;border-top:0}
+  .sheet .corner.br{bottom:8px;right:8px;border-left:0;border-top:0}
+  .sheet .sheet-tag{position:absolute;left:14px;bottom:10px;font-size:10px;letter-spacing:.12em;color:var(--faint)}
+
+  /* zone label chips on canvas */
+  .zlab{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:500;color:#3a342c;
+    background:rgba(253,252,248,.78);padding:1px 7px;border-radius:5px;border:1px solid rgba(43,39,34,.08);white-space:nowrap}
+
+  /* floating zoom pill (top-right) */
+  .zoom{
+    position:absolute;top:14px;right:14px;z-index:8;
+    display:flex;align-items:center;gap:2px;
+    background:rgba(251,248,241,.92);backdrop-filter:blur(8px);
+    border:1px solid var(--line);border-radius:11px;padding:4px;box-shadow:var(--shadow);
+  }
+  .zoom button{width:30px;height:28px;border:0;background:none;border-radius:7px;cursor:pointer;color:var(--ink);font-size:15px;display:grid;place-items:center}
+  .zoom button:hover{background:var(--panel-2)}
+  .zoom .val{min-width:54px;text-align:center;font-size:12px;font-weight:500;padding:0 2px}
+  .zoom .hint{font-size:10px;color:var(--faint);padding:0 8px 0 4px;border-left:1px solid var(--line);margin-left:2px;height:18px;display:flex;align-items:center}
+
+  /* floating action dock (bottom-center) */
+  .dock{
+    position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:8;
+    display:flex;align-items:center;gap:3px;
+    background:rgba(43,39,34,.92);backdrop-filter:blur(10px);
+    border-radius:13px;padding:6px;box-shadow:var(--shadow-pop);
+  }
+  .dock button{
+    height:34px;padding:0 13px;border:0;border-radius:9px;background:none;color:#e9e3d6;
+    cursor:pointer;font:inherit;font-size:12.5px;display:flex;align-items:center;gap:7px;transition:.14s;
+  }
+  .dock button svg{width:15px;height:15px}
+  .dock button:hover{background:rgba(255,255,255,.10);color:#fff}
+  .dock button.key{background:var(--accent);color:#fff}
+  .dock button.key:hover{background:#27876f}
+  .dock .ddiv{width:1px;height:20px;background:rgba(255,255,255,.16);margin:0 3px}
+  .dock .kbd{font-size:9.5px;color:rgba(233,227,214,.55);margin-left:2px;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:0 4px;line-height:14px}
+
+  /* status toast (bottom-left) */
+  .toast{
+    position:absolute;left:16px;bottom:20px;z-index:8;
+    display:flex;align-items:center;gap:8px;
+    background:rgba(43,39,34,.90);color:#f1ebde;font-size:12px;
+    padding:8px 13px;border-radius:9px;box-shadow:var(--shadow-pop);
+  }
+  .toast::before{content:"";width:7px;height:7px;border-radius:50%;background:#5bbf9e}
+
+  /* ===== RIGHT INSPECTOR ===== */
+  .insp{
+    background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-width:0;overflow:hidden;
+  }
+  .insp-head{
+    height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;
+    padding:0 14px;border-bottom:1px solid var(--line-soft);
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+  }
+  .insp-body{flex:1;overflow:auto;padding:6px 0}
+  .insp-body::-webkit-scrollbar{width:8px}
+  .insp-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;border:2px solid var(--panel)}
+
+  .sect{border-bottom:1px solid var(--line-soft)}
+  .sect-h{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:11px 14px;background:none;border:0;cursor:pointer;font:inherit;color:var(--ink);
+  }
+  .sect-h b{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .sect-h .tag{font-size:10.5px;font-weight:400;color:var(--faint)}
+  .sect-h .chev{transition:.18s;color:var(--muted)}
+  .sect.open .chev{transform:rotate(90deg)}
+  .sect-c{display:none;padding:2px 14px 15px}
+  .sect.open .sect-c{display:block}
+
+  .field{margin-bottom:13px}
+  .field>label{display:block;font-size:11px;color:var(--muted);margin-bottom:7px;letter-spacing:.02em}
+  .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+  .sw{aspect-ratio:1;border-radius:7px;border:1px solid rgba(43,39,34,.12);cursor:pointer;position:relative;transition:.12s}
+  .sw:hover{transform:scale(1.07)}
+  .sw.on{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
+  .recent{display:flex;gap:6px;margin-top:8px}
+  .recent .sw{width:22px;border-radius:6px}
+  .seg{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:3px;gap:2px}
+  .seg button{flex:1;height:28px;border:0;background:none;border-radius:6px;cursor:pointer;font:inherit;font-size:12px;color:var(--muted)}
+  .seg button.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow);font-weight:500}
+  .slider{display:flex;align-items:center;gap:10px}
+  .slider input{flex:1;accent-color:var(--accent)}
+  .slider .num{font-size:12px;min-width:42px;text-align:right;color:var(--ink)}
+  .row2{display:flex;gap:8px}
+  .row2 .field{flex:1}
+
+  /* legend */
+  .leg{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line-soft)}
+  .leg:last-child{border-bottom:0}
+  .leg .chip{width:20px;height:20px;border-radius:5px;flex-shrink:0;border:1px solid rgba(43,39,34,.12)}
+  .leg .nm{flex:1;font-size:12.5px}
+  .leg .ct{font-size:11px;color:var(--muted);font-family:"IBM Plex Mono",monospace}
+  .leg-foot{margin-top:9px;font-size:11px;color:var(--faint)}
+
+  /* object list */
+  .obj{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;cursor:pointer;transition:.12s}
+  .obj:hover{background:var(--panel-2)}
+  .obj.on{background:var(--accent-soft)}
+  .obj .dot{width:11px;height:11px;border-radius:3px;flex-shrink:0;border:1px solid rgba(43,39,34,.15)}
+  .obj .on-nm{flex:1;font-size:12.5px}
+  .obj .meta{font-size:10.5px;color:var(--muted);font-family:"IBM Plex Mono",monospace}
+  .obj .x{opacity:0;color:var(--faint);font-size:15px;width:18px;text-align:center}
+  .obj:hover .x{opacity:1}
+
+  /* base popover (from activity rail bottom) */
+  .pop{
+    position:absolute;left:72px;bottom:14px;z-index:80;width:268px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:var(--shadow-pop);padding:14px;display:none;
+  }
+  .pop.show{display:block;animation:pop .16s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .pop h5{font-size:12px;margin-bottom:11px;letter-spacing:.03em}
+  .pop .field>label{font-size:10.5px}
+  .pop input[type=text]{width:100%;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:12px;background:var(--panel-2)}
+  .pop .drop{border:1.5px dashed var(--line);border-radius:9px;padding:16px;text-align:center;color:var(--muted);font-size:11.5px;cursor:pointer}
+  .pop .drop:hover{border-color:var(--accent);color:var(--accent)}
+
+  .ghost-note{position:fixed;right:16px;bottom:14px;font-size:10.5px;color:var(--faint);font-family:"IBM Plex Mono",monospace;z-index:90}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== LEFT ACTIVITY RAIL ===== -->
+  <nav class="act">
+    <div class="act-logo">建</div>
+    <div class="act-scroll">
+      <button class="act-btn on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg><span class="tip">功能分区 · 进行中</span></button>
+      <button class="act-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h16M4 12l4-4M4 12l4 4M20 6v12"/></svg><span class="tip">交通流线分析</span></button>
+      <button class="act-btn todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 8h18M5 8l3 13M19 8l-3 13"/></svg><span class="tip">消防分析 · 待设计</span></button>
+      <button class="act-btn todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 18l6-9 4 5 3-4 5 8z"/></svg><span class="tip">竖向设计 · 待设计</span></button>
+      <button class="act-btn todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 4v8l5 3"/></svg><span class="tip">日照分析 · 待设计</span></button>
+    </div>
+    <div class="act-sep"></div>
+    <button class="act-btn" id="baseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 14l5-4 4 3 4-5 5 6"/><circle cx="8.5" cy="8.5" r="1.3"/></svg><span class="tip">底图设置</span></button>
+    <button class="act-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip">帮助 / 快捷键</span></button>
+  </nav>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main">
+
+    <!-- TOP BAR -->
+    <header class="top">
+      <div class="top-title">
+        <span class="crumb">26-BQ-PARK · 巴青县城西口袋公园</span>
+        <b>功能分区工作台 <span class="badge">已批准风格</span></b>
+      </div>
+      <div class="top-spacer"></div>
+      <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg>加载图纸</button>
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3h11l3 3v15H5zM8 3v6h7M8 21v-7h8v7"/></svg>保存草图</button>
+      <div class="top-div"></div>
+      <button class="btn icon-btn on" id="inspBtn" title="检查器面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+    </header>
+
+    <!-- WORK AREA -->
+    <div class="work" id="work">
+
+      <!-- CANVAS HERO -->
+      <div class="stage-wrap">
+        <div class="sheet">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <span class="sheet-tag mono">MASTER_PLAN.JPG · 1.5:1 · A3 横</span>
+          <svg viewBox="0 0 900 600" preserveAspectRatio="none">
+            <!-- activity lawn -->
+            <polygon points="80,90 360,70 390,260 120,300" fill="#8bbf73" fill-opacity="0.34" stroke="#5a8f46" stroke-width="2.4"/>
+            <!-- woodland -->
+            <polygon points="400,70 600,90 580,250 410,250" fill="#4f7a52" fill-opacity="0.30" stroke="#3a5c3d" stroke-width="2.4" stroke-dasharray="9 6"/>
+            <!-- children -->
+            <polygon points="620,95 830,120 820,280 600,260" fill="#e0a23d" fill-opacity="0.34" stroke="#b87d22" stroke-width="2.4"/>
+            <!-- plaza -->
+            <polygon points="150,330 470,290 500,470 180,510" fill="#bcae93" fill-opacity="0.40" stroke="#8d7d5e" stroke-width="2.4"/>
+            <!-- water -->
+            <polygon points="520,300 800,300 790,500 540,490" fill="#6aa6c4" fill-opacity="0.32" stroke="#3f7896" stroke-width="2.4"/>
+            <!-- handles on plaza -->
+            <g fill="#fdfcf8" stroke="#c2502f" stroke-width="2">
+              <circle cx="150" cy="330" r="5.5"/><circle cx="470" cy="290" r="5.5"/>
+              <circle cx="500" cy="470" r="5.5"/><circle cx="180" cy="510" r="5.5"/>
+            </g>
+          </svg>
+          <div class="zlab" style="left:36%;top:32%">活动草坪</div>
+          <div class="zlab" style="left:62%;top:30%">林下休憩</div>
+          <div class="zlab" style="left:82%;top:34%">儿童活动</div>
+          <div class="zlab" style="left:42%;top:70%">多功能广场</div>
+          <div class="zlab" style="left:76%;top:70%">滨水观景</div>
+        </div>
+
+        <!-- zoom pill -->
+        <div class="zoom">
+          <button id="zo">−</button>
+          <span class="val mono" id="zv">100%</span>
+          <button id="zi">+</button>
+          <span class="hint">Ctrl+滚轮</span>
+        </div>
+
+        <!-- action dock -->
+        <div class="dock">
+          <button class="key"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 6"/></svg>完成分区<span class="kbd">↵</span></button>
+          <span class="ddiv"></span>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7L4 12l5 5M4 12h12a4 4 0 0 1 0 8"/></svg>撤销<span class="kbd">⌘Z</span></button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7l5 5-5 5M20 12H8a4 4 0 0 0 0 8"/></svg>重做</button>
+          <span class="ddiv"></span>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>删除<span class="kbd">⌫</span></button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>清空</button>
+        </div>
+
+        <!-- status toast -->
+        <div class="toast">已添加：多功能广场（4 个顶点）</div>
+      </div>
+
+      <!-- RIGHT INSPECTOR -->
+      <aside class="insp" id="insp">
+        <div class="insp-head"><span>检查器</span><span class="mono">5 对象</span></div>
+        <div class="insp-body">
+
+          <!-- 风格 -->
+          <div class="sect open">
+            <button class="sect-h"><b><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18 4.5 4.5 0 0 0 0-9 4.5 4.5 0 0 1 0-9z"/></svg>风格 <span class="tag">作用于新建/选中</span></b><span class="chev">▸</span></button>
+            <div class="sect-c">
+              <div class="field">
+                <label>分区配色（来自 style_spec）</label>
+                <div class="swatches">
+                  <div class="sw on" style="background:#8bbf73"></div>
+                  <div class="sw" style="background:#4f7a52"></div>
+                  <div class="sw" style="background:#e0a23d"></div>
+                  <div class="sw" style="background:#bcae93"></div>
+                  <div class="sw" style="background:#6aa6c4"></div>
+                  <div class="sw" style="background:#c98a8a"></div>
+                </div>
+                <div class="recent">
+                  <span style="font-size:10.5px;color:var(--faint);align-self:center;margin-right:2px">最近</span>
+                  <div class="sw" style="background:#9b6ad6"></div>
+                  <div class="sw" style="background:#d6a24f"></div>
+                  <div class="sw" style="background:#5a8f46"></div>
+                </div>
+              </div>
+              <div class="row2">
+                <div class="field"><label>填充</label>
+                  <div class="seg"><button class="on">开</button><button>关</button></div>
+                </div>
+                <div class="field"><label>边框</label>
+                  <div class="seg"><button class="on">实线</button><button>虚线</button><button>无</button></div>
+                </div>
+              </div>
+              <div class="field"><label>线宽</label>
+                <div class="slider"><input type="range" min="1" max="12" value="3"><span class="num mono">0.003</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 图例 -->
+          <div class="sect open">
+            <button class="sect-h"><b><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="4" cy="6" r="1.3" fill="var(--accent)"/><circle cx="4" cy="12" r="1.3" fill="var(--accent)"/><circle cx="4" cy="18" r="1.3" fill="var(--accent)"/></svg>图例预览 <span class="tag">按样式合并</span></b><span class="chev">▸</span></button>
+            <div class="sect-c">
+              <div class="leg"><span class="chip" style="background:#8bbf73"></span><span class="nm">活动草坪</span><span class="ct">×1</span></div>
+              <div class="leg"><span class="chip" style="background:#4f7a52;border-style:dashed"></span><span class="nm">林下休憩</span><span class="ct">×1</span></div>
+              <div class="leg"><span class="chip" style="background:#e0a23d"></span><span class="nm">儿童活动</span><span class="ct">×1</span></div>
+              <div class="leg"><span class="chip" style="background:#bcae93"></span><span class="nm">多功能广场</span><span class="ct">×1</span></div>
+              <div class="leg"><span class="chip" style="background:#6aa6c4"></span><span class="nm">滨水观景</span><span class="ct">×1</span></div>
+              <div class="leg-foot">全部对象可见 · 0 个隐藏</div>
+            </div>
+          </div>
+
+          <!-- 对象明细 -->
+          <div class="sect open">
+            <button class="sect-h"><b><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M9 9v11"/></svg>对象明细</b><span class="chev">▸</span></button>
+            <div class="sect-c" style="padding-left:6px;padding-right:6px">
+              <div class="obj"><span class="dot" style="background:#8bbf73"></span><span class="on-nm">活动草坪</span><span class="meta">4p</span><span class="x">×</span></div>
+              <div class="obj"><span class="dot" style="background:#4f7a52"></span><span class="on-nm">林下休憩</span><span class="meta">4p</span><span class="x">×</span></div>
+              <div class="obj"><span class="dot" style="background:#e0a23d"></span><span class="on-nm">儿童活动</span><span class="meta">4p</span><span class="x">×</span></div>
+              <div class="obj on"><span class="dot" style="background:#bcae93"></span><span class="on-nm">多功能广场</span><span class="meta">4p</span><span class="x">×</span></div>
+              <div class="obj"><span class="dot" style="background:#6aa6c4"></span><span class="on-nm">滨水观景</span><span class="meta">4p</span><span class="x">×</span></div>
+            </div>
+          </div>
+
+          <!-- 出图工作流 -->
+          <div class="sect">
+            <button class="sect-h"><b><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>出图工作流</b><span class="chev">▸</span></button>
+            <div class="sect-c">
+              <div class="field"><label>给 agent 的说明</label>
+                <input type="text" placeholder="如：绿色=活动草坪…" style="width:100%;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:12px;background:var(--panel-2)">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn" style="flex:1;justify-content:center">导出 PNG/PDF</button>
+                <button class="btn primary" style="flex:1;justify-content:center">发给 agent 出图</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- base popover -->
+<div class="pop" id="pop">
+  <h5>底图设置</h5>
+  <div class="field"><label style="display:block;font-size:10.5px;color:var(--muted);margin-bottom:6px">底图路径</label>
+    <input type="text" value="05_output/drawings/base/master_plan.jpg">
+  </div>
+  <div class="field" style="margin-bottom:0"><label style="display:block;font-size:10.5px;color:var(--muted);margin-bottom:6px">上传新底图</label>
+    <div class="drop">点击或拖拽图片到此 · JPG/PNG</div>
+  </div>
+</div>
+
+<div class="ghost-note">workbench_layout_v3 · 原型</div>
+
+<script>
+  // inspector collapse
+  const work=document.getElementById('work'),inspBtn=document.getElementById('inspBtn');
+  inspBtn.onclick=()=>{work.classList.toggle('insp-collapsed');inspBtn.classList.toggle('on',!work.classList.contains('insp-collapsed'));};
+  // accordion
+  document.querySelectorAll('.sect-h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('open'));
+  // swatch pick
+  document.querySelectorAll('.swatches .sw').forEach(s=>s.onclick=()=>{document.querySelectorAll('.swatches .sw').forEach(x=>x.classList.remove('on'));s.classList.add('on');});
+  // seg
+  document.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{g.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');}));
+  // object select
+  document.querySelectorAll('.obj').forEach(o=>o.onclick=()=>{document.querySelectorAll('.obj').forEach(x=>x.classList.remove('on'));o.classList.add('on');});
+  // drawing type switch
+  document.querySelectorAll('.act-scroll .act-btn').forEach(b=>b.onclick=()=>{if(b.classList.contains('todo'))return;document.querySelectorAll('.act-scroll .act-btn').forEach(x=>x.classList.remove('on'));b.classList.add('on');});
+  // zoom
+  let z=100;const zv=document.getElementById('zv');
+  document.getElementById('zi').onclick=()=>{z=Math.min(800,Math.round(z*1.25));zv.textContent=z+'%';};
+  document.getElementById('zo').onclick=()=>{z=Math.max(50,Math.round(z/1.25));zv.textContent=z+'%';};
+  // base popover
+  const pop=document.getElementById('pop'),baseBtn=document.getElementById('baseBtn');
+  baseBtn.onclick=e=>{e.stopPropagation();pop.classList.toggle('show');};
+  document.addEventListener('click',e=>{if(!pop.contains(e.target)&&e.target!==baseBtn)pop.classList.remove('show');});
+</script>
+</body>
+</html>
