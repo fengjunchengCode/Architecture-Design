@@ -1500,8 +1500,8 @@ function bind() {
   $("#createProject").addEventListener("click", () => createProject().catch((err) => writeOutput(err.message)));
   $("#refreshProjects").addEventListener("click", () => loadProjects().catch((err) => writeOutput(err.message)));
   $("#wbHome")?.addEventListener("click", () => setPage("project"));
-  $("#runInventory").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
-  $("#runValidate").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
+  $("#runInventory").addEventListener("click", () => { setPage("status"); runInventory().catch((err) => writeOutput(err.message)); });
+  $("#runValidate").addEventListener("click", () => { setPage("status"); runValidate().catch((err) => writeOutput(err.message)); });
   $("#runInventoryStatus").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
   $("#runValidateStatus").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
   $("#checkAmap").addEventListener("click", () => checkAmap().catch((err) => writeOutput(err.message)));

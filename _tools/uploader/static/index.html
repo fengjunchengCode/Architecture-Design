@@ -57,105 +57,101 @@
         <section class="studio-pages page-shell">
 
           <section class="page active" data-page="project">
-            <div class="page-head">
-              <div>
-                <p class="eyebrow">Project</p>
-                <h2>创建或选择项目</h2>
-                <p>先确定资料要进入哪个项目。选择项目后，可以直接进入 S0、S1 或 S2 的输入页。</p>
-              </div>
-              <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
-            </div>
-
-            <section class="panel setup-panel">
-              <div class="form-grid">
-                <label>
-                  <span>项目代号</span>
-                  <input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off">
-                </label>
-                <label>
-                  <span>项目名称</span>
-                  <input id="projectName" placeholder="深圳南山某小学" autocomplete="off">
-                </label>
-                <label>
-                  <span>项目类型</span>
-                  <select id="projectType">
-                    <option value="school">学校 / 教育建筑</option>
-                    <option value="residential">住宅</option>
-                    <option value="commercial">商业 / 办公</option>
-                    <option value="park">公园 / 景观</option>
-                    <option value="street_scape">街角 / 街道更新</option>
-                    <option value="renovation">改造 / 更新</option>
-                    <option value="hospital">医院 / 医疗</option>
-                    <option value="cultural">文化建筑</option>
-                    <option value="industrial">产业 / 工业</option>
-                    <option value="cultural_tourism">文旅 / 多节点项目</option>
-                    <option value="unknown">暂不确定</option>
-                  </select>
-                </label>
-                <button id="createProject" class="primary">创建/打开项目</button>
-              </div>
-              <p class="active-note" id="projectHint">请先创建新项目，或从下方已有项目中选择一个。</p>
-              <div class="project-list" id="projectList"></div>
-            </section>
-
-            <div class="page-actions">
-              <span></span>
-              <button data-goto="s0" class="primary">打开 S0 输入页</button>
+            <div class="studio-page-grid">
+              <section class="studio-card">
+                <div class="amap-head">
+                  <h3>创建或打开项目</h3>
+                  <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>项目代号</span>
+                    <input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off">
+                  </label>
+                  <label>
+                    <span>项目名称</span>
+                    <input id="projectName" placeholder="深圳南山某小学" autocomplete="off">
+                  </label>
+                  <label>
+                    <span>项目类型</span>
+                    <select id="projectType">
+                      <option value="school">学校 / 教育建筑</option>
+                      <option value="residential">住宅</option>
+                      <option value="commercial">商业 / 办公</option>
+                      <option value="park">公园 / 景观</option>
+                      <option value="street_scape">街角 / 街道更新</option>
+                      <option value="renovation">改造 / 更新</option>
+                      <option value="hospital">医院 / 医疗</option>
+                      <option value="cultural">文化建筑</option>
+                      <option value="industrial">产业 / 工业</option>
+                      <option value="cultural_tourism">文旅 / 多节点项目</option>
+                      <option value="unknown">暂不确定</option>
+                    </select>
+                  </label>
+                  <button id="createProject" class="primary">创建/打开项目</button>
+                </div>
+                <p class="active-note" id="projectHint">请先创建新项目，或从下方已有项目中选择一个。</p>
+              </section>
+              <section class="studio-card">
+                <h3>已有项目</h3>
+                <div class="project-list" id="projectList"></div>
+                <div class="handoff-note">打开项目后，左侧活动栏解锁 S0/S1/S2/图纸/状态。</div>
+              </section>
             </div>
           </section>
 
           <section class="page" data-page="s0">
-            <div class="page-head">
-              <div>
-                <p class="eyebrow">S0 Input</p>
-                <h2>S0 建档输入</h2>
+            <div class="studio-page-grid">
+              <section class="studio-card">
+                <h3>S0 资料桶</h3>
                 <p id="s0Hint">上传 S0 需要的资料后，可以直接运行 Inventory/Validate，然后回到对话要求 agent 执行 S0。</p>
-              </div>
-              <div class="gate" id="gateStatus">等待项目</div>
-            </div>
-
-            <section class="grid stage-grid">
-              <article class="bucket" data-bucket="briefing">
-                <div class="bucket-head"><b>需求类</b><span>任务书 / 补充说明</span></div>
-                <input type="file" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-              <article class="bucket required" data-bucket="location_map">
-                <div class="bucket-head"><b>区位图</b><span>S0/S1 必选</span></div>
-                <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-              <article class="bucket" data-bucket="site_photo">
-                <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
-                <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-              <article class="bucket" data-bucket="chat">
-                <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
-                <input type="file" accept=".txt,.html,.md" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-              <article class="bucket" data-bucket="reference">
-                <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
-                <input type="file" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-            </section>
-
-            <section class="panel action-panel">
-              <div class="action-row">
-                <button id="runInventory" class="primary">运行 Inventory</button>
-                <button id="runValidate">校验 Record</button>
-              </div>
-            </section>
-
-            <div class="handoff-note">
-              S0 输入完成后，回到对话里说"执行 S0"。不需要先进入 S1 或 S2。
+                <div class="grid stage-grid">
+                  <article class="bucket" data-bucket="briefing">
+                    <div class="bucket-head"><b>需求类</b><span>任务书 / 补充说明</span></div>
+                    <input type="file" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
+                  <article class="bucket required" data-bucket="location_map">
+                    <div class="bucket-head"><b>区位图</b><span>S0/S1 必选</span></div>
+                    <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
+                  <article class="bucket" data-bucket="site_photo">
+                    <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
+                    <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
+                  <article class="bucket" data-bucket="chat">
+                    <div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div>
+                    <input type="file" accept=".txt,.html,.md" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
+                  <article class="bucket" data-bucket="reference">
+                    <div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div>
+                    <input type="file" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
+                </div>
+              </section>
+              <aside class="studio-card">
+                <div class="amap-head">
+                  <h3>准入</h3>
+                  <div class="gate" id="gateStatus">等待项目</div>
+                </div>
+                <p>上传资料后运行 Inventory 做完整性检查，再运行 Validate 校验 record。</p>
+                <div class="action-row">
+                  <button id="runInventory" class="primary">运行 Inventory</button>
+                  <button id="runValidate">校验 Record</button>
+                </div>
+                <div class="handoff-note">
+                  S0 输入完成后，回到对话里说"执行 S0"。不需要先进入 S1 或 S2。
+                </div>
+              </aside>
             </div>
           </section>
 
