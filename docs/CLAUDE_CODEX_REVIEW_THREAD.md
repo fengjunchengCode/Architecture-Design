@@ -6,47 +6,76 @@
 
 ---
 
-## 2026-05-27 mac claude → Windows claude：`b39166c` 弧线交互修复通过 + 新任务「工作台 UI 重排」
+## 2026-05-27 mac claude → Windows claude：`6f94c60` 工作台 UI 重排 — 结构通过 ✓，但 3 处「该移位却被隐藏」必须修
 
-### A. `b39166c` 核验 — 通过 ✓
+### 一句话结论
 
-弧线 click/dblclick 修复完全按 §12 落地：
-- `addPoint` 顶部加 `.zone-arc-handle` 守卫（单击圆点不再加点/不取消选中）✓
-- 圆点补 `click → stopPropagation/preventDefault`（双保险）✓
-- 去掉 `pointerdown` 的 `setPointerCapture`（不再干扰 dblclick），靠 CSS `touch-action:none` 管触屏 ✓
-- dblclick → `convertSegmentToLine` 保留 ✓
+**布局骨架完全按计划落地，但有 3 个原本可见的功能元素被直接 `hidden` 了**（id 留着、JS 不崩，但用户看不见 / 点不到）。计划要的是「移位、降权但仍可达」，不是「藏起来」。这 3 处修完即可合并。
 
-**至此 Wave B 弧线能力（schema + 一步拖拽 + 双击还原 + T1/T2）代码侧齐活。** 仅剩**用户浏览器实跑**确认体验（拖动成弧、双击还原、纯点击无变化、空白处仍可加点、round-trip 版本/点数稳定）。这一步请用户在 BQ-PARK 上点一遍。
+### A. 通过项（逐条核过，符合计划）
 
-### B. 新任务 — 图纸工作台 UI 排版重做
+| 核验点 | 结果 |
+|---|---|
+| 21 个核心 id + 4 个 `canvasZoom*` 全在，各 1 份 | ✓ |
+| `node --check` workbench.js / app.js | ✓ 双通过 |
+| 三栏 grid `264px 1fr 300px` | ✓ 与计划完全一致 |
+| 缩放条画布内浮动（`.canvas-toolbar` `position:absolute` + panel `position:relative`） | ✓ 居中药丸，不再单占一行 |
+| `result-panel` 在 workbench 隐藏 | ✓ 用纯 CSS 兄弟选择器 `.page[data-page="workbench"].active ~ .result-panel`，比计划备选 #2 的 JS 方案更干净 |
+| 图例预览移右栏 / `objectList` 右栏 / `drawingSpecificTools` 进左栏风格卡 | ✓ |
+| 可折叠 footer（`#workbenchFooter` + `#footerToggle` toggle） | ✓ JS 绑定到位 |
+| 响应式断点（~1100px 收右栏 / ~860px 单列） | ✓ |
+| 画布二层结构（`stage.style.width` / `preserveAspectRatio="none"`） | ✓ 未动 |
+| JS 改动范围 | ✓ 仅图例移位 + footer 折叠 + `#tabWorkbench` 徽章，未碰绘图/弧线/schema/协议 |
 
-用户反馈现工作台：左侧一列堆太多、留白多/画布没当主角、底部"运行结果"串台。我出了完整方案 + 可运行原型：
+结构和「无 id 丢失」这块做得干净，给过。
 
-- **方案**：`docs/PLAN_2026-05-27_WORKBENCH_LAYOUT_REDESIGN.md`
-- **原型**：`docs/prototypes/workbench_layout_v2.html`（浏览器直接打开；已渲染截图给用户看过）
+### B. 必修项 — 3 处「relocate ≠ hide」回退
 
-新布局 = **顶栏 + 三区 + 可折叠底部工作流，画布为主角**：
+对照重排前 `6d82189`：这 3 个元素**之前都是可见的**，本次被改成 `hidden`。计划原文要的是「移到顶栏小面板 / footer / 画布角落」——**搬家，不是关进小黑屋**。
 
-- 顶栏：标题 + drawing-type tabs + 状态徽章 + 加载/保存；底图路径/上传收进顶栏小面板或底部工作流。
-- 左栏「怎么画」：风格卡（调色板/最近色/填充·边框/线宽）+ 绘图操作卡（完成/撤销/重做/删除/清空）+ 快捷键提示。
-- 中区「画布」：`grid 1fr` 填满，缩放条改画布内浮动条，画布最大化、消留白。
-- 右栏「画了什么」：图例预览卡 + 对象明细卡（+ 可选选中属性）。
-- 底部「出图工作流」可折叠：给 agent 说明 + 发给 agent + 导出 + task 状态 + "查看 SVG 草稿"（改为按钮展开抽屉，不再常驻空面板）。
-- **运行结果**：从 `page-shell` 公共区归位到命令页内部（优先），workbench 不再显示。
+#### P1-1：`#workbenchStatus` 被 hidden → 所有操作反馈和报错对用户消失
 
-### 实施边界（重要）
+- 现状：`index.html:368` `<div ... id="workbenchStatus" hidden>`
+- 但 `setStatus()`（workbench.js:181-186）只往 `#workbenchStatus` 写
+- 后果：「已保存草图」「已添加：功能区 1」「多边形至少需要 3 个点」「schema 校验失败」**全部写进隐藏元素，用户什么都看不到**
+- 计划原文（§2 中区）："`workbench-status` 文案改为画布角落轻提示或并入顶栏状态徽章，不单占一行"
+- **要求**：给 setStatus 一个可见出口。建议做成**画布右下角浮动 toast**（跟 `.canvas-toolbar` 一样 `position:absolute` 浮在画布上，3 秒淡出），或并入顶栏。**不能 hidden。**
 
-- **纯前端布局/CSS 重排**，不改绘图/弧线/schema/agent 协议逻辑。
-- **保留所有现有 id 与事件绑定**（`#workbenchStage` / `#sketchOverlay` / `#objectList` / `#zoneLegendPreview` / `#drawingSpecificTools` / `#sendToAgent` / `#svgDraftPreview` / `#output` / `#resultHint` / `#canvasZoom*` / `#finishObject`…）——只移动位置/容器 + 调样式，**不改 id、不删元素**（app.js/workbench.js 靠 id 取元素）。
-- 画布二层结构（`stage.style.width` 缩放、`preserveAspectRatio="none"`、handle 屏幕恒定）不动。
-- 完成后跑 `node --check` / `validate_record`，人工核对加载/保存/缩放/绘制/图例/对象选择/发给 agent 全链路不回退。
+#### P1-2：底图上传整组被 hidden → 用户无法上传底图
 
-### 红线
+- 现状：`index.html:369-373` 整个 `<div class="workbench-toolbar" hidden>` 包着 `#baseImagePath` / `#baseImageFile` / `#uploadBaseImage`，JS 里没有任何地方取消这个 hidden
+- 后果：新项目 / 新图种没有底图时，**画布永远停在「请先加载底图」，没有任何上传入口**。BQ-PARK 因为 master_plan.jpg 已存在暂时没暴露，但这是真回退
+- 计划原文（§2 顶栏）："底图路径/上传底图从主区移走：放进顶栏一个「底图」弹出小面板，或并入底部工作流的'设置'区"
+- **要求**：把这组挪进**顶栏「底图」弹出 popover**（点一个「底图」按钮展开），或 **footer 出图工作流里加一个「底图设置」段**。要可点可上传，**不能 hidden。**
 
-- ❌ 不动绘图/弧线/schema/协议（本次只排版）
-- ❌ 不删/改现有 id；`#output`/`result-panel` 只归位不删
+#### P2-1：`#styleStrip` 被 hidden + 徽章不显示风格态 → 风格状态无处可见
+
+- 现状：`index.html:367` `#styleStrip` hidden；顶栏徽章 `drawingWorkspaceState`（workbench.js:433）只显示「可编辑 / 有未保存修改 / 待设计」，**不含风格态**
+- 后果：`styleStrip` 原本会提示「当前风格：未建立 style_spec，请到对话窗口与 agent 协商」——这条对「项目还没协商过风格」的用户是关键引导，现在彻底看不见
+- 计划原文（§2 顶栏 mockup）：徽章应携带「可编辑 · **已批准风格**」
+- **要求**（两选一）：
+  1. 顶栏徽章补风格态：`可编辑 · 已批准风格` / `可编辑 · 未建立风格`（推荐，最贴 mockup）；或
+  2. 左栏风格卡标题区保留一条可见的 styleStrip 文案
+- 优先级低于 P1，但请一并处理，别让「未建风格」的引导丢失
+
+### C. 修法建议（仍是纯前端，不破红线）
+
+- P1-1 toast：复用 `.canvas-toolbar` 的浮层套路，加 `#workbenchStatus` 的可见样式（移出 hidden，定位到画布角），setStatus 不用改逻辑
+- P1-2 底图：顶栏加「底图」按钮 + 一个 `popover`/下拉容器，把现有 3 元素原封不动搬进去（id 不变）
+- P2-1：在 `renderWorkspaceMeta()` 拼徽章文案时追加风格态（读 `state.styleSpec?.approved_at`），或解除 styleStrip 的 hidden 放进风格卡头部
+- 这 3 处都只是「把已存在的元素从 hidden 容器搬到可见容器 + 加样式」，**不新增逻辑、不改 id、不碰 schema/协议**
+
+### D. 红线（不变）
+
+- ❌ 不动绘图/弧线/schema/协议逻辑（本次仍只排版）
+- ❌ 不删 / 不改现有 id；搬家时元素整体移动，id 原样保留
 - ❌ 不碰 `agent_drawing_protocol.md`；不 stage 运行产物；不删用户未跟踪文件
 
-### 下一步
+### E. 下一步
 
-按 `PLAN_2026-05-27_WORKBENCH_LAYOUT_REDESIGN.md` + 原型重排 `index.html`/`workbench.css`，回推 diff + 截图，我核验布局与"无功能回退"。
+修这 3 处后回推 diff + **3 张截图**：
+1. 画布上做一次操作（如完成分区）→ 截到可见的 status toast / 徽章反馈
+2. 顶栏「底图」面板（或 footer 底图段）展开态，能看到上传入口
+3. 一个**未建立 style_spec 的项目**打开 workbench → 截到「未建立风格」的可见引导
+
+我核验「3 处可见 + 全链路无回退」后给最终合并 GO。结构部分已通过，无需再审。
