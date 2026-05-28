@@ -229,3 +229,39 @@ Wave B 当前处于打回状态（T1/T2 未落地）。**把本方案与 T1/T2 �
 - 松手**不**自动变直；**双击**圆点才还原直线；还原最后一条弧后 save 回到 `1.0`/无 segments。
 - 纯点击圆点（不拖）→ 无变化、**不产生** undo 步；一次拖拽 = 一步 undo。
 - 触屏/笔拖动同样顺滑，页面不跟随滚动。
+
+---
+
+## 12. 修订 v3（基于 `d6b4a49` 实测：拖动已通，但单击加点、双击不还原）
+
+`d6b4a49` 的拖拽根因已修对（document 级 move/up + `state.arcDrag` 存活于重渲染），**拖动现在正常**。剩两个交互 bug：
+
+### 12.1 单击圆点会生成新点
+
+- `addPoint` 绑在 `#sketchOverlay` 的 **`click`**（line 1971）。
+- 圆点 handle 只拦了 `pointerdown`（line 1711），**没拦 `click`**；对象选择拦截器又用 `:not(.zone-arc-handle)`（line 1702）把圆点排除。
+- → 合成的 `click` 冒泡到 overlay → `addPoint` 加点，并因 `addPoint` 里 `state.selectedId=""`（line 1258）顺带取消选中、handle 消失。
+
+### 12.2 双击不还原直线
+
+- 第一次 click 即加点 → 重渲染 → handle 销毁 → 第二次 click 落到新元素，dblclick 凑不齐。修好 12.1 后，单击不再加点/不重渲染，handle 稳定，dblclick 自然能触发。
+- 另：`pointerdown` 里 `overlay.setPointerCapture`（line 1713）在**纯点击**时也捕获，会把 click/dblclick 重定向到 overlay，干扰 handle 的 dblclick。
+
+### 12.3 修法
+
+1. **`addPoint` 顶部加守卫（最稳）**：
+   ```js
+   if (event.target.closest && event.target.closest(".zone-arc-handle")) return;
+   ```
+   即来源于圆点的事件一律不加点、不取消选中。这条不依赖捕获/冒泡细节，最稳。
+2. **圆点补 `click` 拦截**：给 `.zone-arc-handle` 加 `click` 监听 `event.stopPropagation()`（+ `preventDefault`），双保险。
+3. **去掉 `pointerdown` 里的 `setPointerCapture`（line 1713）**：document 级 move/up 已覆盖全程事件，capture 多余，且它会重定向 click/dblclick 干扰双击。改为 CSS 给 `.zone-arc-handle` / overlay 加 `touch-action: none` 防触屏滚动即可。`pointerdown` 只保留 `stopPropagation` + 记录 `state.arcDrag`。
+4. **dblclick 保留**：`.zone-arc-handle` 的 `dblclick` → `convertSegmentToLine`（已在 line 1722-1727）。修好 1-3 后即可稳定触发。
+
+### 12.4 验收（v3）
+
+- 单击圆点 → **无变化**：不加点、不取消选中、handle 仍在。
+- 双击圆点 → 该边还原直线；还原最后一条弧后 save 回 `1.0`/无 segments。
+- 按住圆点拖动 → 成弧 / 调弧度（拖动行为不回退）。
+- 在画布**空白处**单击（非圆点）→ 仍正常加点（不被误伤）。
+- 选中态点圆点不应使对象被取消选中。
