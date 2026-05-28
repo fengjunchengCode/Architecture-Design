@@ -985,3 +985,119 @@
   font: inherit;
   font-size: 12px;
 }
+
+/* =================================================================== */
+/* ===== WORKBENCH STUDIO v3 (full-bleed) — see prototype html ====== */
+/* =================================================================== */
+.wb3{
+  --act-w:64px; --insp-w:330px; --top-h:54px;
+  --line3:#ddd5c5; --line-soft3:#e8e1d2; --panel3:#fbf8f1; --panel2-3:#f3eee2;
+  --ink3:#2b2722; --muted3:#8a8173; --faint3:#b4ab99;
+  --accent3:#1f6f5b; --accent-soft3:rgba(31,111,91,.10); --accent-line3:rgba(31,111,91,.32);
+  --canvas3:#fcfaf4; --grid3:rgba(43,39,34,.055); --grid-strong3:rgba(43,39,34,.10);
+  --shadow3:0 1px 2px rgba(43,39,34,.06),0 8px 26px rgba(43,39,34,.08);
+  --shadow-pop3:0 10px 34px rgba(43,39,34,.16);
+  height:100vh; width:100vw;
+  display:grid; grid-template-columns:var(--act-w) 1fr;
+  background:var(--panel3); color:var(--ink3); overflow:hidden;
+}
+
+/* ---- LEFT ACTIVITY RAIL ---- */
+.wb3-act{background:var(--panel3);border-right:1px solid var(--line3);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px;z-index:30}
+.wb3-logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(150deg,var(--accent3),#15493b);color:#f4efe4;display:grid;place-items:center;font-weight:700;font-size:16px;border:0;cursor:pointer;box-shadow:0 4px 12px rgba(31,111,91,.32);margin-bottom:8px}
+.wb3-act-scroll{flex:1;display:flex;flex-direction:column;gap:4px;overflow:auto;align-items:center;width:100%}
+.wb3-act-scroll::-webkit-scrollbar{width:0}
+.wb3-act-sep{width:26px;height:1px;background:var(--line3);margin:6px 0}
+.wb3-act-btn{position:relative;width:44px;height:44px;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;color:var(--muted3);display:grid;place-items:center;font-size:18px;transition:.16s}
+.wb3-act-btn:hover{background:var(--panel2-3);color:var(--ink3)}
+.wb3-basewrap{position:relative}
+.wb3-pop{position:absolute;left:54px;bottom:0;z-index:80;width:248px;background:var(--panel3);border:1px solid var(--line3);border-radius:12px;box-shadow:var(--shadow-pop3);padding:14px;display:flex;flex-direction:column;gap:10px}
+.wb3-pop[hidden]{display:none}
+.wb3-pop h5{font-size:12px;margin:0}
+.wb3-pop label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted3)}
+.wb3-pop input[type=text]{border:1px solid var(--line3);border-radius:7px;padding:7px 9px;font:inherit;font-size:12px;background:var(--panel2-3)}
+
+/* ---- drawing-type buttons (rendered into #drawingTabs as .drawing-tab) ---- */
+.wb3-act-scroll .drawing-tab{position:relative;width:44px;height:44px;padding:0;border-radius:10px;border:1px solid transparent;background:none;cursor:pointer;color:var(--muted3);display:grid;place-items:center;font:inherit;font-size:15px;font-weight:600;transition:.16s}
+.wb3-act-scroll .drawing-tab:hover{background:var(--panel2-3);color:var(--ink3)}
+.wb3-act-scroll .drawing-tab.active{background:var(--accent-soft3);color:var(--accent3);border-color:var(--accent-line3)}
+.wb3-act-scroll .drawing-tab.active::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--accent3)}
+.wb3-act-scroll .drawing-tab.planned{opacity:.4}
+.wb3-act-scroll .drawing-tab small{display:none}
+.wb3-act-scroll .drawing-tab .wb3-tip{position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--ink3);color:#f6f1e7;padding:5px 9px;border-radius:7px;font-size:11.5px;font-weight:400;white-space:nowrap;opacity:0;pointer-events:none;transition:.14s;z-index:60;box-shadow:var(--shadow-pop3)}
+.wb3-act-scroll .drawing-tab:hover .wb3-tip{opacity:1}
+
+/* ---- MAIN COLUMN ---- */
+.wb3-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.wb3-top{height:var(--top-h);flex-shrink:0;background:var(--panel3);border-bottom:1px solid var(--line3);display:flex;align-items:center;gap:14px;padding:0 16px}
+.wb3-title{display:flex;flex-direction:column;gap:1px;min-width:0}
+.wb3-title .crumb{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.wb3-title b{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px}
+.wb3-badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--accent3);background:var(--accent-soft3);padding:3px 10px;border-radius:999px;font-weight:500}
+.wb3-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent3)}
+.wb3-spacer{flex:1}
+.wb3-btn{border:1px solid var(--line3);background:var(--panel3);color:var(--ink3);height:34px;padding:0 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:12.5px;display:inline-flex;align-items:center;gap:7px;transition:.15s;white-space:nowrap}
+.wb3-btn:hover{border-color:var(--accent3);color:var(--accent3)}
+.wb3-btn.primary{background:var(--accent3);border-color:var(--accent3);color:#f5f0e4}
+.wb3-btn.primary:hover{background:#1a5d4c;color:#fff}
+.wb3-btn:disabled{opacity:.45;cursor:not-allowed}
+.wb3-iconbtn{width:34px;padding:0;justify-content:center;color:var(--muted3);font-size:15px}
+.wb3-iconbtn.on{background:var(--accent-soft3);border-color:var(--accent-line3);color:var(--accent3)}
+.wb3-topdiv{width:1px;height:24px;background:var(--line3)}
+
+/* ---- WORK AREA ---- */
+.wb3-work{flex:1;display:grid;grid-template-columns:1fr var(--insp-w);min-height:0;transition:grid-template-columns .22s cubic-bezier(.4,0,.2,1)}
+.wb3-work.insp-collapsed{grid-template-columns:1fr 0}
+.wb3-work[hidden]{display:none}
+
+/* ---- CANVAS (override reused internals) ---- */
+.wb3-stage-wrap{position:relative;min-width:0;min-height:0;overflow:hidden;
+  background:
+    linear-gradient(var(--grid3) 1px,transparent 1px) 0 0/26px 26px,
+    linear-gradient(90deg,var(--grid3) 1px,transparent 1px) 0 0/26px 26px,
+    linear-gradient(var(--grid-strong3) 1px,transparent 1px) 0 0/130px 130px,
+    linear-gradient(90deg,var(--grid-strong3) 1px,transparent 1px) 0 0/130px 130px,
+    var(--canvas3);
+}
+.wb3 .workbench-canvas{position:absolute;inset:0;width:100%;height:100%;overflow:auto;border:0;border-radius:0;background:none}
+.wb3 .workbench-status{position:absolute;left:16px;bottom:20px;top:auto;right:auto;transform:none;max-width:60%;z-index:8}
+
+/* zoom pill (top-right) */
+.wb3-zoom{position:absolute;top:14px;right:14px;z-index:9;display:flex;align-items:center;gap:2px;background:rgba(251,248,241,.92);backdrop-filter:blur(8px);border:1px solid var(--line3);border-radius:11px;padding:4px;box-shadow:var(--shadow3)}
+.wb3-zoom button{min-width:30px;height:28px;border:0;background:none;border-radius:7px;cursor:pointer;color:var(--ink3);font:inherit;font-size:15px;display:grid;place-items:center}
+.wb3-zoom button:hover{background:var(--panel2-3)}
+.wb3-zoom .wb3-zoomval{font-size:12px;font-weight:500;min-width:52px}
+.wb3-zoom .wb3-zoomhint{font-size:10px;color:var(--faint3);padding:0 8px 0 4px;border-left:1px solid var(--line3);margin-left:2px;height:18px;display:flex;align-items:center}
+
+/* action dock (bottom-center) */
+.wb3-dock{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:9;display:flex;align-items:center;gap:3px;background:rgba(43,39,34,.92);backdrop-filter:blur(10px);border-radius:13px;padding:6px;box-shadow:var(--shadow-pop3)}
+.wb3-dock button{height:34px;padding:0 13px;border:0;border-radius:9px;background:none;color:#e9e3d6;cursor:pointer;font:inherit;font-size:12.5px;transition:.14s}
+.wb3-dock button:hover{background:rgba(255,255,255,.10);color:#fff}
+.wb3-dock button:disabled{opacity:.4;cursor:not-allowed}
+.wb3-dock button.key{background:var(--accent3);color:#fff}
+.wb3-dock button.key:hover{background:#27876f}
+.wb3-dock button.key:disabled{opacity:.5}
+.wb3-dock .wb3-dockdiv{width:1px;height:20px;background:rgba(255,255,255,.16);margin:0 3px}
+
+/* ---- RIGHT INSPECTOR ---- */
+.wb3-insp{background:var(--panel3);border-left:1px solid var(--line3);display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.wb3-insp-head{height:38px;flex-shrink:0;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--line-soft3);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint3)}
+.wb3-insp-body{flex:1;overflow:auto;padding:4px 0}
+.wb3-sect{border-bottom:1px solid var(--line-soft3)}
+.wb3-sect-h{width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 14px;background:none;border:0;cursor:pointer;font:inherit;color:var(--ink3)}
+.wb3-sect-h b{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.wb3-sect-h .tag{font-size:10.5px;font-weight:400;color:var(--faint3)}
+.wb3-sect-h .chev{transition:.18s;color:var(--muted3)}
+.wb3-sect.open .chev{transform:rotate(90deg)}
+.wb3-sect-c{display:none;padding:0 14px 14px}
+.wb3-sect.open .wb3-sect-c{display:block}
+.wb3-flowrow{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.wb3-flowstat{font-size:11px;color:var(--muted3)}
+.wb3-flowbtns{display:flex;gap:8px}
+.wb3-flowbtns .wb3-btn{flex:1;justify-content:center}
+.wb3-sect-c textarea{width:100%;border:1px solid var(--line3);border-radius:7px;padding:8px 10px;font:inherit;font-size:12px;background:var(--panel2-3);resize:vertical}
+
+/* ---- responsive: auto-collapse inspector on narrow ---- */
+@media (max-width:1040px){
+  .wb3-work{grid-template-columns:1fr 0}
+}
