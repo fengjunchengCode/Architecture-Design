@@ -820,6 +820,25 @@ function setActiveProject(code, options = {}) {
   notifyUploaderState();
 }
 
+const PAGE_META = {
+  project: { title: "创建或选择项目", badge: "项目", crumb: "Architecture Design / Project" },
+  s0: { title: "S0 建档输入", badge: "S0", crumb: "Architecture Design / S0 Intake" },
+  s1: { title: "S1 区位输入", badge: "S1", crumb: "Architecture Design / S1 Location" },
+  s2: { title: "S2 地形与配准输入", badge: "S2", crumb: "Architecture Design / S2 Terrain" },
+  workbench: { title: "图纸工作台", badge: "图纸", crumb: "Architecture Design / Drawing Studio" },
+  status: { title: "项目检查", badge: "状态", crumb: "Architecture Design / Status" },
+};
+
+function updateStudioChrome() {
+  const meta = PAGE_META[state.page] || PAGE_META.project;
+  const crumb = $("#studioCrumb");
+  if (crumb) crumb.textContent = state.project ? `${state.project} / ${meta.crumb.split(" / ").pop()}` : meta.crumb;
+  const title = $("#studioTitle");
+  if (title) title.textContent = meta.title;
+  const badge = $("#studioPageBadge");
+  if (badge) badge.textContent = meta.badge;
+}
+
 function setControls() {
   const typed = typedProjectCode();
   const mismatch = Boolean(state.project && typed && typed !== state.project);
@@ -841,7 +860,7 @@ function setControls() {
   document.querySelectorAll(".page").forEach((pageEl) => {
     pageEl.classList.toggle("active", pageEl.dataset.page === state.page);
   });
-  document.body.classList.toggle("workbench-mode", state.page === "workbench");
+  $(".studio-pages")?.classList.toggle("workbench-active", state.page === "workbench");
 
   document.querySelectorAll("[data-page].stage-tab").forEach((tab) => {
     tab.disabled = !canOpenPage(tab.dataset.page);
@@ -887,6 +906,7 @@ function setControls() {
   renderCadPreview();
   renderAlignment();
   syncAmapUi();
+  updateStudioChrome();
 }
 
 function renderStaleBanner() {

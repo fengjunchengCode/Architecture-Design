@@ -4,49 +4,58 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Architecture Intake</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="/workbench/workbench.css">
     <script src="https://webapi.amap.com/loader.js"></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="mast">
-        <div>
-          <p class="eyebrow">Architecture Design Workflow</p>
-          <h1>项目资料投递台</h1>
+    <main class="studio-shell">
+      <nav class="studio-act" aria-label="主导航">
+        <button class="studio-logo" id="studioLogo" type="button" title="Architecture Design">建</button>
+        <div class="studio-act-scroll">
+          <button class="stage-tab studio-act-btn active" id="tabProject" data-page="project">
+            <span class="glyph">项</span>
+            <span class="tip">创建 / 选择项目</span>
+          </button>
+          <button class="stage-tab studio-act-btn locked" id="tabS0" data-page="s0">
+            <span class="glyph">S0</span>
+            <span class="tip">资料投递 / 准入</span>
+          </button>
+          <button class="stage-tab studio-act-btn locked" id="tabS1" data-page="s1">
+            <span class="glyph">S1</span>
+            <span class="tip">高德中心点 / 区位图</span>
+          </button>
+          <button class="stage-tab studio-act-btn locked" id="tabS2" data-page="s2">
+            <span class="glyph">S2</span>
+            <span class="tip">DWG / 控制点</span>
+          </button>
+          <button class="stage-tab studio-act-btn locked" id="tabWorkbench" data-page="workbench">
+            <span class="glyph">图</span>
+            <span class="tip">图纸工作台</span>
+          </button>
+          <button class="stage-tab studio-act-btn locked" id="tabStatus" data-page="status">
+            <span class="glyph">态</span>
+            <span class="tip">Inventory / Validate</span>
+          </button>
         </div>
-        <div class="status-pill" id="activeProject">未选择项目</div>
-      </section>
+      </nav>
 
-      <div class="workspace">
-        <nav class="stage-nav" aria-label="阶段输入页面">
-          <button class="stage-tab active" id="tabProject" data-page="project">
-            <b>项目</b>
-            <span>创建 / 选择</span>
-          </button>
-          <button class="stage-tab locked" id="tabS0" data-page="s0">
-            <b>S0 建档</b>
-            <span>资料投递 / 准入</span>
-          </button>
-          <button class="stage-tab locked" id="tabS1" data-page="s1">
-            <b>S1 区位</b>
-            <span>高德中心点 / 区位图</span>
-          </button>
-          <button class="stage-tab locked" id="tabS2" data-page="s2">
-            <b>S2 地形</b>
-            <span>DWG / 控制点</span>
-          </button>
-          <button class="stage-tab locked" id="tabWorkbench" data-page="workbench">
-            <b>图纸</b>
-            <span>图纸工作台</span>
-          </button>
-          <button class="stage-tab locked" id="tabStatus" data-page="status">
-            <b>状态</b>
-            <span>Inventory / Validate</span>
-          </button>
-        </nav>
+      <section class="studio-main">
+        <header class="studio-top">
+          <div class="studio-title">
+            <span class="crumb" id="studioCrumb">Architecture Design / Project</span>
+            <b id="studioTitle">创建或选择项目</b>
+          </div>
+          <span class="studio-badge" id="studioPageBadge">项目</span>
+          <span class="studio-spacer"></span>
+          <div class="status-pill" id="activeProject">未选择项目</div>
+        </header>
 
-        <section class="page-shell">
+        <section class="studio-pages page-shell">
+
           <section class="page active" data-page="project">
             <div class="page-head">
               <div>
@@ -146,7 +155,7 @@
             </section>
 
             <div class="handoff-note">
-              S0 输入完成后，回到对话里说“执行 S0”。不需要先进入 S1 或 S2。
+              S0 输入完成后，回到对话里说"执行 S0"。不需要先进入 S1 或 S2。
             </div>
           </section>
 
@@ -195,7 +204,7 @@
             </section>
 
             <div class="handoff-note">
-              S1 输入完成后，回到对话里说“执行 S1”。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
+              S1 输入完成后，回到对话里说"执行 S1"。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
             </div>
           </section>
 
@@ -238,7 +247,7 @@
                 </div>
                 <div class="cad-preview-layout">
                   <div class="cad-preview-frame" id="cadPreviewFrame">
-                    <div class="control-empty">上传 DWG/DXF 后，点击“生成 CAD 预览”。</div>
+                    <div class="control-empty">上传 DWG/DXF 后，点击"生成 CAD 预览"。</div>
                   </div>
                   <div class="cad-candidate-list" id="cadCandidateList">
                     <div class="control-empty">候选 CAD 控制点会显示在这里。</div>
@@ -252,7 +261,7 @@
                     <b>地图拾取</b>
                     <span id="s2AmapStatus">等待候选点</span>
                   </div>
-                  <div class="active-candidate" id="s2ActiveCandidate">先在左侧候选点点击“地图拾取”。</div>
+                  <div class="active-candidate" id="s2ActiveCandidate">先在左侧候选点点击"地图拾取"。</div>
                   <div class="amap-map" id="s2AmapMap">
                     <div class="map-empty">地图会从 S1 中心点启动；不会使用默认城市。</div>
                   </div>
@@ -285,7 +294,7 @@
 
               <!-- LEFT ACTIVITY RAIL -->
               <nav class="wb3-act">
-                <button class="wb3-logo" id="wbHome" type="button" title="返回阶段">建</button>
+                <button class="wb3-logo" id="wbHome" type="button" title="返回项目">建</button>
                 <div class="wb3-act-scroll" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
                 <input id="drawingType" type="hidden" value="functional_zoning">
                 <div class="wb3-act-sep"></div>
@@ -421,17 +430,18 @@
                 <button id="runValidateStatus">校验 Record</button>
               </div>
             </section>
+
+            <section class="result-panel">
+              <div class="result-title">
+                <b>运行结果</b>
+                <span id="resultHint">准备就绪</span>
+              </div>
+              <div id="output" class="human-output">准备就绪。</div>
+            </section>
           </section>
 
-          <section class="result-panel">
-            <div class="result-title">
-              <b>运行结果</b>
-              <span id="resultHint">准备就绪</span>
-            </div>
-            <div id="output" class="human-output">准备就绪。</div>
-          </section>
         </section>
-      </div>
+      </section>
     </main>
     <script src="/app.js"></script>
     <script src="/workbench/workbench.js"></script>

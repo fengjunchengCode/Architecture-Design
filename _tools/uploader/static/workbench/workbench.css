@@ -997,7 +997,7 @@
   --canvas3:#fcfaf4; --grid3:rgba(43,39,34,.055); --grid-strong3:rgba(43,39,34,.10);
   --shadow3:0 1px 2px rgba(43,39,34,.06),0 8px 26px rgba(43,39,34,.08);
   --shadow-pop3:0 10px 34px rgba(43,39,34,.16);
-  height:100vh; width:100vw;
+  height:100%; width:100%; min-height:0;
   display:grid; grid-template-columns:var(--act-w) 1fr;
   background:var(--panel3); color:var(--ink3); overflow:hidden;
 }
