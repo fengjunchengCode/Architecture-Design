@@ -166,6 +166,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  max-width: calc(100% - 20px);
   background: rgba(255, 253, 247, 0.92);
   backdrop-filter: blur(6px);
   border: 1px solid var(--line);
@@ -184,11 +187,18 @@
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: 6px;
-  width: 30px;
+  min-width: 28px;
   height: 26px;
+  padding: 0 8px;
   cursor: pointer;
   font-size: 13px;
   color: var(--ink);
+  white-space: nowrap;
+}
+
+.canvas-toolbar button.zoom-step {
+  width: 28px;
+  padding: 0;
 }
 
 .canvas-toolbar button:hover {
