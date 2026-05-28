@@ -6,47 +6,36 @@
 
 ---
 
-## 2026-05-28 mac claude → Codex：全 App Studio 化计划审阅 — 方向通过 ✓，3 处必须改后再实施
+## 2026-05-28 mac claude → 用户/Codex：剩余图纸工作台「需求讨论稿」审阅
 
-审阅对象：`docs/PLAN_2026-05-28_WHOLE_APP_STUDIO_REFACTOR.md` + `docs/prototypes/whole_app_studio_text_prototype.html`。
+审阅对象：`docs/PLAN_2026-05-28_REMAINING_DRAWING_WORKBENCHES_DISCUSSION.md`（需求层面，不审实现）。
 
-### 总体：通过，方向与设计语言对
+### 总体：需求覆盖准确，可作为写计划的基线
 
-- 全局活动栏 + 瘦顶栏 + 全屏内容、退役 `body.workbench-mode`、令牌提升为全局变量——都符合简报。
-- 设计决策 §1.1（全局一级栏 + 工作台二级 `#drawingTabs`）判断正确，理由成立。
-- §8 id 保留清单详尽，原型把所有现有 id 都嵌进去了，文本原型可被无视觉执行者照搬。
-- 增量分 6 wave、每 wave 有提交点和验证、红线完整。
+逐条比对了用户 10 条原始需求与 §3 每图配置：**全部覆盖，无遗漏、无曲解**。共享图元抽象（path / 多边形样式 / 线段样式 / 圆 / 三角 / 标注框 / 箭头文字）方向正确，把「线段中心点弧线」从多边形泛化到 path 是对的根因判断。PPT 逐页对照（P50–P60）结论可信，交通"沿线重复箭头"的纠偏已吸收。
 
-**核过的两点已确认安全**：(1) `state.amap.s1Map`/`s2Map` 路径正确（app.js:27/29/268）；(2) `location_map` 桶当前本就在 S0+S1 各一份（index.html:115/189），重复无新风险。
+下面是**定计划前要处理的几点**——分三类。
 
-### 必须改（实施前在计划里写死，否则会出 bug）
+### A. 必须先拍板的范围/方向（codex 写计划前锁死，否则全盘返工）
 
-#### M1：Wave 排序会让工作台在 Wave 1–5 期间烂掉
+1. **范围边界（§6 Q12 / §7.1）**：本轮是否**只做到 semantic JSON + task pack + 配图 manifest，不恢复 SVG/PPT 渲染**？这条最大、最先确认。与历史"暂停 deterministic render"一致，我倾向**只做语义层**。请用户一句话确认。
+2. **图纸类型 ID（§6 Q11）**：9 个英文 id 一旦进 schema / page_index / task_pack 就难改。建议用户直接确认该列表，锁死再开工。
+3. **线段是两点还是多段折线（§6 Q2）**：交通/消防/海绵的流线在 P54/P55/P58 里都是**多段路径**，两点线段不够用。建议**直接定义为开放 path（N 点 + 每段可弧线）**，不要只做两点。功能分区已是多点 path，复用即可。
 
-Wave 1 删 `body.workbench-mode`，但 `.wb3` 仍是 `height:100vh;width:100vw`，要到 **Wave 6** 才改成 `height:100%`。中间 Wave 1–5 工作台会 100vw 溢出在带 padding/64px 栏的容器里 → **破版**。这和"每 wave 可独立验证"矛盾。
+### B. 需求里"加多了"——建议回归功能分区的单类型模型（降复杂度 + 一致性）
 
-**改法（二选一，推荐 A）**：
-- **A**：把 Wave 6 的 `.wb3{height:100%;width:100%}` + `.studio-pages` 工作台态 padding:0 的修复**并入 Wave 1**（删 workbench-mode 的同一刻就把 .wb3 改成填满父容器），保证没有任何 wave 留下破页。
-- B：把 Wave 6 紧跟 Wave 1 执行，并在计划里注明"工作台在 W1→W6 之间已知降级"。
+4. **景观节点主/次、出入口主/次/车库这些"固定子类型"是讨论稿自己加的，用户原话没有**（用户只说"景观节点""出入口"）。§3.2 预置 `landscape_node_primary/secondary`、§3.3 预置 `main/secondary/garage_entrance`，把 Q5/Q6 又列成待确认，其实是自相矛盾。
+   - **建议**：标记类（圆形节点 / 三角出入口）**默认一个对象类型 + 用户自定义颜色和图例名**，跟 `functional_zone` 现在的模型一致（一个类型，逐对象改色/改名）。需要预设再加，别一上来铺三套子类型。
+   - **例外**：交通**流线**（车行/人行/地下车库）有各自制图惯例（色/虚实/箭头默认不同），固定子类型在这里更站得住，可保留。差别就在"标记 vs 流线"。
 
-#### M2：Wave 2 改 `#runInventory`/`#runValidate` 必须"替换"不是"新增"绑定
+### C. 需求稿该补/该收敛的点
 
-现 app.js **L1483-1484 已绑** `#runInventory`/`#runValidate`。你 Wave 2 的 `runAndShowStatus` 写法若是再 `addEventListener`，会**双重触发**（跑两次 + 两次 setPage）。
-
-**改法**：明确"**替换** L1483-1484 这两行"，不要新增第二个监听。`#runInventoryStatus`/`#runValidateStatus`（L1485-1486）保持原样不动。
-
-#### M3：Wave 3 的 `.resize()` 很可能是空操作，要核实真实 reflow 机制
-
-`state.amap.s1Map?.resize?.()` 里路径对，但 **AMap 2.0 的 Map 实例没有公开 `resize()` 方法**——`?.` 会让它静默不执行，等于没修。
-
-**改法**：先在浏览器实测切页后地图是否需要手动 reflow。AMap 2.0 多数情况自动随容器尺寸变化；新布局下容器有稳定高度（你已给 `min-height`），初始化时序应已 OK。若实测确需手动 nudge，用有效手段（如重设 `setFitView()`/`setCenter()` 或必要时重建），**不要依赖不存在的 `.resize()`**。把这条写成"实测驱动"，别留个空 `?.resize()` 假装修好。
-
-### 次要（按建议处理即可，不阻塞）
-
-- **N1 生产外壳用 §1.3 配方**（`.studio-shell height:100vh` grid + `.studio-main` flex 列 + `.studio-pages flex:1;overflow:auto`），**不要**照搬原型里的 `min-height:100vh`+`position:sticky` 变体，避免 body 与 studio-pages 双滚动。原型仅作结构示意。
-- **N2 字体走 Google Fonts CDN**，离线时回退 Microsoft YaHei UI（可接受）；以后可自托管。
-- **N3 `:has()` 已给 JS 类切换兜底**（`.studio-pages.workbench-active`），若担心浏览器兼容就直接用兜底那条。
+5. **【最高风险，必须写进需求】现有存档的向后兼容**：把 `geometry.kind` 从 `polygon/polyline/arrow` 泛化成 `path + closed`、把 `segments` 解除"强制闭合"后，**BQ-PARK 已存的 `functional_zoning.json`（polygon + segments 弧线）必须能无损读入**（老 polygon → path closed=true；老弧线 segments 保留）。讨论稿只提了 `fill_enabled→fill_mode` 的兼容（§2.2），**没提 geometry.kind 的迁移**。这条要明确写成需求，否则会把已认可的功能分区草图读坏。
+6. **标注框文字颜色规则可直接定死**：§2.6 留了"跟随父级 or 同色加深"两可，但用户需求 5 已明说"**与箭头同色**"。直接定**文字=箭头同色**，删掉"加深"选项，少一个待决项。
+7. **转弯半径箭头：直箭头即可（§6 Q7）**：用户原话"点击两个端点生成箭头确定方向"=直箭头。建议第一版做直箭头，别做弧形转弯箭头（"转弯半径"是语义标注，不必画成弯的）。请用户确认。
+8. **配图上传是本轮唯一动后端的能力**（新接口 + manifest，§2.8/§4.3）。需求上确认：工作台只管上传/列表/排序/说明，**不在画布手动摆放**（用户需求 2 已说"由 agent 自动排版"，§6 Q1 其实已被回答，可关闭）。并要求该 wave 不回退现有 task_pack。
+9. **图例分组规则要在计划里定义**：现在图例按"样式合并 functional_zone"。线段（按色/宽/虚实分组）、圆、三角进图例的**分组键**需要在计划阶段写清，讨论稿只说了"进图例"。
 
 ### 结论
 
-方向和结构通过，**M1/M2/M3 在计划文本里改实后即可让 Windows claude 开工**。改完不必再等我整轮复审这三点——M2/M3 很明确，M1 选 A 即可；Windows claude 实施回推后我按计划终审 + 看截图。
+需求方向**通过**，可以让 codex 据此写 `/goal` 实施计划——但**先让用户敲定 A 类 3 条（范围/ID/线段模型）**，并把 **C5 向后兼容**写成硬需求、按 **B4** 收敛标记子类型、按 C6/C7 关闭两个已可定的待决项。这几点定了再写计划，能显著少返工。计划写好后我做第二轮审。
