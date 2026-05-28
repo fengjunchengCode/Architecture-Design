@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>全 App Studio 化文本原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --paper:#efe9dc; --panel:#fbf8f1; --panel-2:#f3eee2;
+      --ink:#2b2722; --muted:#8a8173; --faint:#b4ab99;
+      --line:#ddd5c5; --line-soft:#e8e1d2;
+      --accent:#1f6f5b; --accent-soft:rgba(31,111,91,.10); --accent-line:rgba(31,111,91,.32);
+      --accent-2:#c2502f; --canvas:#fcfaf4; --grid:rgba(43,39,34,.055);
+      --shadow:0 1px 2px rgba(43,39,34,.06),0 8px 26px rgba(43,39,34,.08);
+      --shadow-pop:0 10px 34px rgba(43,39,34,.16);
+      --act-w:64px; --top-h:54px; --r:9px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans SC","Microsoft YaHei UI",sans-serif;font-size:13px}
+    .mono{font-family:"IBM Plex Mono",Consolas,monospace}
+    .studio-shell{min-height:100vh;display:grid;grid-template-columns:var(--act-w) 1fr;background:var(--panel)}
+    .studio-act{position:sticky;top:0;height:100vh;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px;z-index:30}
+    .studio-logo{width:40px;height:40px;border:0;border-radius:11px;background:linear-gradient(150deg,var(--accent),#15493b);color:#f4efe4;font-weight:700;font-size:16px;display:grid;place-items:center;box-shadow:0 4px 12px rgba(31,111,91,.32);margin-bottom:8px}
+    .studio-act-scroll{flex:1;display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;overflow:auto}
+    .stage-tab.studio-act-btn{position:relative;width:44px;height:44px;min-height:44px;padding:0;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+    .stage-tab.studio-act-btn b{font-size:0}
+    .stage-tab.studio-act-btn .glyph{font-size:14px;font-weight:700}
+    .stage-tab.studio-act-btn span:not(.glyph):not(.tip){display:none}
+    .stage-tab.studio-act-btn.active,.stage-tab.studio-act-btn.ready:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+    .stage-tab.studio-act-btn.active::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--accent)}
+    .stage-tab.studio-act-btn.locked{opacity:.38}
+    .tip{position:absolute;left:54px;top:50%;transform:translateY(-50%);white-space:nowrap;background:var(--ink);color:#f6f1e7;padding:5px 9px;border-radius:7px;font-size:11.5px;font-weight:400;opacity:0;pointer-events:none;box-shadow:var(--shadow-pop)}
+    .stage-tab:hover .tip{opacity:1}
+    .studio-main{min-width:0;display:flex;flex-direction:column;min-height:100vh}
+    .studio-top{height:var(--top-h);position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 16px}
+    .studio-title{display:flex;flex-direction:column;gap:1px;min-width:0}
+    .studio-title .crumb{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .studio-title b{font-size:15px;font-weight:600}
+    .studio-spacer{flex:1}
+    .studio-badge,.status-pill,.gate{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);height:28px;padding:0 10px;border-radius:999px;color:var(--muted);white-space:nowrap}
+    .studio-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+    .studio-pages{flex:1;min-width:0;overflow:auto;background:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/26px 26px,var(--canvas);padding:16px}
+    .page{display:block;margin:0 0 28px;padding:0;border:1px dashed rgba(31,111,91,.25)}
+    .proto-label{margin:0;padding:8px 10px;background:rgba(31,111,91,.10);color:var(--accent);font-weight:700}
+    .studio-page-grid{display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:14px;padding:14px}
+    .studio-page-grid.wide-left{grid-template-columns:minmax(520px,1.25fr) minmax(360px,.75fr)}
+    .studio-page-grid.single{grid-template-columns:minmax(0,1120px)}
+    .studio-card,.panel,.bucket,.result-panel,.spatial-box{border:1px solid var(--line);background:rgba(251,248,241,.94);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+    .studio-card h3,.panel h3{margin:0 0 8px;font-size:15px}
+    .studio-card p,.bucket-state,.map-hint,.active-note{color:var(--muted);line-height:1.5}
+    .form-grid{display:grid;gap:10px}
+    label span{display:block;color:var(--muted);margin:0 0 5px}
+    input,select,textarea{width:100%;min-height:36px;border:1px solid var(--line);border-radius:7px;background:#fffdf8;color:var(--ink);padding:8px 10px;font:inherit}
+    button,.button-link{min-height:34px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:0 12px;color:var(--ink);font:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+    .primary,.wb3-btn.primary{background:var(--accent);border-color:var(--accent);color:#f5f0e4}
+    .icon-button{width:34px;padding:0}
+    .project-list,.action-row,.inline-actions,.cad-preview-actions,.dirty-dialog-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .project-chip{border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:6px 10px}
+    .bucket{min-height:138px;display:grid;gap:10px}
+    .bucket-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .bucket-head b{display:block;font-size:16px}
+    .bucket-head span{color:var(--muted)}
+    .required{border-color:var(--accent-line)}
+    .handoff-note,.stale-banner{border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);border-radius:var(--r);padding:10px 12px;margin:14px}
+    .amap-panel{border:1px solid var(--line);border-radius:var(--r);background:var(--panel-2);padding:10px;display:grid;gap:8px}
+    .amap-head,.box-head,.result-title{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .amap-map{min-height:360px;border:1px solid var(--line);border-radius:var(--r);background:#fffdf8;display:grid;place-items:center;color:var(--muted);text-align:center;padding:20px}
+    .s2-map-panel .amap-map{min-height:420px}
+    .cad-preview-frame{min-height:440px;border:1px solid var(--line);border-radius:var(--r);background:#fffdf8;display:grid;place-items:center;color:var(--muted)}
+    .cad-candidate-list,.control-list{display:grid;gap:8px}
+    .control-item,.candidate-item,.summary-card{border:1px solid var(--line);border-radius:7px;background:#fffdf8;padding:9px}
+    .result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .human-output{display:grid;gap:10px}
+    pre{background:#151511;color:#f4ead5;padding:12px;border-radius:7px;white-space:pre-wrap}
+    .wb3{height:620px;width:100%;display:grid;grid-template-columns:64px 1fr;background:var(--panel);overflow:hidden}
+    .wb3-act{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px}
+    .wb3-logo,.wb3-act-btn{width:44px;height:44px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted)}
+    .wb3-logo{width:40px;height:40px;background:linear-gradient(150deg,var(--accent),#15493b);color:#f4efe4;font-weight:700}
+    .wb3-main{display:flex;flex-direction:column;min-width:0}
+    .wb3-top{height:54px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px}
+    .wb3-work{flex:1;display:grid;grid-template-columns:1fr 330px;min-height:0}
+    .wb3-stage-wrap{position:relative;min-height:0;background:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/26px 26px,var(--canvas)}
+    .workbench-canvas{position:absolute;inset:0;border:0;overflow:auto}
+    .workbench-stage{width:820px;height:474px;margin:68px auto;background:#fffdf8;border:1px solid var(--line);position:relative}
+    .wb3-zoom,.wb3-dock,.workbench-status{position:absolute;z-index:4}
+    .wb3-zoom{top:14px;right:14px;background:rgba(251,248,241,.92);border:1px solid var(--line);border-radius:11px;padding:4px}
+    .wb3-dock{left:50%;bottom:18px;transform:translateX(-50%);background:rgba(43,39,34,.92);border-radius:13px;padding:6px}
+    .wb3-dock button{color:#e9e3d6;background:none;border:0}
+    .workbench-status{left:16px;bottom:20px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+    .wb3-insp{border-left:1px solid var(--line);background:var(--panel);overflow:auto}
+    .wb3-insp-head{height:38px;border-bottom:1px solid var(--line-soft);padding:11px 14px;color:var(--faint);font-size:11px;letter-spacing:.12em}
+    .wb3-sect{border-bottom:1px solid var(--line-soft)}
+    .wb3-sect-h{width:100%;border:0;background:none;padding:11px 14px;justify-content:space-between}
+    .wb3-sect-c{padding:0 14px 14px}
+    @media(max-width:920px){
+      .studio-shell{grid-template-columns:52px 1fr}
+      .studio-page-grid,.studio-page-grid.wide-left,.bucket-grid,.result-grid{grid-template-columns:1fr}
+      .studio-top{gap:8px;padding:0 10px}
+      .studio-badge{display:none}
+    }
+  </style>
+</head>
+<body>
+  <main class="studio-shell">
+    <nav class="studio-act" aria-label="主导航">
+      <button class="studio-logo" type="button" title="Architecture Design">建</button>
+      <div class="studio-act-scroll">
+        <button class="stage-tab studio-act-btn active" id="tabProject" data-page="project" type="button"><span class="glyph">项</span><b>项目</b><span>创建 / 选择</span><span class="tip">项目 · 创建 / 选择</span></button>
+        <button class="stage-tab studio-act-btn locked" id="tabS0" data-page="s0" type="button"><span class="glyph">S0</span><b>S0 建档</b><span>资料投递 / 准入</span><span class="tip">S0 建档 · 资料投递 / 准入</span></button>
+        <button class="stage-tab studio-act-btn locked" id="tabS1" data-page="s1" type="button"><span class="glyph">S1</span><b>S1 区位</b><span>高德中心点 / 区位图</span><span class="tip">S1 区位 · 高德中心点 / 区位图</span></button>
+        <button class="stage-tab studio-act-btn locked" id="tabS2" data-page="s2" type="button"><span class="glyph">S2</span><b>S2 地形</b><span>DWG / 控制点</span><span class="tip">S2 地形 · DWG / 控制点</span></button>
+        <button class="stage-tab studio-act-btn locked" id="tabWorkbench" data-page="workbench" type="button"><span class="glyph">图</span><b>图纸</b><span>图纸工作台</span><span class="tip">图纸 · 工作台</span></button>
+        <button class="stage-tab studio-act-btn locked" id="tabStatus" data-page="status" type="button"><span class="glyph">检</span><b>状态</b><span>Inventory / Validate</span><span class="tip">状态 · Inventory / Validate</span></button>
+      </div>
+    </nav>
+
+    <section class="studio-main">
+      <header class="studio-top">
+        <div class="studio-title">
+          <span class="crumb" id="studioCrumb">Architecture Design / 未选择项目</span>
+          <b id="studioTitle">创建或选择项目</b>
+        </div>
+        <span class="studio-badge" id="studioPageBadge">项目</span>
+        <span class="studio-spacer"></span>
+        <div class="status-pill" id="activeProject">未选择项目</div>
+      </header>
+
+      <section class="studio-pages page-shell">
+        <section class="page active" data-page="project">
+          <p class="proto-label">项目页：左侧创建/打开，右侧已有项目列表；顶部动作只保留刷新。</p>
+          <div class="studio-page-grid">
+            <section class="studio-card">
+              <div class="amap-head"><h3>创建或打开项目</h3><button id="refreshProjects" class="icon-button" title="刷新项目">↻</button></div>
+              <div class="form-grid">
+                <label><span>项目代号</span><input id="projectCode" placeholder="26-SZ-NSXX" autocomplete="off"></label>
+                <label><span>项目名称</span><input id="projectName" placeholder="深圳南山某小学" autocomplete="off"></label>
+                <label><span>项目类型</span><select id="projectType">
+                  <option value="school">学校 / 教育建筑</option><option value="residential">住宅</option><option value="commercial">商业 / 办公</option><option value="park">公园 / 景观</option><option value="street_scape">街角 / 街道更新</option><option value="renovation">改造 / 更新</option><option value="hospital">医院 / 医疗</option><option value="cultural">文化建筑</option><option value="industrial">产业 / 工业</option><option value="cultural_tourism">文旅 / 多节点项目</option><option value="unknown">暂不确定</option>
+                </select></label>
+                <button id="createProject" class="primary">创建/打开项目</button>
+              </div>
+              <p class="active-note" id="projectHint">请先创建新项目，或从右侧已有项目中选择一个。</p>
+            </section>
+            <section class="studio-card">
+              <h3>已有项目</h3>
+              <div class="project-list" id="projectList"><button class="project-chip">26-BQ-PARK</button><button class="project-chip">26-SZ-NSXX</button></div>
+              <div class="handoff-note">打开项目后，左侧活动栏解锁 S0/S1/S2/图纸/状态。</div>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" data-page="s0">
+          <p class="proto-label">S0 建档：资料桶为主，右侧准入检查；运行结果跳转到状态页显示。</p>
+          <div class="studio-page-grid">
+            <section class="studio-card">
+              <h3>S0 资料桶</h3>
+              <p id="s0Hint">等待项目创建或选择。</p>
+              <div class="bucket-grid">
+                <article class="bucket" data-bucket="briefing"><div class="bucket-head"><b>需求类</b><span>任务书 / 补充说明</span></div><input type="file" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+                <article class="bucket required" data-bucket="location_map"><div class="bucket-head"><b>区位图</b><span>S0/S1 必选</span></div><input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+                <article class="bucket" data-bucket="site_photo"><div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div><input type="file" accept=".jpg,.jpeg,.png,.heic" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+                <article class="bucket" data-bucket="chat"><div class="bucket-head"><b>聊天记录</b><span>TXT / HTML / MD</span></div><input type="file" accept=".txt,.html,.md" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+                <article class="bucket" data-bucket="reference"><div class="bucket-head"><b>参考案例</b><span>图片 / PDF / MD</span></div><input type="file" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+              </div>
+            </section>
+            <aside class="studio-card">
+              <div class="amap-head"><h3>准入</h3><div class="gate" id="gateStatus">等待项目</div></div>
+              <p>这里保留 S0 入口动作，但结果显示在状态页内部。</p>
+              <div class="action-row"><button id="runInventory" class="primary">运行 Inventory</button><button id="runValidate">校验 Record</button></div>
+              <div class="handoff-note">执行 agent 完成 S0 后，回到本页补充资料或进入 S1。</div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page" data-page="s1">
+          <p class="proto-label">S1 区位：左侧中心点与上传，右侧高德地图占据主面积，地图容器必须有稳定高度。</p>
+          <div class="studio-page-grid">
+            <aside class="studio-card">
+              <div class="amap-head"><h3>地块中心点</h3><span id="amapStatus">等待项目</span></div>
+              <label><span>高德坐标（GCJ-02）</span><input id="centerLocation" placeholder="94.032582,31.92547" autocomplete="off"></label>
+              <div class="inline-actions"><button id="checkAmap">检查高德 Key</button><button id="saveCenter" class="primary">生成 S1 高德上下文</button></div>
+              <article class="bucket required" data-bucket="location_map"><div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div><input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+              <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
+            </aside>
+            <section class="amap-panel" id="s1AmapPanel">
+              <div class="amap-head"><b>内嵌高德地图</b><span id="s1AmapStatus">等待中心点</span></div>
+              <div class="amap-map" id="s1AmapMap"><div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div></div>
+              <p class="map-hint" id="s1AmapHint">点击地图会把 GCJ-02 坐标写入上方中心点输入框。</p>
+            </section>
+          </div>
+          <div class="handoff-note">S1 输入完成后，回到对话里说“执行 S1”。</div>
+        </section>
+
+        <section class="page" data-page="s2">
+          <p class="proto-label">S2 地形：CAD 预览与候选点为主，右侧地图拾取和控制点保存固定在同一列。</p>
+          <div class="s2-upload-row" style="padding:14px 14px 0">
+            <article class="bucket" data-bucket="topography"><div class="bucket-head"><b>地形图 / 红线图</b><span>DWG / DXF / PDF</span></div><input type="file" multiple><div class="bucket-state">未选择文件</div><button>上传到当前项目</button></article>
+          </div>
+          <div class="stale-banner" id="controlPointStaleBanner" hidden>旧控制点与当前 CAD 候选集不匹配。</div>
+          <div class="studio-page-grid wide-left">
+            <section class="studio-card cad-preview-panel">
+              <div class="box-head">
+                <div><h3>CAD 地形图与候选控制点</h3><span id="cadPreviewStatus">尚未生成 CAD 预览</span></div>
+                <div class="cad-preview-actions"><div class="cad-zoom-controls" aria-label="CAD 预览缩放"><button id="cadZoomOut" type="button">−</button><button id="cadZoomReset" type="button">100%</button><button id="cadZoomIn" type="button">+</button></div><button id="runCadPreview" class="primary">生成 CAD 预览</button></div>
+              </div>
+              <div class="cad-preview-layout">
+                <div class="cad-preview-frame" id="cadPreviewFrame">CAD SVG 预览，滚动/缩放，不裁切。</div>
+                <div class="cad-candidate-list" id="cadCandidateList"><div class="candidate-item">候选 CAD 控制点会显示在这里。</div></div>
+              </div>
+            </section>
+            <aside class="spatial-box s2-control-panel">
+              <div class="amap-panel s2-map-panel" id="s2AmapPanel">
+                <div class="amap-head"><b>地图拾取</b><span id="s2AmapStatus">等待候选点</span></div>
+                <div class="active-candidate" id="s2ActiveCandidate">先在左侧候选点点击“地图拾取”。</div>
+                <div class="amap-map" id="s2AmapMap"><div class="map-empty">地图会从 S1 中心点启动；不会使用默认城市。</div></div>
+                <p class="map-hint" id="s2AmapHint">点击地图后会把 GCJ-02 坐标写入当前 CAD 候选点并加入控制点列表。</p>
+                <a class="map-fallback" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">外部高德拾取器备用</a>
+              </div>
+              <div class="box-head"><b>已选地图点 ↔ CAD 点</b><span id="controlStatus">0 个控制点</span></div>
+              <div class="control-list" id="controlList"><div class="control-item">控制点列表为空。</div></div>
+              <div class="alignment-panel" id="alignmentPanel"><b>配准检查</b><p>加入至少 3 个点后自动检查。</p></div>
+              <div class="inline-actions"><span class="save-hint">保存后写入项目文件</span><button id="saveControlPoints" class="primary">保存控制点与配准报告</button></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page" data-page="workbench">
+          <p class="proto-label">图纸工作台：全局活动栏仍在最左；工作台内部保留第二级图纸类型栏，现有 v3 不回退。</p>
+          <div class="wb3" id="drawingWorkbench">
+            <nav class="wb3-act">
+              <button class="wb3-logo" id="wbHome" type="button" title="返回项目">建</button>
+              <div class="wb3-act-scroll" id="drawingTabs" role="tablist" aria-label="技术图纸类型"></div>
+              <input id="drawingType" type="hidden" value="functional_zoning">
+              <div class="wb3-act-sep"></div>
+              <div class="wb3-basewrap">
+                <button class="wb3-act-btn" id="toggleBasePanel" type="button" aria-expanded="false" title="底图设置">▦</button>
+                <div class="wb3-pop" id="basePanel" hidden>
+                  <h5>底图设置</h5>
+                  <label>底图路径<input id="baseImagePath" type="text" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
+                  <label>上传底图<input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png"></label>
+                  <button id="uploadBaseImage" class="wb3-btn">上传底图</button>
+                </div>
+              </div>
+            </nav>
+            <div class="wb3-main">
+              <header class="wb3-top">
+                <div class="wb3-title"><span class="crumb" id="wbCrumb">26-BQ-PARK</span><b><span id="drawingWorkspaceTitle">功能分区工作台</span> <span class="wb3-badge workspace-state enabled" id="drawingWorkspaceState">可编辑</span></b></div>
+                <span class="studio-spacer"></span>
+                <button class="wb3-btn" id="workbenchLoad" type="button">加载图纸</button><button class="wb3-btn primary" id="workbenchSave" type="button">保存草图</button><span class="wb3-topdiv"></span><button class="wb3-btn wb3-iconbtn on" id="toggleInspector" type="button" title="检查器面板">▭</button>
+              </header>
+              <div class="wb3-work" id="workbenchLayout">
+                <div class="wb3-stage-wrap">
+                  <div class="workbench-canvas" id="workbenchCanvas"><div class="workbench-stage" id="workbenchStage"><img id="baseImage" alt="底图"><svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg><div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div></div></div>
+                  <div class="wb3-zoom"><button id="canvasZoomOut" type="button">−</button><button class="wb3-zoomval" id="canvasZoomReset" type="button">100%</button><button id="canvasZoomIn" type="button">+</button><span class="wb3-zoomhint">Ctrl+滚轮</span></div>
+                  <div class="wb3-dock"><button class="key" id="finishObject" type="button">完成分区</button><span class="wb3-dockdiv"></span><button id="undoPoint" type="button">撤销</button><button id="redoAction" type="button">重做</button><span class="wb3-dockdiv"></span><button id="deleteObject" type="button">删除选中</button><button id="clearDraft" type="button">清空草图</button></div>
+                  <div class="workbench-status" id="workbenchStatus" role="status" aria-live="polite">状态 toast 位于画布左下。</div>
+                </div>
+                <aside class="wb3-insp" id="workbenchInspector">
+                  <div class="wb3-insp-head"><span>检查器</span></div>
+                  <div class="wb3-insp-body">
+                    <section class="wb3-sect open" data-sect="style"><button class="wb3-sect-h" type="button"><b>风格 <span class="tag">作用于新建/选中</span></b><span class="chev">▸</span></button><div class="wb3-sect-c"><div class="drawing-specific-tools" id="drawingSpecificTools"></div></div></section>
+                    <section class="wb3-sect open" data-sect="legend"><button class="wb3-sect-h" type="button"><b>图例预览 <span class="tag">按样式合并</span></b><span class="chev">▸</span></button><div class="wb3-sect-c"><div id="zoneLegendPreview"></div></div></section>
+                    <section class="wb3-sect open" data-sect="objects"><button class="wb3-sect-h" type="button"><b>对象明细</b><span class="chev">▸</span></button><div class="wb3-sect-c"><div id="objectList" class="object-list"></div></div></section>
+                    <section class="wb3-sect" data-sect="export"><button class="wb3-sect-h" type="button"><b>出图工作流</b><span class="chev">▸</span></button><div class="wb3-sect-c"><textarea id="taskUserNotes" rows="2" placeholder="给 agent 的说明"></textarea><div class="wb3-flowrow"><span class="wb3-flowstat" id="taskPackStatus">尚未生成 task_pack。</span><span class="wb3-flowstat" id="svgDraftStatus">等待 agent 生成。</span></div><object id="svgDraftPreview" type="image/svg+xml" data="" hidden></object><div class="wb3-flowbtns"><button id="exportDrawing" class="wb3-btn" disabled>导出 PNG/PDF</button><button id="sendToAgent" class="wb3-btn primary">发给 agent 出图</button></div></div></section>
+                  </div>
+                </aside>
+              </div>
+            </div>
+            <div class="style-strip" id="styleStrip" hidden>当前风格：未加载</div><p class="eyebrow" id="drawingWorkspaceDescription" hidden>标注功能区边界、名称和必要标签。</p><div class="planned-workspace" id="plannedWorkspace" hidden><b id="plannedTitle">该图纸工作台待设计</b><p id="plannedDescription">请在对话中定义该图纸的对象类型、输入方式和输出目标后再启用。</p></div><div class="dirty-dialog" id="dirtyDialog" hidden role="dialog" aria-modal="true" aria-labelledby="dirtyDialogTitle"><div class="dirty-dialog-panel"><b id="dirtyDialogTitle">当前图纸有未保存修改</b><p>切换图纸前，请选择如何处理当前草图。</p><div class="dirty-dialog-actions"><button id="dirtySaveSwitch" class="primary">保存并切换</button><button id="dirtyDiscardSwitch">丢弃并切换</button><button id="dirtyCancelSwitch">取消</button></div></div></div>
+          </div>
+        </section>
+
+        <section class="page" data-page="status">
+          <p class="proto-label">状态页：Inventory / Validate 的唯一输出归宿，#output/#resultHint 只在这里显示。</p>
+          <div class="studio-page-grid single">
+            <section class="studio-card">
+              <div class="amap-head"><h3>项目检查</h3><div class="gate" id="statusGate">等待项目</div></div>
+              <div class="action-row"><button id="runInventoryStatus" class="primary">运行 Inventory</button><button id="runValidateStatus">校验 Record</button></div>
+            </section>
+            <section class="result-panel">
+              <div class="result-title"><b>运行结果</b><span id="resultHint">准备就绪</span></div>
+              <div id="output" class="human-output"><div class="summary-card">准备就绪。</div></div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
