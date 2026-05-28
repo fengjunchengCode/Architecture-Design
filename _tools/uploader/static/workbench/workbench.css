@@ -629,3 +629,13 @@
   font-size: 11px;
   color: var(--muted);
 }
+
+/* 弧线拖拽圆点 */
+.zone-arc-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.zone-arc-handle:active {
+  cursor: grabbing;
+}

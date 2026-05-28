@@ -103,9 +103,9 @@ def normalize_drawing(data: dict[str, Any], *, project_code: str | None = None) 
     )
     objects = _normalize_objects(payload.get("objects"), drawing_type=drawing_type)
 
-    # T1: 条件写版本号 — 仅对象带 segments 才标 1.1，纯 polygon 仍 1.0
+    # T1: 条件写版本号 — 仅含 ≥1 条真弧（quadratic）才标 1.1
     has_segments = any(
-        "segments" in obj.get("geometry", {})
+        any(seg.get("kind") == "quadratic" for seg in obj.get("geometry", {}).get("segments", []))
         for obj in objects
     )
     out_version = "1.1" if has_segments else "1.0"
@@ -390,6 +390,10 @@ def _sample_segments(segments: list[dict[str, Any]]) -> list[list[float]]:
                 x = mt * mt * from_pt[0] + 2 * mt * t * control[0] + t * t * to_pt[0]
                 y = mt * mt * from_pt[1] + 2 * mt * t * control[1] + t * t * to_pt[1]
                 coords.append([round(x, 6), round(y, 6)])
-    # T2: 开环 — 最后一段终点 == coords[0]，不写进 coords
-    # （segments 闭合校验已保证 last.to == first.from）
+    # T2: 开环 — 去掉等于首点的尾点，保证 ≥3 点
+    if len(coords) > 3:
+        first = coords[0]
+        last = coords[-1]
+        if abs(first[0] - last[0]) < 1e-5 and abs(first[1] - last[1]) < 1e-5:
+            coords.pop()
     return coords

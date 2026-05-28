@@ -1063,7 +1063,8 @@
       .map((obj) => {
         if (isFunctionalZoning()) {
           const geometry = { kind: "polygon", coords: obj.geometry.coords };
-          if (obj.geometry.segments && obj.geometry.segments.length > 0) {
+          // T1: 仅含 ≥1 条真弧（quadratic）才持久化 segments
+          if (obj.geometry.segments && obj.geometry.segments.some((s) => s.kind === "quadratic")) {
             geometry.segments = obj.geometry.segments;
             geometry.coords = sampleSegments(obj.geometry.segments);
           }
@@ -1087,7 +1088,7 @@
           style_hints: {},
         };
       });
-    // T1: 条件写版本号 — 仅对象带 segments 才标 1.1
+    // T1: 条件写版本号 — 仅含 ≥1 条真弧（quadratic）才标 1.1
     const hasSegments = objects.some((obj) => obj.geometry && obj.geometry.segments);
     return {
       schema_version: hasSegments ? "1.1" : "1.0",
@@ -1126,7 +1127,14 @@
         }
       }
     }
-    // T2: 开环 — 不含等于首点的尾点
+    // T2: 开环 — 去掉等于首点的尾点，保证 ≥3 点
+    if (coords.length > 3) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (Math.abs(first[0] - last[0]) < 1e-5 && Math.abs(first[1] - last[1]) < 1e-5) {
+        coords.pop();
+      }
+    }
     return coords;
   }
 
@@ -1539,53 +1547,49 @@
     let html = "";
     const handleColor = darkenHex(style.fill_color, 0.28);
     segments.forEach((seg, i) => {
-      const [mx, my] = [(seg.from[0] + seg.to[0]) / 2, (seg.from[1] + seg.to[1]) / 2];
       if (seg.kind === "line") {
-        // 直线边：中点空心菱形 edge handle
-        html += renderEdgeHandle(mx, my, objectId, i);
+        // 直线边：中点空心圆点（可拖出弧）
+        const [mx, my] = [(seg.from[0] + seg.to[0]) / 2, (seg.from[1] + seg.to[1]) / 2];
+        html += renderArcHandle(mx, my, objectId, i, false);
       } else if (seg.kind === "quadratic") {
-        // quadratic 边：control handle + 辅助线
-        html += renderControlHandle(seg.control[0], seg.control[1], objectId, i, handleColor);
+        // quadratic 边：实心圆点（控制点）+ 辅助线
+        html += renderArcHandle(seg.control[0], seg.control[1], objectId, i, true, handleColor);
         html += renderControlGuide(seg.from, seg.control, seg.to, handleColor);
       }
     });
     return html;
   }
 
-  function renderEdgeHandle(x, y, objectId, segmentIndex) {
-    const stage = $("#workbenchStage");
-    const stageWidth = (stage && stage.getBoundingClientRect().width) || 1;
-    const stageHeight = (stage && stage.getBoundingClientRect().height) || 1;
-    const rx = Number((5 / stageWidth).toFixed(6));
-    const ry = Number((5 / stageHeight).toFixed(6));
+  function renderArcHandle(x, y, objectId, segmentIndex, isQuadratic, fillColor) {
+    const rx = getHandleRadiusX();
+    const ry = getHandleRadiusY();
+    const strokeW = getHandleStrokeWidth();
+    const color = fillColor || "#fff";
+    if (isQuadratic) {
+      return `
+        <ellipse
+          class="zone-arc-handle"
+          data-object-id="${escapeHtml(objectId)}"
+          data-segment-index="${segmentIndex}"
+          cx="${x}" cy="${y}" rx="${rx}" ry="${ry}"
+          fill="${color}"
+          stroke="#fff"
+          stroke-width="${strokeW}"
+          style="cursor:grab"
+        ></ellipse>
+      `;
+    }
     return `
-      <polygon
-        class="zone-edge-handle"
+      <ellipse
+        class="zone-arc-handle"
         data-object-id="${escapeHtml(objectId)}"
         data-segment-index="${segmentIndex}"
-        points="${x},${y - ry} ${x + rx},${y} ${x},${y + ry} ${x - rx},${y}"
+        cx="${x}" cy="${y}" rx="${rx}" ry="${ry}"
         fill="white"
         stroke="${darkenHex('#fff', 0.3)}"
-        stroke-width="${getHandleStrokeWidth()}"
-        style="cursor:pointer"
-      ></polygon>
-    `;
-  }
-
-  function renderControlHandle(cx, cy, objectId, segmentIndex, color) {
-    return `
-      <circle
-        class="zone-control-handle"
-        data-object-id="${escapeHtml(objectId)}"
-        data-segment-index="${segmentIndex}"
-        cx="${cx}"
-        cy="${cy}"
-        r="${getHandleRadiusX()}"
-        fill="${color}"
-        stroke="#fff"
-        stroke-width="${getHandleStrokeWidth()}"
+        stroke-width="${strokeW}"
         style="cursor:grab"
-      ></circle>
+      ></ellipse>
     `;
   }
 
@@ -1694,51 +1698,104 @@
         finishFunctionalZone();
       });
     });
-    overlay.querySelectorAll("[data-object-id]:not(.zone-edge-handle):not(.zone-control-handle)").forEach((shape) => {
+    overlay.querySelectorAll("[data-object-id]:not(.zone-arc-handle)").forEach((shape) => {
       shape.addEventListener("click", (event) => {
         event.stopPropagation();
         selectObject(shape.dataset.objectId);
       });
     });
-    // edge handle: 点击直线边转 quadratic
-    overlay.querySelectorAll(".zone-edge-handle").forEach((handle) => {
-      handle.addEventListener("click", (event) => {
+    // arc handle: pointer capture 单手势拖拽
+    const stage = $("#workbenchStage");
+    const stageRect = stage ? stage.getBoundingClientRect() : { width: 1, height: 1 };
+    const shortSide = Math.min(stageRect.width, stageRect.height) || 1;
+    const START_THRESHOLD = 3 / shortSide;
+    const CHORD_EPS = 4 / shortSide;
+    overlay.querySelectorAll(".zone-arc-handle").forEach((handle) => {
+      let drag = null;
+      handle.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
-        const objectId = handle.dataset.objectId;
-        const segIndex = Number(handle.dataset.segmentIndex);
-        convertSegmentToQuadratic(objectId, segIndex);
-      });
-    });
-    // control handle: 拖动改弧度，双击恢复直线
-    overlay.querySelectorAll(".zone-control-handle").forEach((handle) => {
-      let dragging = false;
-      let startX, startY;
-      handle.addEventListener("mousedown", (event) => {
-        event.stopPropagation();
-        dragging = true;
-        startX = event.clientX;
-        startY = event.clientY;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        pushUndoSnapshot();
+        drag = {
+          objectId: handle.dataset.objectId,
+          segIndex: Number(handle.dataset.segmentIndex),
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+        };
         handle.style.cursor = "grabbing";
       });
-      document.addEventListener("mousemove", (event) => {
-        if (!dragging) return;
-        const objectId = handle.dataset.objectId;
-        const segIndex = Number(handle.dataset.segmentIndex);
-        dragControlHandle(objectId, segIndex, event);
+      handle.addEventListener("pointermove", (event) => {
+        if (!drag) return;
+        const p = clampUnit(normalizedPoint(event));
+        if (!p) return;
+        const curRect = stage ? stage.getBoundingClientRect() : { width: 1, height: 1 };
+        const dx = (event.clientX - drag.startX) / curRect.width;
+        const dy = (event.clientY - drag.startY) / curRect.height;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (!drag.moved && dist < START_THRESHOLD) return;
+        drag.moved = true;
+        const obj = state.objects.find((o) => o.id === drag.objectId);
+        if (!obj) return;
+        const seg = obj.geometry.segments
+          ? obj.geometry.segments[drag.segIndex]
+          : null;
+        if (!seg || seg.kind === "line") {
+          // 直线边：首次移动时实例化 quadratic
+          materializeQuadratic(drag.objectId, drag.segIndex, p);
+        } else {
+          // 已是 quadratic：更新 control
+          seg.control = [Number(p[0].toFixed(6)), Number(p[1].toFixed(6))];
+        }
+        markDirty();
+        renderCanvasLayers("arc-drag");
       });
-      document.addEventListener("mouseup", () => {
-        if (dragging) {
-          dragging = false;
+      handle.addEventListener("pointerup", (event) => {
+        if (!drag) return;
+        handle.releasePointerCapture(event.pointerId);
+        const obj = state.objects.find((o) => o.id === drag.objectId);
+        if (obj && obj.geometry.segments) {
+          const seg = obj.geometry.segments[drag.segIndex];
+          if (seg && seg.kind === "quadratic" && controlNearChord(seg, obj, CHORD_EPS)) {
+            convertSegmentToLine(drag.objectId, drag.segIndex);
+          }
+        }
+        drag = null;
+        handle.style.cursor = "grab";
+        markDirty();
+        refreshLegendPreview();
+      });
+      handle.addEventListener("pointercancel", (event) => {
+        if (drag) {
+          handle.releasePointerCapture(event.pointerId);
+          drag = null;
           handle.style.cursor = "grab";
         }
       });
-      handle.addEventListener("dblclick", (event) => {
-        event.stopPropagation();
-        const objectId = handle.dataset.objectId;
-        const segIndex = Number(handle.dataset.segmentIndex);
-        convertSegmentToLine(objectId, segIndex);
-      });
     });
+  }
+
+  function clampUnit(p) {
+    if (!p) return null;
+    return [
+      Number(Math.max(0, Math.min(1, p[0])).toFixed(6)),
+      Number(Math.max(0, Math.min(1, p[1])).toFixed(6)),
+    ];
+  }
+
+  function controlNearChord(seg, obj, eps) {
+    if (!seg.control) return false;
+    const [fx, fy] = seg.from;
+    const [tx, ty] = seg.to;
+    const [cx, cy] = seg.control;
+    // 垂直距离（归一坐标，各向异性修正用 stage 比例）
+    const dx = tx - fx;
+    const dy = ty - fy;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) return false;
+    const dist = Math.abs(dy * cx - dx * cy + tx * fy - fx * ty) / len;
+    return dist < eps;
   }
 
   function getSelectedObject() {
@@ -1746,37 +1803,33 @@
   }
 
   function ensureSegments(obj) {
-    if (!obj.geometry.segments || obj.geometry.segments.length === 0) {
-      // 从 coords 初始化 segments（全部为 line）
-      const coords = obj.geometry.coords;
-      const segments = [];
-      for (let i = 0; i < coords.length; i++) {
-        segments.push({
-          kind: "line",
-          from: coords[i],
-          to: coords[(i + 1) % coords.length],
-        });
-      }
-      obj.geometry.segments = segments;
+    if (obj.geometry.segments && obj.geometry.segments.length > 0) {
+      return obj.geometry.segments;
     }
-    return obj.geometry.segments;
+    // 不可变：只计算并返回全 line 的临时 segments，不写回 obj
+    const coords = obj.geometry.coords;
+    const segments = [];
+    for (let i = 0; i < coords.length; i++) {
+      segments.push({
+        kind: "line",
+        from: coords[i],
+        to: coords[(i + 1) % coords.length],
+      });
+    }
+    return segments;
   }
 
-  function convertSegmentToQuadratic(objectId, segIndex) {
+  function materializeQuadratic(objectId, segIndex, control) {
     const obj = state.objects.find((o) => o.id === objectId);
     if (!obj) return;
-    pushUndoSnapshot();
-    const segments = ensureSegments(obj);
-    const seg = segments[segIndex];
+    // 若 obj 尚无 segments → 用 ensureSegments 实例化写入
+    if (!obj.geometry.segments || obj.geometry.segments.length === 0) {
+      obj.geometry.segments = ensureSegments(obj);
+    }
+    const seg = obj.geometry.segments[segIndex];
     if (!seg || seg.kind !== "line") return;
-    // control 初始为边中点
-    const [fx, fy] = seg.from;
-    const [tx, ty] = seg.to;
     seg.kind = "quadratic";
-    seg.control = [Number(((fx + tx) / 2).toFixed(6)), Number(((fy + ty) / 2).toFixed(6))];
-    markDirty();
-    renderCanvasLayers("convert-to-quadratic");
-    refreshLegendPreview();
+    seg.control = [Number(control[0].toFixed(6)), Number(control[1].toFixed(6))];
   }
 
   function convertSegmentToLine(objectId, segIndex) {
@@ -1787,22 +1840,16 @@
     if (!seg || seg.kind !== "quadratic") return;
     seg.kind = "line";
     delete seg.control;
+    // 若已无任何 quadratic → 回到 coords-only
+    const hasQuadratic = obj.geometry.segments.some((s) => s.kind === "quadratic");
+    if (!hasQuadratic) {
+      delete obj.geometry.segments;
+    }
     markDirty();
     renderCanvasLayers("convert-to-line");
     refreshLegendPreview();
   }
 
-  function dragControlHandle(objectId, segIndex, event) {
-    const obj = state.objects.find((o) => o.id === objectId);
-    if (!obj || !obj.geometry.segments) return;
-    const seg = obj.geometry.segments[segIndex];
-    if (!seg || seg.kind !== "quadratic") return;
-    const point = normalizedPoint(event);
-    if (!point) return;
-    seg.control = point;
-    markDirty();
-    renderCanvasLayers("drag-control");
-  }
 
   function selectObject(id) {
     state.selectedId = id || "";
