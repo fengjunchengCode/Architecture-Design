@@ -2019,6 +2019,24 @@
       });
     }
 
+    // Rail collapse toggles
+    function setRailCollapsed(side, collapsed) {
+      const layout = $("#workbenchLayout");
+      if (!layout) return;
+      layout.classList.toggle(`${side}-collapsed`, collapsed);
+      const btn = side === "left" ? $("#toggleLeftRail") : $("#toggleRightRail");
+      if (btn) btn.setAttribute("aria-pressed", String(!collapsed));
+    }
+    $("#toggleLeftRail")?.addEventListener("click", () => {
+      setRailCollapsed("left", !$("#workbenchLayout").classList.contains("left-collapsed"));
+    });
+    $("#toggleRightRail")?.addEventListener("click", () => {
+      setRailCollapsed("right", !$("#workbenchLayout").classList.contains("right-collapsed"));
+    });
+    // Default: left open, right collapsed (give canvas more room on load)
+    setRailCollapsed("left", false);
+    setRailCollapsed("right", true);
+
     window.addEventListener("uploader:state", (event) => {
       const newProject = (event.detail && event.detail.project) || "";
       const newPage = event.detail && event.detail.page;
