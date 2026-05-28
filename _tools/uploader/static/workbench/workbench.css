@@ -849,11 +849,6 @@
   font-size: 12px;
 }
 
-/* ---------- HIDE result-panel when workbench is active ---------- */
-.page[data-page="workbench"].active ~ .result-panel {
-  display: none;
-}
-
 /* ---------- RESPONSIVE: < 1100px force-collapse right rail ---------- */
 @media (max-width: 1100px) {
   .workbench-body {
