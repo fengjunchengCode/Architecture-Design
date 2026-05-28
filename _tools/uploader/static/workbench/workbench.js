@@ -1247,6 +1247,7 @@
   }
 
   function addPoint(event) {
+    if (event.target.closest && event.target.closest(".zone-arc-handle")) return;
     const point = normalizedPoint(event);
     if (!point) return;
     pushUndoSnapshot();
@@ -1705,12 +1706,11 @@
         selectObject(shape.dataset.objectId);
       });
     });
-    // arc handle: pointerdown 设状态 + 捕获到 overlay（持久节点）
+    // arc handle: pointerdown 设状态 + click/dblclick 拦截
     overlay.querySelectorAll(".zone-arc-handle").forEach((handle) => {
       handle.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
         event.preventDefault();
-        overlay.setPointerCapture(event.pointerId);
         state.arcDrag = {
           objectId: handle.dataset.objectId,
           segIndex: Number(handle.dataset.segmentIndex),
@@ -1718,6 +1718,10 @@
           startY: event.clientY,
           moved: false,
         };
+      });
+      handle.addEventListener("click", (event) => {
+        event.stopPropagation();
+        event.preventDefault();
       });
       handle.addEventListener("dblclick", (event) => {
         event.stopPropagation();
