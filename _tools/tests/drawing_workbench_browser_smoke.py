@@ -252,6 +252,7 @@ def drag_locator(page, locator, dx: float = 48, dy: float = -28) -> None:
 def visible_stroke_widths(page) -> list[float]:
     return page.locator(
         "#sketchOverlay circle:not(.geometry-hit):not(.geometry-vertex-handle), "
+        "#sketchOverlay ellipse:not(.geometry-hit):not(.geometry-vertex-handle):not(.zone-close-hit):not(.zone-close-ring), "
         "#sketchOverlay path:not(.geometry-hit):not(.zone-arc-handle), "
         "#sketchOverlay polygon:not(.geometry-hit):not(.zone-arc-handle), "
         "#sketchOverlay polyline:not(.geometry-hit):not(.zone-arc-handle)"
@@ -392,6 +393,21 @@ def assert_triangle_rotate_no_scale(page, drawing_type: str) -> None:
     )
 
 
+def assert_circle_round(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="circle"]')
+    page.evaluate("""() => window.DrawingWorkbenchTest.createObject("circle", [[0.72, 0.3]])""")
+    ellipse = page.locator("#sketchOverlay ellipse:not(.geometry-hit):not(.geometry-vertex-handle)").last
+    rx = float(ellipse.get_attribute("rx") or 0)
+    ry = float(ellipse.get_attribute("ry") or 0)
+    stage_ratio = page.locator("#workbenchStage").evaluate(
+        "(node) => node.getBoundingClientRect().width / node.getBoundingClientRect().height"
+    )
+    assert rx > 0 and ry > 0, f"{drawing_type}: circle did not render as ellipse with rx/ry"
+    assert abs((ry / rx) - stage_ratio) / stage_ratio < 0.05, (
+        f"{drawing_type}: circle aspect compensation wrong; rx={rx}, ry={ry}, stage_ratio={stage_ratio}"
+    )
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -459,6 +475,8 @@ def main() -> int:
                                 drive_path_interaction(page, drawing_type, interaction_tool)
                             else:
                                 drive_marker_interaction(page, drawing_type, interaction_tool)
+                                if interaction_tool == "circle":
+                                    assert_circle_round(page, drawing_type)
                                 if interaction_tool == "triangle":
                                     assert_triangle_rotate_no_scale(page, drawing_type)
                             interaction_checked[interaction_tool] = True

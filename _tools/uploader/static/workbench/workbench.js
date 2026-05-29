@@ -2306,6 +2306,24 @@
     return coords[Math.floor(coords.length / 2)] || null;
   }
 
+  function aspectK() {
+    const stage = $("#workbenchStage");
+    const rect = stage && stage.getBoundingClientRect();
+    return rect && rect.height ? rect.width / rect.height : 1;
+  }
+
+  function aspectCompensatePoint(point, center, k = aspectK()) {
+    return [point[0], center[1] + (point[1] - center[1]) * k];
+  }
+
+  function aspectUncompensatePoint(point, center, k = aspectK()) {
+    return [point[0], center[1] + (point[1] - center[1]) / k];
+  }
+
+  function aspectCompensatePoints(points, center, k = aspectK()) {
+    return (points || []).map((point) => aspectCompensatePoint(point, center, k));
+  }
+
   function objectPathCoords(obj) {
     const geo = (obj && obj.geometry) || {};
     if (Array.isArray(geo.segments) && geo.segments.length) return Model.sampleSegments(geo.segments, !!geo.closed);
@@ -2425,20 +2443,21 @@
     `;
   }
 
-  function renderSharedCircleHitLayer({ objectId, cx, cy, radius, style }) {
+  function renderSharedCircleHitLayer({ objectId, cx, cy, radius, ry, style }) {
     if (state.currentPoints.length > 0) return "";
     return `
-      <circle
+      <ellipse
         class="zone-hit geometry-hit"
         data-object-id="${escapeHtml(objectId)}"
         cx="${cx}"
         cy="${cy}"
-        r="${radius}"
+        rx="${radius}"
+        ry="${ry || radius}"
         fill="transparent"
         stroke="transparent"
         stroke-width="${getZoneHitStrokeWidth(style || {})}"
         pointer-events="all"
-      ></circle>
+      ></ellipse>
     `;
   }
 
@@ -2468,6 +2487,7 @@
     if (geo.kind === "circle") {
       const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
       const cx = center[0], cy = center[1], r = Number(geo.radius) > 0 ? Number(geo.radius) : 0.035;
+      const ry = r * aspectK();
       const fillVisible = style.hints.fill_mode === "solid" || style.hints.fill_mode === "translucent";
       const fill = fillVisible ? style.hints.fill_color || style.fill : "none";
       const fillOpacity = style.hints.fill_mode === "translucent" ? String(style.hints.fill_opacity || 0.42) : "1";
@@ -2475,12 +2495,12 @@
       const stroke = borderVisible ? selectedStrokeColor(style.stroke, selected) : "none";
       const borderW = borderVisible ? sw : 0;
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-      shape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></circle>`;
+      shape = `<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${ry}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></ellipse>`;
       if (borderVisible && style.hints.border_style === "double") {
         const innerR = Math.max(0.004, r - (style.hints.double_border_gap || 0.006));
-        shape += `<circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></circle>`;
+        shape += `<ellipse cx="${cx}" cy="${cy}" rx="${innerR}" ry="${innerR * aspectK()}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></ellipse>`;
       }
-      shape += renderSharedCircleHitLayer({ objectId: obj.id, cx, cy, radius: r, style: style.hints });
+      shape += renderSharedCircleHitLayer({ objectId: obj.id, cx, cy, radius: r, ry, style: style.hints });
       if (selected) {
         shape += renderSharedVertexHandles([[cx, cy], [Math.min(1, cx + r), cy]], "#fff", stroke, {
           objectId: obj.id,
@@ -2493,7 +2513,8 @@
       const cx = center[0], cy = center[1];
       const size = geo.size || 0.055;
       const rot = geo.rotation_deg || 0;
-      const pts = Model.trianglePoints([cx, cy], size, rot);
+      const rawPts = Model.trianglePoints([cx, cy], size, rot);
+      const pts = aspectCompensatePoints(rawPts, [cx, cy]);
       const points = pts.map(p => p.join(",")).join(" ");
       const fillVisible = style.hints.fill_mode === "solid" || style.hints.fill_mode === "translucent";
       const fill = fillVisible ? style.hints.fill_color || style.fill : "none";
@@ -2504,7 +2525,7 @@
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
       shape = `<polygon points="${points}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></polygon>`;
       if (borderVisible && style.hints.border_style === "double") {
-        const innerPts = Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot);
+        const innerPts = aspectCompensatePoints(Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot), [cx, cy]);
         shape += `<polygon points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></polygon>`;
       }
       shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
@@ -2882,8 +2903,9 @@
       }
     } else if (obj.geometry.kind === "triangle") {
       const center = safePoint(obj.geometry.center) || [0.5, 0.5];
-      const vx = p[0] - center[0];
-      const vy = p[1] - center[1];
+      const modelPoint = aspectUncompensatePoint(p, center);
+      const vx = modelPoint[0] - center[0];
+      const vy = modelPoint[1] - center[1];
       const radius = Math.hypot(vx, vy);
       if (radius <= 0.004) return;
       if (state.vertexDrag.role === "triangle-rotate") {
@@ -3138,6 +3160,13 @@
       state.vertexDrag = null;
       state.arcDrag = null;
     });
+    if (window.ResizeObserver) {
+      const stage = $("#workbenchStage");
+      if (stage) {
+        const observer = new ResizeObserver(() => renderCanvasLayers("stage-resize"));
+        observer.observe(stage);
+      }
+    }
     // Footer toggle (collapsible workflow bar)
     const footerEl = $("#workbenchFooter");
     const footerToggleEl = $("#footerToggle");
