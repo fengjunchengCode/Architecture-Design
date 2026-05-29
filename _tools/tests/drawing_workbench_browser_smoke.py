@@ -408,6 +408,42 @@ def assert_circle_round(page, drawing_type: str) -> None:
     )
 
 
+def assert_slope_text_upright(page, drawing_type: str) -> None:
+    cases = [
+        ("SMOKE-SLOPE-LR", [[0.24, 0.32], [0.66, 0.32]]),
+        ("SMOKE-SLOPE-RL", [[0.66, 0.42], [0.24, 0.42]]),
+        ("SMOKE-SLOPE-DIAG", [[0.72, 0.28], [0.30, 0.66]]),
+    ]
+    page.click('[data-tool-id="slope_arrow"]')
+    for label, points in cases:
+        page.eval_on_selector(
+            "#objectLabel",
+            """(el, value) => {
+                el.value = value;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+            label,
+        )
+        page.evaluate(
+            "({ pts }) => window.DrawingWorkbenchTest.createObject('slope_arrow', pts)",
+            {"pts": points},
+        )
+        angle = page.evaluate(
+            """(label) => {
+                const node = [...document.querySelectorAll("#sketchOverlay text")]
+                    .find((item) => item.textContent.trim() === label);
+                if (!node) throw new Error(`missing slope text ${label}`);
+                const match = /rotate\\(([-0-9.]+)/.exec(node.getAttribute("transform") || "");
+                return match ? Number(match[1]) : 0;
+            }""",
+            label,
+        )
+        normalized = ((float(angle) + 180) % 360) - 180
+        assert -90 <= normalized <= 90, (
+            f"{drawing_type}: slope text {label} is upside down; angle={angle}, normalized={normalized}"
+        )
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -469,6 +505,8 @@ def main() -> int:
                     if not line_multipoint_checked and "open_path" in tools:
                         assert_line_multipoint(page, drawing_type)
                         line_multipoint_checked = True
+                    if "slope_arrow" in tools:
+                        assert_slope_text_upright(page, drawing_type)
                     for interaction_tool in ["closed_path", "open_path", "circle", "triangle"]:
                         if not interaction_checked[interaction_tool] and interaction_tool in tools:
                             if interaction_tool in {"closed_path", "open_path"}:

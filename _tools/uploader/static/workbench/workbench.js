@@ -2290,10 +2290,21 @@
         const start = coords[0];
         const end = coords[coords.length - 1];
         const offset = Array.isArray(inline.offset) ? inline.offset : [0, -0.018];
-        const x = start[0] + (end[0] - start[0]) * position + Number(offset[0] || 0);
-        const y = start[1] + (end[1] - start[1]) * position + Number(offset[1] || 0);
-        const angle = Model.lineAngleDeg(coords);
-        parts.push(`<text x="${x}" y="${y}" transform="rotate(${angle} ${x} ${y})" fill="${style.stroke_color || "#333333"}" font-size="${inline.font_size || 0.018}" font-weight="700">${escapeHtml(inline.text || obj.label || "")}</text>`);
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const length = Math.hypot(dx, dy) || 1;
+        const dxN = dx / length;
+        const dyN = dy / length;
+        const alongOffset = Number(offset[0] || 0);
+        const normalOffset = Number(offset[1] || 0);
+        const baseX = start[0] + dx * position;
+        const baseY = start[1] + dy * position;
+        const x = baseX + dxN * alongOffset - dyN * normalOffset;
+        const y = baseY + dyN * alongOffset + dxN * normalOffset * aspectK();
+        let angle = Model.lineAngleDeg(coords);
+        if (angle > 90 || angle < -90) angle += 180;
+        angle = ((angle % 360) + 360) % 360;
+        parts.push(`<text x="${x}" y="${y}" text-anchor="middle" transform="rotate(${angle} ${x} ${y})" fill="${style.stroke_color || "#333333"}" font-size="${inline.font_size || 0.018}" font-weight="700">${escapeHtml(inline.text || obj.label || "")}</text>`);
       }
     }
     return parts.join("");
