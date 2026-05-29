@@ -109,6 +109,12 @@
     currentPoints: [],
     activeTool: "",
     activeObjectTypes: {},
+    styleDrafts: {},
+    geometryDrafts: {},
+    lastStyles: {},
+    lastGeometry: {},
+    supportingImages: {},
+    supportingLoaded: {},
     selectedId: "",
     loadedBaseUrl: "",
     svgExists: false,
@@ -272,6 +278,7 @@
     state.activeTool = toolId;
     state.currentPoints = [];
     renderSpecificTools();
+    renderAvailability();
     renderCanvasLayers("set-active-tool");
   }
 
@@ -285,6 +292,47 @@
 
   function objectStyleValue(style, key, fallback) {
     return style && style[key] !== undefined && style[key] !== null ? style[key] : fallback;
+  }
+
+  function draftKey(toolId, objectType) {
+    return `${drawingType()}|${toolId || ""}|${objectType || ""}`;
+  }
+
+  function draftStyleFor(objectType, toolId = normalizeActiveTool()) {
+    const key = draftKey(toolId, objectType);
+    const selected = selectedObject();
+    if (!isFunctionalZoning() && selected && selected.type === objectType) {
+      return Model.cloneStyle(Model.normalizeStyleHints(selected.style_hints, objectType));
+    }
+    if (state.styleDrafts[key]) return Model.cloneStyle(state.styleDrafts[key]);
+    if (state.lastStyles[objectType]) return Model.cloneStyle(state.lastStyles[objectType]);
+    return Model.defaultStyleForObjectType(objectType);
+  }
+
+  function draftGeometryFor(objectType, toolId = normalizeActiveTool()) {
+    const key = draftKey(toolId, objectType);
+    const defaults = { radius: 0.035, size: 0.055, rotation_deg: 0 };
+    return {
+      ...defaults,
+      ...(state.lastGeometry[objectType] || {}),
+      ...(state.geometryDrafts[key] || {}),
+    };
+  }
+
+  function captureObjectDefaults(obj, toolId = normalizeActiveTool()) {
+    if (!obj || !obj.type) return;
+    state.lastStyles[obj.type] = Model.cloneStyle(Model.normalizeStyleHints(obj.style_hints, obj.type));
+    const geo = obj.geometry || {};
+    const draft = {};
+    if (geo.kind === "circle") draft.radius = Number(geo.radius) || 0.035;
+    if (geo.kind === "triangle") {
+      draft.size = Number(geo.size) || 0.055;
+      draft.rotation_deg = Number(geo.rotation_deg) || 0;
+    }
+    if (Object.keys(draft).length) {
+      state.lastGeometry[obj.type] = { ...(state.lastGeometry[obj.type] || {}), ...draft };
+      state.geometryDrafts[draftKey(toolId, obj.type)] = { ...(state.geometryDrafts[draftKey(toolId, obj.type)] || {}), ...draft };
+    }
   }
 
   function basePath() {
@@ -649,8 +697,10 @@
               <span>来源</span>
               <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
             </label>
+            ${renderRegistryStyleControls(activeTool, selectedObject)}
           `
       }
+      ${rawTools.includes("supporting_images") ? renderSupportingPanel() : ""}
     `;
     tools.querySelectorAll("[data-tool-id]").forEach((button) => {
       button.addEventListener("click", () => setActiveTool(button.dataset.toolId));
@@ -659,8 +709,265 @@
     if (objectType) {
       objectType.addEventListener("change", () => {
         state.activeObjectTypes[drawingType()] = objectType.value;
+        renderSpecificTools();
       });
     }
+    bindRegistryStyleControls(activeTool, selectedObject);
+    bindSupportingPanel();
+  }
+
+  function renderRegistryStyleControls(toolId, objectType) {
+    const style = draftStyleFor(objectType, toolId);
+    const geo = draftGeometryFor(objectType, toolId);
+    const isPath = ["closed_path", "open_path", "turning_radius", "slope_arrow"].includes(toolId);
+    const isClosed = toolId === "closed_path";
+    const isCircle = toolId === "circle";
+    const isTriangle = toolId === "triangle" || toolId === "elevation_marker";
+    const hasFill = isClosed || isCircle || isTriangle;
+    const hasLabelBox = toolId === "turning_radius" || toolId === "elevation_marker";
+    const hasInline = toolId === "slope_arrow";
+    return `
+      <div class="style-controls" data-style-controls="true">
+        ${
+          hasFill
+            ? `
+              <label><span>填充模式</span><select id="styleFillMode">
+                ${optionHtml(
+                  [
+                    { value: "none", label: "无填充" },
+                    { value: "translucent", label: "半透明" },
+                    { value: "solid", label: "实心" },
+                    { value: "hatch", label: "斜线" },
+                  ],
+                  style.fill_mode || "none",
+                )}
+              </select></label>
+              <label><span>填充色</span><input id="styleFillColor" type="color" value="${escapeHtml(style.fill_color || "#DCE8C8")}"></label>
+              <label><span>不透明度</span><input id="styleFillOpacity" type="range" min="0.1" max="1" step="0.05" value="${escapeHtml(String(style.fill_opacity || 0.42))}"></label>
+              <label><span>斜线角度</span><input id="styleHatchAngle" type="number" min="0" max="180" step="5" value="${escapeHtml(String(style.hatch_angle_deg || 45))}"></label>
+              <label><span>斜线间距</span><input id="styleHatchSpacing" type="number" min="0.006" max="0.06" step="0.002" value="${escapeHtml(String(style.hatch_spacing || 0.018))}"></label>
+            `
+            : ""
+        }
+        ${
+          isPath || hasFill
+            ? `
+              <label><span>线/边框颜色</span><input id="styleStrokeColor" type="color" value="${escapeHtml(style.stroke_color || "#333333")}"></label>
+              <label><span>线/边框宽度</span><input id="styleStrokeWidth" type="range" min="0.001" max="0.018" step="0.001" value="${escapeHtml(String(style.stroke_width || 0.003))}"></label>
+              <label><span>线型</span><select id="styleStrokeStyle">
+                ${optionHtml(
+                  [
+                    { value: "solid", label: "实线" },
+                    { value: "dashed", label: "虚线" },
+                  ],
+                  style.stroke_style || "solid",
+                )}
+              </select></label>
+            `
+            : ""
+        }
+        ${
+          hasFill
+            ? `
+              <label><span>边框</span><select id="styleBorderStyle">
+                ${optionHtml(
+                  [
+                    { value: "none", label: "无边框" },
+                    { value: "solid", label: "单实线" },
+                    { value: "dashed", label: "虚线" },
+                    { value: "double", label: "双实线" },
+                  ],
+                  style.border_style || "solid",
+                )}
+              </select></label>
+              <label><span>双线间距</span><input id="styleDoubleGap" type="number" min="0.002" max="0.03" step="0.001" value="${escapeHtml(String(style.double_border_gap || 0.006))}"></label>
+            `
+            : ""
+        }
+        ${
+          isPath
+            ? `
+              <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" ${style.start_arrow ? "checked" : ""}> 起点箭头</label>
+              <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" ${style.end_arrow ? "checked" : ""}> 终点箭头</label>
+              <label><span>箭头尺寸</span><input id="styleArrowSize" type="range" min="0.012" max="0.07" step="0.002" value="${escapeHtml(String(style.arrow_size || 0.028))}"></label>
+            `
+            : ""
+        }
+        ${isCircle ? `<label><span>圆半径</span><input id="geometryRadius" type="range" min="0.012" max="0.12" step="0.002" value="${escapeHtml(String(geo.radius))}"></label>` : ""}
+        ${
+          isTriangle
+            ? `
+              <label><span>三角尺寸</span><input id="geometrySize" type="range" min="0.025" max="0.13" step="0.002" value="${escapeHtml(String(geo.size))}"></label>
+              <label><span>旋转角度</span><input id="geometryRotation" type="range" min="0" max="360" step="5" value="${escapeHtml(String(geo.rotation_deg))}"></label>
+            `
+            : ""
+        }
+        ${
+          hasLabelBox
+            ? `
+              <label><span>标注文本</span><input id="labelBoxText" value="${escapeHtml((style.label_box && style.label_box.text) || (toolId === "turning_radius" ? "R=9M" : ""))}"></label>
+              <label><span>标注框宽</span><input id="labelBoxWidth" type="range" min="0.05" max="0.22" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.width) || 0.09))}"></label>
+              <label><span>标注框高</span><input id="labelBoxHeight" type="range" min="0.025" max="0.09" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.height) || 0.035))}"></label>
+              <label><span>标注字号</span><input id="labelBoxFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.label_box && style.label_box.font_size) || 0.018))}"></label>
+              <label><span>标注透明度</span><input id="labelBoxOpacity" type="range" min="0.08" max="0.45" step="0.02" value="${escapeHtml(String((style.label_box && style.label_box.opacity) || 0.18))}"></label>
+            `
+            : ""
+        }
+        ${
+          hasInline
+            ? `
+              <label><span>坡度文本</span><input id="inlineText" value="${escapeHtml((style.inline_text && style.inline_text.text) || "0.3%")}"></label>
+              <label><span>坡度字号</span><input id="inlineTextFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.inline_text && style.inline_text.font_size) || 0.018))}"></label>
+              <label><span>文本位置</span><input id="inlineTextPosition" type="range" min="0.15" max="0.85" step="0.05" value="${escapeHtml(String((style.inline_text && style.inline_text.position) || 0.5))}"></label>
+            `
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  function bindRegistryStyleControls(toolId, objectType) {
+    const styleMap = {
+      styleFillMode: ["fill_mode", "string"],
+      styleFillColor: ["fill_color", "string"],
+      styleFillOpacity: ["fill_opacity", "number"],
+      styleHatchAngle: ["hatch_angle_deg", "number"],
+      styleHatchSpacing: ["hatch_spacing", "number"],
+      styleStrokeColor: ["stroke_color", "string"],
+      styleStrokeWidth: ["stroke_width", "number"],
+      styleStrokeStyle: ["stroke_style", "string"],
+      styleBorderStyle: ["border_style", "string"],
+      styleDoubleGap: ["double_border_gap", "number"],
+      styleStartArrow: ["start_arrow", "boolean"],
+      styleEndArrow: ["end_arrow", "boolean"],
+      styleArrowSize: ["arrow_size", "number"],
+    };
+    Object.entries(styleMap).forEach(([id, [key, kind]]) => {
+      const el = $(`#${id}`);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        const value = kind === "boolean" ? el.checked : kind === "number" ? Number(el.value) : el.value;
+        updateActiveStyle(toolId, objectType, { [key]: value });
+      });
+    });
+    const nestedMap = {
+      labelBoxText: ["label_box", "text", "string"],
+      labelBoxWidth: ["label_box", "width", "number"],
+      labelBoxHeight: ["label_box", "height", "number"],
+      labelBoxFontSize: ["label_box", "font_size", "number"],
+      labelBoxOpacity: ["label_box", "opacity", "number"],
+      inlineText: ["inline_text", "text", "string"],
+      inlineTextFontSize: ["inline_text", "font_size", "number"],
+      inlineTextPosition: ["inline_text", "position", "number"],
+    };
+    Object.entries(nestedMap).forEach(([id, [group, key, kind]]) => {
+      const el = $(`#${id}`);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        const value = kind === "number" ? Number(el.value) : el.value;
+        const current = draftStyleFor(objectType, toolId);
+        updateActiveStyle(toolId, objectType, { [group]: { ...(current[group] || {}), enabled: true, [key]: value } });
+      });
+    });
+    const geometryMap = {
+      geometryRadius: ["radius", "number"],
+      geometrySize: ["size", "number"],
+      geometryRotation: ["rotation_deg", "number"],
+    };
+    Object.entries(geometryMap).forEach(([id, [key]]) => {
+      const el = $(`#${id}`);
+      if (!el) return;
+      el.addEventListener("input", () => updateActiveGeometry(toolId, objectType, { [key]: Number(el.value) }));
+    });
+  }
+
+  function updateActiveStyle(toolId, objectType, patch) {
+    const key = draftKey(toolId, objectType);
+    const current = draftStyleFor(objectType, toolId);
+    const next = Model.normalizeStyleHints({ ...current, ...patch }, objectType);
+    state.styleDrafts[key] = Model.cloneStyle(next);
+    state.lastStyles[objectType] = Model.cloneStyle(next);
+    const selected = selectedObject();
+    if (selected && selected.type === objectType && !isFunctionalZoning()) {
+      selected.style_hints = Model.cloneStyle(next);
+      markDirty();
+      renderCanvasLayers("style-control");
+      renderObjectList();
+      refreshLegendPreview();
+    }
+  }
+
+  function updateActiveGeometry(toolId, objectType, patch) {
+    const key = draftKey(toolId, objectType);
+    state.geometryDrafts[key] = { ...draftGeometryFor(objectType, toolId), ...patch };
+    state.lastGeometry[objectType] = { ...(state.lastGeometry[objectType] || {}), ...patch };
+    const selected = selectedObject();
+    if (!selected || selected.type !== objectType || isFunctionalZoning()) return;
+    const geo = selected.geometry || {};
+    if (geo.kind === "circle" && patch.radius !== undefined) geo.radius = Number(patch.radius);
+    if (geo.kind === "triangle") {
+      if (patch.size !== undefined) geo.size = Number(patch.size);
+      if (patch.rotation_deg !== undefined) geo.rotation_deg = Number(patch.rotation_deg);
+    }
+    selected.geometry = geo;
+    markDirty();
+    renderCanvasLayers("geometry-control");
+    renderObjectList();
+  }
+
+  function renderSupportingPanel() {
+    const images = state.supportingImages[drawingType()] || [];
+    return `
+      <div class="supporting-panel" data-supporting-panel="true">
+        <div class="supporting-title">配图</div>
+        <label><span>上传配图</span><input id="supportingImageFile" type="file" accept=".jpg,.jpeg,.png,.webp"></label>
+        <label><span>标题</span><input id="supportingCaption" placeholder="可选"></label>
+        <label><span>备注</span><input id="supportingNotes" placeholder="可选"></label>
+        <label><span>排序</span><input id="supportingOrder" type="number" min="1" step="1" value="${images.length + 1}"></label>
+        <button class="wb3-btn" id="supportingUpload" type="button">上传配图</button>
+        <div class="supporting-list">
+          ${
+            images.length
+              ? images
+                  .slice()
+                  .sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0))
+                  .map(renderSupportingImageRow)
+                  .join("")
+              : '<div class="control-empty">暂无配图。</div>'
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  function supportingImageUrl(image) {
+    const project = projectCode();
+    if (!project || !image || !image.file) return "";
+    const params = new URLSearchParams({ project, path: image.file });
+    return `/api/project-file?${params}`;
+  }
+
+  function renderSupportingImageRow(image) {
+    return `
+      <div class="supporting-row" data-supporting-id="${escapeHtml(image.id || "")}">
+        <img src="${escapeHtml(supportingImageUrl(image))}" alt="">
+        <div>
+          <b>${escapeHtml(image.caption || image.original_name || image.id || "配图")}</b>
+          <small>${escapeHtml(image.notes || image.file || "")}</small>
+        </div>
+        <button type="button" data-delete-supporting="${escapeHtml(image.id || "")}">删除</button>
+      </div>
+    `;
+  }
+
+  function bindSupportingPanel() {
+    const upload = $("#supportingUpload");
+    if (upload) upload.addEventListener("click", () => uploadSupportingImage().catch((err) => setStatus(err.message, false)));
+    document.querySelectorAll("[data-delete-supporting]").forEach((button) => {
+      button.addEventListener("click", () =>
+        deleteSupportingImage(button.dataset.deleteSupporting).catch((err) => setStatus(err.message, false)),
+      );
+    });
   }
 
   function renderFunctionalZoningTools(tools) {
@@ -996,7 +1303,7 @@
     const send = $("#sendToAgent");
     if (send) send.textContent = drawingConfig().taskButtonLabel || "发给 agent 出图";
     const finish = $("#finishObject");
-    if (finish) finish.textContent = isFunctionalZoning() ? "完成分区" : "完成对象";
+    if (finish) finish.textContent = isFunctionalZoning() ? "完成分区" : "完成" + (TOOL_LABELS[normalizeActiveTool()] || "对象");
     const undo = $("#undoPoint");
     if (undo) undo.textContent = isFunctionalZoning() ? "撤销" : "撤销最后一点";
     updateCanvasZoomUi();
@@ -1187,6 +1494,7 @@
     renderObjectList();
     refreshLegendPreview();
     renderAvailability();
+    loadSupportingImages(drawingType()).catch((err) => setStatus(err.message, false));
     if (hasBaseImage) {
       setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
       requestAnimationFrame(() => renderCanvasLayers("load-drawing-raf"));
@@ -1341,6 +1649,71 @@
     setStatus(`底图已上传：${data.path}`);
   }
 
+  async function loadSupportingImages(type = drawingType()) {
+    if (!(drawingConfig(type).tools || []).includes("supporting_images")) return;
+    const project = projectCode();
+    if (!project) return;
+    const params = new URLSearchParams({ project, drawing_type: type });
+    const data = await api(`/api/drawing/supporting/list?${params}`);
+    state.supportingImages[type] = Array.isArray(data.images) ? data.images : [];
+    state.supportingLoaded[type] = true;
+    if (type === drawingType()) renderSpecificTools();
+  }
+
+  async function uploadSupportingImage() {
+    const project = projectCode();
+    if (!project) {
+      setStatus("请先选择项目，再上传配图。", false);
+      return;
+    }
+    const input = $("#supportingImageFile");
+    if (!input || !input.files || !input.files.length) {
+      setStatus("请选择一张配图。", false);
+      return;
+    }
+    const form = new FormData();
+    form.append("file", input.files[0]);
+    const type = drawingType();
+    const params = new URLSearchParams({ project, drawing_type: type });
+    const data = await api(`/api/drawing/supporting/upload?${params}`, { method: "POST", body: form });
+    const saved = (data.saved || [])[0];
+    if (saved) {
+      const caption = ($("#supportingCaption") && $("#supportingCaption").value.trim()) || "";
+      const notes = ($("#supportingNotes") && $("#supportingNotes").value.trim()) || "";
+      const sortOrder = Number(($("#supportingOrder") && $("#supportingOrder").value) || saved.sort_order || 1);
+      if (caption || notes || sortOrder !== saved.sort_order) {
+        await api("/api/drawing/supporting/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project,
+            drawing_type: type,
+            image_id: saved.id,
+            caption,
+            notes,
+            sort_order: sortOrder,
+          }),
+        });
+      }
+    }
+    input.value = "";
+    await loadSupportingImages(type);
+    setStatus("配图已上传。");
+  }
+
+  async function deleteSupportingImage(imageId) {
+    const project = projectCode();
+    if (!project || !imageId) return;
+    const type = drawingType();
+    await api("/api/drawing/supporting/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project, drawing_type: type, image_id: imageId }),
+    });
+    await loadSupportingImages(type);
+    setStatus("配图已删除。");
+  }
+
   async function sendToAgent() {
     if (!isEnabled()) {
       setTaskStatus("该图纸工作台待设计，暂不能生成 task_pack。", false);
@@ -1398,8 +1771,9 @@
     return [Number(x.toFixed(6)), Number(y.toFixed(6))];
   }
 
-  function defaultGeometryForTool(toolId, points) {
+  function defaultGeometryForTool(toolId, points, objectType) {
     const cleanPoints = (points || []).map((point) => [Number(point[0]), Number(point[1])]);
+    const draft = draftGeometryFor(objectType, toolId);
     if (toolId === "closed_path") {
       return { kind: "path", closed: true, coords: cleanPoints };
     }
@@ -1407,10 +1781,10 @@
       return { kind: "path", closed: false, coords: cleanPoints };
     }
     if (toolId === "circle") {
-      return { kind: "circle", center: cleanPoints[0], radius: 0.045 };
+      return { kind: "circle", center: cleanPoints[0], radius: draft.radius };
     }
     if (toolId === "triangle" || toolId === "elevation_marker") {
-      return { kind: "triangle", center: cleanPoints[0], size: 0.06, rotation_deg: 0 };
+      return { kind: "triangle", center: cleanPoints[0], size: draft.size, rotation_deg: draft.rotation_deg };
     }
     return null;
   }
@@ -1432,9 +1806,9 @@
     const index = state.objects.length + 1;
     const id = options.id || nextObjectId();
     const label = options.label || (objectLabel && objectLabel.value.trim()) || `${objectName(objectType)} ${index}`;
-    const geometry = defaultGeometryForTool(toolId, points.slice(0, minPoints));
+    const geometry = defaultGeometryForTool(toolId, points.slice(0, minPoints), objectType);
     if (!geometry) return null;
-    const style = objectStyleHints(objectType);
+    const style = draftStyleFor(objectType, toolId);
     if (toolId === "turning_radius") {
       style.label_box = {
         ...(style.label_box || {}),
@@ -1466,6 +1840,7 @@
       style_hints: style,
     };
     state.objects.push(object);
+    captureObjectDefaults(object, toolId);
     state.selectedId = id;
     state.currentPoints = [];
     markDirty();
@@ -1642,6 +2017,92 @@
     bindOverlaySelection(overlay);
   }
 
+  function safePoint(point) {
+    if (!Array.isArray(point) || point.length < 2) return null;
+    const x = Number(point[0]);
+    const y = Number(point[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return [x, y];
+  }
+
+  function pathFillValue(obj, style) {
+    const mode = style.hints.fill_mode;
+    if (mode === "solid") return { color: style.hints.fill_color || style.fill, opacity: 1 };
+    if (mode === "translucent" || mode === "hatch") {
+      return { color: style.hints.fill_color || style.fill, opacity: style.hints.fill_opacity || 0.42 };
+    }
+    return { color: "none", opacity: 1 };
+  }
+
+  function renderArrowHeads(coords, style, objectId) {
+    if (!Array.isArray(coords) || coords.length < 2) return "";
+    const parts = [];
+    if (style.start_arrow) parts.push(renderArrowHead(coords[1], coords[0], style, objectId));
+    if (style.end_arrow) parts.push(renderArrowHead(coords[coords.length - 2], coords[coords.length - 1], style, objectId));
+    return parts.join("");
+  }
+
+  function renderArrowHead(from, tip, style, objectId) {
+    from = safePoint(from);
+    tip = safePoint(tip);
+    if (!from || !tip) return "";
+    const size = Number(style.arrow_size) || 0.028;
+    const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
+    const back = [Math.cos(angle) * size, Math.sin(angle) * size];
+    const side = [-Math.sin(angle) * size * 0.42, Math.cos(angle) * size * 0.42];
+    const p1 = tip;
+    const p2 = [tip[0] - back[0] + side[0], tip[1] - back[1] + side[1]];
+    const p3 = [tip[0] - back[0] - side[0], tip[1] - back[1] - side[1]];
+    return `<polygon data-object-id="${escapeHtml(objectId)}" points="${[p1, p2, p3].map((p) => p.join(",")).join(" ")}" fill="${style.stroke_color || "#333333"}"></polygon>`;
+  }
+
+  function renderSemanticTextOverlays(obj, fallbackPoint, style) {
+    const parts = [];
+    const anchor = objectAnchorPoint(obj) || fallbackPoint || [0.5, 0.5];
+    if (style.label_box && style.label_box.enabled) {
+      const box = style.label_box;
+      const offset = Array.isArray(box.offset) ? box.offset : [0.02, -0.02];
+      const width = Number(box.width) || 0.09;
+      const height = Number(box.height) || 0.035;
+      const x = Math.min(Math.max(anchor[0] + Number(offset[0] || 0), 0.01), 0.98 - width);
+      const y = Math.min(Math.max(anchor[1] + Number(offset[1] || 0), 0.01), 0.98 - height);
+      const color = style.stroke_color || style.fill_color || "#333333";
+      const text = box.text || obj.label || "";
+      parts.push(`<rect data-object-id="${escapeHtml(obj.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="0.004" fill="${color}" fill-opacity="${box.opacity || 0.18}" stroke="${color}" stroke-width="0.001"></rect>`);
+      if (text) {
+        parts.push(`<text x="${x + width * 0.08}" y="${y + height * 0.65}" fill="${color}" font-size="${box.font_size || 0.018}" font-weight="700">${escapeHtml(text)}</text>`);
+      }
+    }
+    if (style.inline_text && style.inline_text.enabled) {
+      const inline = style.inline_text;
+      const coords = objectPathCoords(obj);
+      if (coords.length >= 2) {
+        const position = Math.min(Math.max(Number(inline.position) || 0.5, 0), 1);
+        const start = coords[0];
+        const end = coords[coords.length - 1];
+        const offset = Array.isArray(inline.offset) ? inline.offset : [0, -0.018];
+        const x = start[0] + (end[0] - start[0]) * position + Number(offset[0] || 0);
+        const y = start[1] + (end[1] - start[1]) * position + Number(offset[1] || 0);
+        const angle = Model.lineAngleDeg(coords);
+        parts.push(`<text x="${x}" y="${y}" transform="rotate(${angle} ${x} ${y})" fill="${style.stroke_color || "#333333"}" font-size="${inline.font_size || 0.018}" font-weight="700">${escapeHtml(inline.text || obj.label || "")}</text>`);
+      }
+    }
+    return parts.join("");
+  }
+
+  function objectAnchorPoint(obj) {
+    const geo = (obj && obj.geometry) || {};
+    if (geo.kind === "circle" || geo.kind === "triangle") return safePoint(geo.center);
+    const coords = objectPathCoords(obj);
+    return coords[Math.floor(coords.length / 2)] || null;
+  }
+
+  function objectPathCoords(obj) {
+    const geo = (obj && obj.geometry) || {};
+    if (Array.isArray(geo.segments) && geo.segments.length) return Model.sampleSegments(geo.segments, !!geo.closed);
+    return Array.isArray(geo.coords) ? geo.coords.map(safePoint).filter(Boolean) : [];
+  }
+
   function renderObjectSvg(obj) {
     if (isFunctionalZoning() && obj.type === "functional_zone") {
       return renderFunctionalZoneSvg(obj);
@@ -1654,16 +2115,23 @@
     let labelPoint = [0.5, 0.5];
 
     if (geo.kind === "circle") {
-      const cx = geo.center[0], cy = geo.center[1], r = geo.radius;
+      const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
+      const cx = center[0], cy = center[1], r = Number(geo.radius) > 0 ? Number(geo.radius) : 0.035;
       const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
-                   (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
+                   (obj.style_hints && (obj.style_hints.fill_mode === "translucent" || obj.style_hints.fill_mode === "hatch")) ? (obj.style_hints.fill_color || style.fill) : "none";
       const fillOpacity = (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? "0.42" : "1";
       const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
       const borderW = (obj.style_hints && obj.style_hints.stroke_width) || 0.003;
-      shape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"></circle>`;
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+      shape = `<circle data-object-id="${escapeHtml(obj.id)}" cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash}></circle>`;
+      if (style.hints.border_style === "double") {
+        const innerR = Math.max(0.004, r - (style.hints.double_border_gap || 0.006));
+        shape += `<circle data-object-id="${escapeHtml(obj.id)}" cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}"></circle>`;
+      }
       labelPoint = [cx, cy - r];
     } else if (geo.kind === "triangle") {
-      const cx = geo.center[0], cy = geo.center[1];
+      const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
+      const cx = center[0], cy = center[1];
       const size = geo.size || 0.055;
       const rot = geo.rotation_deg || 0;
       const pts = Model.trianglePoints([cx, cy], size, rot);
@@ -1671,38 +2139,61 @@
       const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
                    (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
       const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
-      shape = `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"></polygon>`;
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+      shape = `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${dash}></polygon>`;
+      if (style.hints.border_style === "double") {
+        const innerPts = Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot);
+        shape += `<polygon data-object-id="${escapeHtml(obj.id)}" points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${width}"></polygon>`;
+      }
       labelPoint = [cx, cy - size];
     } else if (geo.kind === "path" && geo.closed) {
       // Closed path (polygon)
-      const closedCoords = geo.coords;
+      const closedCoords = objectPathCoords(obj);
+      if (closedCoords.length < 3) return "";
       const segments = geo.segments;
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, true);
-        shape = `<path d="${pathD}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${width}" stroke-linejoin="round"></path>`;
+        const fill = pathFillValue(obj, style);
+        const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+        shape = `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${style.stroke}" stroke-width="${width}" stroke-linejoin="round"${dash}></path>`;
+        if (style.hints.border_style === "double") {
+          shape += `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" stroke-linejoin="round"></path>`;
+        }
       } else {
         const points = closedCoords.map(p => p.join(",")).join(" ");
-        shape = `<polygon points="${points}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${width}"></polygon>`;
+        const fill = pathFillValue(obj, style);
+        const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+        shape = `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${style.stroke}" stroke-width="${width}"${dash}></polygon>`;
+        if (style.hints.border_style === "double") {
+          shape += `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}"></polygon>`;
+        }
       }
+      if (selected) shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: style.stroke });
       labelPoint = closedCoords[Math.floor(closedCoords.length / 2)] || closedCoords[0];
     } else if (geo.kind === "point") {
-      const [x, y] = geo.coords[0];
-      shape = `<circle cx="${x}" cy="${y}" r="0.012" fill="${style.stroke}" stroke="#fff" stroke-width="0.004"></circle>`;
+      const [x, y] = safePoint((geo.coords || [])[0]) || [0.5, 0.5];
+      shape = `<circle data-object-id="${escapeHtml(obj.id)}" cx="${x}" cy="${y}" r="0.012" fill="${style.stroke}" stroke="#fff" stroke-width="0.004"></circle>`;
       labelPoint = [x, y];
     } else {
       // Open path (polyline/arrow/line)
-      const coords = geo.coords || [];
+      const coords = objectPathCoords(obj);
       const segments = geo.segments;
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, false);
-        shape = `<path d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"></path>`;
+        const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
+        shape = `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}></path>`;
       } else if (coords.length >= 2) {
         const points = coords.map(p => p.join(",")).join(" ");
-        shape = `<polyline points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+        const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
+        shape = `<polyline data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}></polyline>`;
       }
+      shape += renderArrowHeads(coords, style.hints, obj.id);
+      if (selected && coords.length >= 2) shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: style.stroke });
       if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
     }
-    return `${shape}${renderSvgLabel(obj.label, labelPoint, style.stroke)}`;
+    const overlays = renderSemanticTextOverlays(obj, labelPoint, style.hints);
+    const plainLabel = style.hints.label_box && style.hints.label_box.enabled ? "" : style.hints.inline_text && style.hints.inline_text.enabled ? "" : renderSvgLabel(obj.label, labelPoint, style.stroke);
+    return `${shape}${overlays}${plainLabel}`;
   }
 
   function renderFunctionalZoneSvg(obj) {
@@ -2025,17 +2516,8 @@
     if (obj.geometry.segments && obj.geometry.segments.length > 0) {
       return obj.geometry.segments;
     }
-    // 不可变：只计算并返回全 line 的临时 segments，不写回 obj
-    const coords = obj.geometry.coords;
-    const segments = [];
-    for (let i = 0; i < coords.length; i++) {
-      segments.push({
-        kind: "line",
-        from: coords[i],
-        to: coords[(i + 1) % coords.length],
-      });
-    }
-    return segments;
+    const coords = obj.geometry.coords || [];
+    return Model.coordsToSegments(coords, obj.geometry.closed !== false);
   }
 
   function materializeQuadratic(objectId, segIndex, control) {
@@ -2073,6 +2555,7 @@
   function selectObject(id) {
     state.selectedId = id || "";
     state.currentPoints = [];
+    if (!isFunctionalZoning()) captureObjectDefaults(selectedObject());
     renderCanvasLayers("select-object");
     renderObjectList();
     renderSpecificTools();

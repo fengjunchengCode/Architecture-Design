@@ -442,6 +442,84 @@
   gap: 10px;
 }
 
+.tool-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tool-button.supporting {
+  border-style: dashed;
+}
+
+.style-controls,
+.supporting-panel {
+  display: grid;
+  gap: 9px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.style-controls label,
+.supporting-panel label {
+  display: grid;
+  gap: 4px;
+}
+
+.style-controls input[type="color"],
+.supporting-panel input[type="file"],
+.supporting-panel input[type="text"],
+.supporting-panel input[type="number"] {
+  width: 100%;
+}
+
+.checkbox-line {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.supporting-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.supporting-list {
+  display: grid;
+  gap: 8px;
+}
+
+.supporting-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 253, 247, 0.62);
+}
+
+.supporting-row img {
+  width: 44px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.supporting-row b,
+.supporting-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supporting-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .zone-name-field small {
   display: block;
   margin-top: 2px;
