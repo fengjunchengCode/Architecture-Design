@@ -50,7 +50,9 @@
     "#CFD4BF",
   ];
   const DEFAULT_ZONE_STYLE = {
+    fill_mode: "translucent",
     fill_color: "#DCE8C8",
+    fill_opacity: 0.42,
     fill_enabled: true,
     border_style: "solid",
     stroke_width: 0.003,
@@ -1096,8 +1098,8 @@
       <div class="zone-tool-group">
         <span>填充</span>
         <div class="segmented-control" id="zoneFillMode">
-          <button type="button" class="${activeStyle.fill_enabled ? "active" : ""}" data-fill-enabled="true">有填充</button>
-          <button type="button" class="${!activeStyle.fill_enabled ? "active" : ""}" data-fill-enabled="false">无填充</button>
+          <button type="button" class="${activeStyle.fill_mode !== "none" ? "active" : ""}" data-fill-enabled="true">有填充</button>
+          <button type="button" class="${activeStyle.fill_mode === "none" ? "active" : ""}" data-fill-enabled="false">无填充</button>
         </div>
       </div>
       <div class="zone-tool-group">
@@ -1135,14 +1137,16 @@
     objects.forEach((obj) => {
       if (obj.type !== "functional_zone") return;
       const style = normalizeZoneStyle(obj.style_hints);
-      const isInvisible = !style.fill_enabled && style.border_style === "none";
+      const fillVisible = style.fill_mode !== "none";
+      const isInvisible = !fillVisible && style.border_style === "none";
       if (isInvisible) {
         invisibleCount++;
         return;
       }
       // 按可见性归一 key
       const key = JSON.stringify({
-        fill: style.fill_enabled ? style.fill_color : null,
+        fill: fillVisible ? style.fill_color : null,
+        fill_mode: style.fill_mode,
         border: style.border_style,
         stroke_width: style.border_style === "none" ? null : style.stroke_width,
       });
@@ -1175,8 +1179,9 @@
       }
       const count = group.objects.length;
       const style = group.style;
+      const fillVisible = style.fill_mode !== "none";
       const hasBorder = style.border_style !== "none";
-      const borderColor = hasBorder ? style.fill_color : "transparent";
+      const borderColor = hasBorder ? style.stroke_color || style.fill_color : "transparent";
       // swatch viewBox 24x16，映射 stroke_width 到 1-3px 范围以区分线宽差异
       const borderWidth = hasBorder ? Math.max(1, Math.min(3, Math.round(style.stroke_width * 300))) : 0;
       const dashArray = style.border_style === "dashed" ? "4 3" : "";
@@ -1184,8 +1189,8 @@
         <div class="zone-legend-item">
           <svg class="zone-legend-swatch" viewBox="0 0 24 16" aria-hidden="true">
             <rect x="1" y="1" width="22" height="14" rx="2"
-              fill="${style.fill_enabled ? style.fill_color : 'none'}"
-              fill-opacity="${style.fill_enabled ? '0.42' : '0'}"
+              fill="${fillVisible ? style.fill_color : 'none'}"
+              fill-opacity="${fillVisible ? String(style.fill_opacity ?? 0.42) : '0'}"
               stroke="${borderColor}"
               stroke-width="${borderWidth}"
               ${dashArray ? `stroke-dasharray="${dashArray}"` : ''}
@@ -1254,19 +1259,21 @@
   }
 
   function normalizeZoneStyle(style = {}) {
+    const raw = style || {};
+    const next = Model.normalizeStyleHints(raw, "functional_zone");
     const palette = zonePaletteItems();
     const fallbackColor = (palette[0] && palette[0].color) || DEFAULT_ZONE_STYLE.fill_color;
-    const fillColor = isHexColor(style.fill_color) ? String(style.fill_color).toUpperCase() : fallbackColor;
-    const borderStyle = ["solid", "dashed", "none"].includes(style.border_style)
-      ? style.border_style
-      : DEFAULT_ZONE_STYLE.border_style;
-    const strokeWidth = normalizeStrokeWidth(style.stroke_width ?? ZONE_STROKE_WIDTHS[style.stroke_width_key]);
-    return {
-      fill_color: fillColor,
-      fill_enabled: typeof style.fill_enabled === "boolean" ? style.fill_enabled : DEFAULT_ZONE_STYLE.fill_enabled,
-      border_style: borderStyle,
-      stroke_width: strokeWidth,
-    };
+    next.fill_color = isHexColor(raw.fill_color) ? String(raw.fill_color).toUpperCase() : fallbackColor;
+    if (!["none", "translucent", "solid", "hatch"].includes(next.fill_mode)) {
+      next.fill_mode = DEFAULT_ZONE_STYLE.fill_mode;
+    }
+    if (!["solid", "dashed", "none", "double"].includes(next.border_style)) {
+      next.border_style = DEFAULT_ZONE_STYLE.border_style;
+    }
+    if (!isHexColor(raw.stroke_color)) next.stroke_color = next.fill_color;
+    next.stroke_width = normalizeStrokeWidth(next.stroke_width ?? ZONE_STROKE_WIDTHS[raw.stroke_width_key]);
+    next.fill_opacity = Number.isFinite(Number(next.fill_opacity)) ? Number(next.fill_opacity) : DEFAULT_ZONE_STYLE.fill_opacity;
+    return next;
   }
 
   function normalizeStrokeWidth(value) {
@@ -1311,7 +1318,9 @@
     });
     $("#zoneCustomColor")?.addEventListener("change", (event) => updateZoneStyle({ fill_color: event.target.value }));
     $("#zoneFillMode")?.querySelectorAll("[data-fill-enabled]").forEach((button) => {
-      button.addEventListener("click", () => updateZoneStyle({ fill_enabled: button.dataset.fillEnabled === "true" }));
+      button.addEventListener("click", () =>
+        updateZoneStyle({ fill_mode: button.dataset.fillEnabled === "true" ? "translucent" : "none" }),
+      );
     });
     $("#zoneBorderStyle")?.querySelectorAll("[data-border-style]").forEach((button) => {
       button.addEventListener("click", () => updateZoneStyle({ border_style: button.dataset.borderStyle }));
@@ -2005,7 +2014,7 @@
     renderObjectList();
     renderSpecificTools();
     refreshLegendPreview();
-    if (!style.fill_enabled && style.border_style === "none") {
+    if (style.fill_mode === "none" && style.border_style === "none") {
       setStatus("该分区在图中不可见（无边框 + 无填充）。", false);
     } else {
       setStatus(`已添加分区：${label}`);
@@ -2399,9 +2408,11 @@
     const style = normalizeZoneStyle(obj.style_hints);
     const coords = obj.geometry.coords;
     const segments = obj.geometry.segments;
-    const fill = style.fill_enabled ? style.fill_color : "none";
-    const fillOpacity = style.fill_enabled ? "0.42" : "1";
-    const strokeColor = style.border_style === "none" ? "none" : (selected ? darkenHex(style.fill_color, 0.2) : style.fill_color);
+    const fillVisible = style.fill_mode !== "none";
+    const fill = fillVisible ? style.fill_color : "none";
+    const fillOpacity = fillVisible ? String(style.fill_opacity ?? 0.42) : "1";
+    const strokeBase = style.stroke_color || style.fill_color;
+    const strokeColor = style.border_style === "none" ? "none" : selectedStrokeColor(strokeBase, selected);
     const strokeWidth = style.border_style === "none" ? 0 : (style.stroke_width || ZONE_EDIT_WIDTH);
     const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
 
@@ -2426,7 +2437,7 @@
         pathD,
         closed: true,
         style,
-        fillVisible: style.fill_enabled,
+        fillVisible,
         borderVisible: style.border_style !== "none",
       });
     } else {
@@ -2447,7 +2458,7 @@
         points: coords,
         closed: true,
         style,
-        fillVisible: style.fill_enabled,
+        fillVisible,
         borderVisible: style.border_style !== "none",
       });
     }
@@ -2456,7 +2467,7 @@
     let handles = "";
     if (selected) {
       // vertex handles
-      handles = renderSharedVertexHandles(coords, "#fff", darkenHex(style.fill_color, 0.28));
+      handles = renderSharedVertexHandles(coords, "#fff", darkenHex(strokeBase, 0.28));
       // 从 coords 初始化 segments（如果还没有）
       const segs = ensureSegments(obj);
       handles += renderSegmentHandles(obj.id, segs, style);
@@ -2777,8 +2788,8 @@
 
   function renderFunctionalZoneRow(obj) {
     const style = normalizeZoneStyle(obj.style_hints);
-    const fill = style.fill_enabled ? style.fill_color : "transparent";
-    const borderColor = style.border_style === "none" ? "transparent" : style.fill_color;
+    const fill = style.fill_mode !== "none" ? style.fill_color : "transparent";
+    const borderColor = style.border_style === "none" ? "transparent" : style.stroke_color || style.fill_color;
     return `
       <button class="object-row zone-row ${obj.id === state.selectedId ? "active" : ""}" data-object-id="${escapeHtml(obj.id)}">
         <span class="zone-row-main">

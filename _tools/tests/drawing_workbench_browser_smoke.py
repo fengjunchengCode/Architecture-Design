@@ -73,7 +73,24 @@ def prepare_project() -> Path:
                     "border_style": "solid",
                     "stroke_width": 0.003,
                 },
-            }
+            },
+            {
+                "id": "obj-no-fill",
+                "type": "functional_zone",
+                "geometry": {
+                    "kind": "polygon",
+                    "coords": [[0.58, 0.2], [0.78, 0.24], [0.7, 0.48]],
+                },
+                "label": "legacy no fill zone",
+                "confidence": "medium",
+                "source": "user_sketch",
+                "style_hints": {
+                    "fill_enabled": False,
+                    "fill_color": "#C2D0DB",
+                    "border_style": "solid",
+                    "stroke_width": 0.003,
+                },
+            },
         ],
     }
     (semantic_dir / "functional_zoning.json").write_text(json.dumps(legacy_fz, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -126,6 +143,17 @@ def assert_fz_regression(page) -> None:
     assert legacy, "FZ legacy object disappeared after reload"
     segments = ((legacy.get("geometry") or {}).get("segments") or [])
     assert any(seg.get("kind") == "quadratic" for seg in segments), "FZ quadratic segment lost after save/reload"
+    visible_shapes = page.locator("#sketchOverlay path:not(.zone-hit), #sketchOverlay polygon:not(.zone-hit)")
+    fills = visible_shapes.evaluate_all(
+        """(nodes) => nodes.map((node) => ({
+            fill: node.getAttribute("fill"),
+            opacity: node.getAttribute("fill-opacity")
+        }))"""
+    )
+    assert any(item["fill"] == "none" for item in fills), "FZ legacy fill_enabled=false does not render fill=none"
+    assert any(abs(float(item["opacity"] or 0) - 0.42) < 0.001 for item in fills), (
+        "FZ legacy fill_enabled=true does not render fill-opacity≈0.42"
+    )
 
 
 def assert_control_rules(page, drawing_type: str, tools: list[str]) -> None:
