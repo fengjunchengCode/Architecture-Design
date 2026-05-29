@@ -2862,5 +2862,23 @@
     }
   }
 
+  window.DrawingWorkbenchTest = {
+    createObject(toolId, points) {
+      if (!supportsTool(toolId) || toolId === "supporting_images") {
+        throw new Error(`Unsupported drawing tool: ${toolId}`);
+      }
+      state.activeTool = toolId;
+      const object = createObjectFromTool(toolId, points || []);
+      if (!object) throw new Error(`Failed to create object for tool: ${toolId}`);
+      return JSON.parse(JSON.stringify(object));
+    },
+    getObjects() {
+      return JSON.parse(JSON.stringify(state.objects));
+    },
+    getActiveDrawingType() {
+      return drawingType();
+    },
+  };
+
   bind();
 })();

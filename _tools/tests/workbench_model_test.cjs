@@ -5,6 +5,7 @@
  */
 
 const path = require("path");
+const fs = require("fs");
 const modelPath = path.resolve(__dirname, "..", "uploader", "static", "workbench", "workbench_model.js");
 const M = require(modelPath);
 
@@ -141,6 +142,18 @@ function assertArrayLen(arr, len, msg) {
   const style = M.defaultStyleForObjectType("functional_zone");
   assert("fill_mode" in style, "should have fill_mode");
   assert("stroke_color" in style, "should have stroke_color");
+})();
+
+// Test 11: browser bundle wires the shared model before workbench.js
+(function () {
+  const staticDir = path.resolve(__dirname, "..", "uploader", "static");
+  const indexHtml = fs.readFileSync(path.join(staticDir, "index.html"), "utf8");
+  const workbenchJs = fs.readFileSync(path.join(staticDir, "workbench", "workbench.js"), "utf8");
+  const modelPos = indexHtml.indexOf("/workbench/workbench_model.js");
+  const workbenchPos = indexHtml.indexOf("/workbench/workbench.js");
+  assert(modelPos >= 0, "index.html should load workbench_model.js");
+  assert(workbenchPos > modelPos, "workbench_model.js should load before workbench.js");
+  assert(workbenchJs.includes("DrawingWorkbenchModel"), "workbench.js should reference DrawingWorkbenchModel");
 })();
 
 console.log("Passed: " + passed + ", Failed: " + failed);
