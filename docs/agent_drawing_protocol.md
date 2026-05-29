@@ -457,5 +457,54 @@ agent 在写 SVG 前心里过一遍 checklist：
 - `docs/style_spec_negotiation.md` —— style_spec 怎么来
 - `docs/planning/TECHNICAL_DRAWING_TYPES_ROADMAP_2026-05-25.md` —— 图种全集
 - `_tools/drawing_workbench/schema.py` —— sketch.json 字段定义
+- `_tools/drawing_workbench/registry.py` —— 图纸类型和对象类型集中注册表
 - `_tools/drawing_workbench/task_pack.py` —— task_pack 构造逻辑
 - `_tools/drawing_workbench/svg_to_png.py` —— SVG → PNG/PDF 导出参数
+
+---
+
+## 14. Schema 1.2 新增语义对象
+
+schema 1.2 在 1.1 基础上新增了以下几何和样式能力：
+
+### 14.1 几何类型
+
+| kind | 说明 | 字段 |
+|---|---|---|
+| `path` (closed=true) | 闭合多边形 | coords, segments (可选) |
+| `path` (closed=false) | 开放线段/流线 | coords, segments (可选) |
+| `circle` | 圆形标记 | center, radius (归一化坐标) |
+| `triangle` | 等边三角形标记 | center, size, rotation_deg (归一化坐标) |
+| `point` | 兼容旧单坐标对象 | coords (仅读取，不新建) |
+
+### 14.2 样式字段 (style_hints)
+
+新增字段：
+
+- `fill_mode`: `none` / `translucent` / `solid` / `hatch`
+- `hatch_angle_deg`, `hatch_spacing`, `hatch_width`: 斜线填充参数
+- `stroke_style`: `solid` / `dashed`
+- `border_style`: `none` / `solid` / `dashed` / `double`
+- `double_border_gap`: 双实线间距
+- `start_arrow`, `end_arrow`, `arrow_size`: 箭头控制
+- `label_box`: 半透明标注框（转弯半径、标高）
+- `inline_text`: 旋转文字（坡度箭头）
+- `legend_enabled`, `legend_label`: 图例控制
+
+### 14.3 支持的图纸类型 (10 种)
+
+`functional_zoning`, `planting_design`, `landscape_analysis`, `traffic_analysis`, `fire_route`, `vertical_analysis`, `supporting_facilities`, `sponge_city`, `accessibility_design`, `civil_defense`
+
+### 14.4 配图 (Supporting Images)
+
+配图是图纸类型的附加素材，不在画布上摆放。task_pack 中通过 `inputs.supporting_images` 提供：
+
+```json
+{
+  "manifest": "supporting/manifest.json",
+  "images_dir": "supporting/images",
+  "count": 3
+}
+```
+
+后续 PPT/report agent 根据图片数量自动排版。如果配图不存在，`count` 为 0，task_pack 仍然可用。
