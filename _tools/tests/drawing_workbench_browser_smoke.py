@@ -37,6 +37,46 @@ def prepare_project() -> Path:
     base_dir = proj_dir / "05_output" / "drawings" / "base"
     base_dir.mkdir(parents=True)
     Image.new("RGB", (900, 600), (245, 242, 232)).save(base_dir / "master_plan.jpg", "JPEG")
+    semantic_dir = proj_dir / "05_output" / "drawings" / "semantic"
+    semantic_dir.mkdir(parents=True)
+    legacy_fz = {
+        "schema_version": "1.0",
+        "drawing_type": "functional_zoning",
+        "project_code": TEST_PROJECT,
+        "base_image": {
+            "path": "05_output/drawings/base/master_plan.jpg",
+            "natural_width": 900,
+            "natural_height": 600,
+            "source": "user_upload",
+        },
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "last_edited_by": "agent",
+        "objects": [
+            {
+                "id": "obj-legacy",
+                "type": "functional_zone",
+                "geometry": {
+                    "kind": "polygon",
+                    "coords": [[0.18, 0.18], [0.46, 0.2], [0.42, 0.48]],
+                    "segments": [
+                        {"kind": "line", "from": [0.18, 0.18], "to": [0.46, 0.2]},
+                        {"kind": "quadratic", "from": [0.46, 0.2], "control": [0.62, 0.34], "to": [0.42, 0.48]},
+                        {"kind": "line", "from": [0.42, 0.48], "to": [0.18, 0.18]},
+                    ],
+                },
+                "label": "legacy curved zone",
+                "confidence": "medium",
+                "source": "user_sketch",
+                "style_hints": {
+                    "fill_enabled": True,
+                    "fill_color": "#DCE8C8",
+                    "border_style": "solid",
+                    "stroke_width": 0.003,
+                },
+            }
+        ],
+    }
+    (semantic_dir / "functional_zoning.json").write_text(json.dumps(legacy_fz, ensure_ascii=False, indent=2), encoding="utf-8")
     return proj_dir
 
 
@@ -64,6 +104,52 @@ def assert_no_bad_kinds(objects: list[dict], drawing_type: str) -> None:
             assert ((obj.get("style_hints") or {}).get("label_box") or {}).get("enabled"), "turning_radius missing label_box"
         if obj.get("type") == "slope_arrow":
             assert ((obj.get("style_hints") or {}).get("inline_text") or {}).get("enabled"), "slope_arrow missing inline_text"
+
+
+def assert_fz_regression(page) -> None:
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest.getObjects().some((o) => o.id === 'obj-legacy')",
+        timeout=15000,
+    )
+    assert page.locator(".zone-hit[data-object-id='obj-legacy']").count() >= 1, "FZ legacy object missing zone-hit layer"
+    page.evaluate(
+        """() => document.querySelector(".zone-hit[data-object-id='obj-legacy']")
+          .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))"""
+    )
+    assert page.locator(".geometry-vertex-handle").count() >= 3, "FZ selected object missing vertex handles"
+    assert page.locator(".zone-arc-handle").count() >= 3, "FZ selected object missing arc handles"
+    with page.expect_response(lambda r: "/api/drawing/save" in r.url and r.status == 200, timeout=15000):
+        page.click("#workbenchSave")
+    with page.expect_response(lambda r: "/api/drawing/load" in r.url and r.status == 200, timeout=15000):
+        page.click("#workbenchLoad")
+    legacy = page.evaluate("window.DrawingWorkbenchTest.getObjects().find((o) => o.id === 'obj-legacy')")
+    assert legacy, "FZ legacy object disappeared after reload"
+    segments = ((legacy.get("geometry") or {}).get("segments") or [])
+    assert any(seg.get("kind") == "quadratic" for seg in segments), "FZ quadratic segment lost after save/reload"
+
+
+def assert_control_rules(page, drawing_type: str, tools: list[str]) -> None:
+    if "closed_path" in tools and drawing_type != "functional_zoning":
+        page.click('[data-tool-id="closed_path"]')
+        assert page.locator("#styleStartArrow").count() == 0, f"{drawing_type}: polygon shows start arrow control"
+        assert page.locator("#styleEndArrow").count() == 0, f"{drawing_type}: polygon shows end arrow control"
+        assert page.locator("#styleArrowSize").count() == 0, f"{drawing_type}: polygon shows arrow size control"
+        assert page.locator("#styleDoubleGap").count() == 0, f"{drawing_type}: polygon shows independent double gap control"
+        assert page.locator("#styleStrokeStyle").count() == 0, f"{drawing_type}: polygon shows independent stroke style control"
+        assert page.locator("[data-supporting-panel='true']").count() == 0, f"{drawing_type}: supporting panel shown under polygon tool"
+    for tool in [tool for tool in tools if tool not in {"supporting_images", "closed_path"}]:
+        page.click(f'[data-tool-id="{tool}"]')
+        assert page.locator("[data-supporting-panel='true']").count() == 0, f"{drawing_type}: supporting panel shown under {tool}"
+    if "supporting_images" in tools:
+        page.click('[data-tool-id="supporting_images"]')
+        assert page.locator("[data-supporting-panel='true']").count() == 1, f"{drawing_type}: supporting panel not shown for supporting tool"
+
+
+def assert_shared_interaction_dom(page, drawing_type: str, tool: str) -> None:
+    assert page.locator(".geometry-hit").count() >= 1, f"{drawing_type}/{tool}: missing shared hit layer"
+    assert page.locator(".geometry-vertex-handle").count() >= 1, f"{drawing_type}/{tool}: missing shared vertex handles"
+    if tool in {"closed_path", "open_path", "turning_radius", "slope_arrow"}:
+        assert page.locator(".zone-arc-handle").count() >= 1, f"{drawing_type}/{tool}: missing shared arc handles"
 
 
 def main() -> int:
@@ -112,13 +198,15 @@ def main() -> int:
                 )
                 page.wait_for_timeout(100)
                 tools = list(info.get("tools") or [])
+                if drawing_type == "functional_zoning":
+                    assert_fz_regression(page)
                 if drawing_type != "functional_zoning":
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")
                     assert sorted(dom_tools) == sorted(tools), f"{drawing_type}: DOM tools {dom_tools} != registry {tools}"
                     assert page.locator("#geometryKind").count() == 0, f"{drawing_type}: generic geometry select still visible"
                     assert page.locator("[data-style-controls='true']").count() == 1, f"{drawing_type}: missing style controls"
-                    if "supporting_images" in tools:
-                        assert page.locator("[data-supporting-panel='true']").count() == 1, f"{drawing_type}: missing supporting panel"
+                    assert page.locator("[data-supporting-panel='true']").count() == 0, f"{drawing_type}: supporting panel shown before supporting tool is active"
+                    assert_control_rules(page, drawing_type, tools)
 
                 before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
                 creatable_tools = [tool for tool in tools if tool != "supporting_images"]
@@ -127,6 +215,7 @@ def main() -> int:
                         "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
                         {"tool": tool, "pts": tool_points(tool)},
                     )
+                    assert_shared_interaction_dom(page, drawing_type, tool)
                 after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                 assert len(after_objects) == before + len(creatable_tools), (
                     f"{drawing_type}: object count did not increase by tools; before={before}, after={len(after_objects)}, tools={creatable_tools}"
