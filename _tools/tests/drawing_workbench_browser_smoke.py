@@ -126,6 +126,24 @@ def assert_no_bad_kinds(objects: list[dict], drawing_type: str) -> None:
             assert ((obj.get("style_hints") or {}).get("inline_text") or {}).get("enabled"), "slope_arrow missing inline_text"
 
 
+def assert_preset_not_pale(registry: dict) -> None:
+    old_colors = {"#DCE8C8", "#7AA35A"}
+    objects = registry.get("objects") or {}
+    for object_type, info in objects.items():
+        if object_type == "functional_zone":
+            continue
+        style = info.get("default_style") or {}
+        stroke = str(style.get("stroke_color") or "").upper()
+        fill = str(style.get("fill_color") or "").upper()
+        fill_mode = style.get("fill_mode")
+        assert stroke not in old_colors, f"{object_type}: default stroke still uses old pale color {stroke}"
+        if fill_mode != "none" and object_type != "text_label":
+            assert fill not in old_colors, f"{object_type}: default fill still uses old pale color {fill}"
+    assert (objects.get("text_label", {}).get("default_style") or {}).get("stroke_color") == "#1A1A1A", (
+        "text_label default should be deep readable gray"
+    )
+
+
 def assert_fz_regression(page) -> None:
     fill_values = page.eval_on_selector_all(
         '[data-style-segment="fill_mode"]',
@@ -704,6 +722,7 @@ def main() -> int:
     try:
         wait_for_server()
         registry = url_json("/api/drawing/registry")
+        assert_preset_not_pale(registry)
         enabled = {
             key: value
             for key, value in registry["drawings"].items()

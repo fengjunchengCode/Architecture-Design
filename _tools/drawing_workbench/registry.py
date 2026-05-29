@@ -285,62 +285,64 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "planting_zone": {
         "fill_mode": "translucent",
-        "fill_color": "#DCE8C8",
-        "stroke_color": "#7AA35A",
+        "fill_color": "#7CB342",
+        "stroke_color": "#2E7D32",
     },
     "key_planting_zone": {
         "fill_mode": "hatch",
-        "fill_color": "#DCE8C8",
-        "stroke_color": "#7AA35A",
+        "fill_color": "#7CB342",
+        "stroke_color": "#1B5E20",
     },
     "planting_edge_line": {
         "fill_mode": "none",
-        "stroke_color": "#7AA35A",
+        "stroke_color": "#2E7D32",
         "stroke_width": 0.003,
         "legend_enabled": True,
     },
     "landscape_axis_primary": {
-        "stroke_color": "#E04030",
+        "stroke_color": "#E11D1D",
         "stroke_width": 0.006,
         "stroke_style": "dashed",
     },
     "landscape_axis_secondary": {
-        "stroke_color": "#3070D0",
+        "stroke_color": "#7B2FF0",
         "stroke_width": 0.004,
         "stroke_style": "dashed",
     },
     "landscape_node": {
         "fill_mode": "translucent",
-        "fill_color": "#DCE8C8",
+        "fill_color": "#FFFFFF",
+        "stroke_color": "#F08A24",
         "border_style": "double",
     },
     "vehicle_flow": {
-        "stroke_color": "#E08020",
+        "stroke_color": "#E8551E",
         "stroke_width": 0.007,
         "end_arrow": True,
     },
     "pedestrian_flow": {
-        "stroke_color": "#3070D0",
+        "stroke_color": "#1F6FE0",
         "stroke_width": 0.005,
         "end_arrow": True,
     },
     "underground_flow": {
-        "stroke_color": "#3070D0",
+        "stroke_color": "#1F6FE0",
         "stroke_width": 0.004,
         "stroke_style": "dashed",
         "end_arrow": True,
     },
     "entrance_marker": {
         "fill_mode": "solid",
-        "fill_color": "#E08020",
+        "fill_color": "#E03020",
+        "stroke_color": "#E03020",
     },
     "fire_route_line": {
-        "stroke_color": "#E08020",
+        "stroke_color": "#E11D1D",
         "stroke_width": 0.008,
         "end_arrow": True,
     },
     "turning_radius": {
-        "stroke_color": "#20A0A0",
+        "stroke_color": "#0E9594",
         "stroke_width": 0.004,
         "end_arrow": True,
         "label_box": {
@@ -355,7 +357,8 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "elevation_marker": {
         "fill_mode": "solid",
-        "fill_color": "#E08020",
+        "fill_color": "#7B2FF0",
+        "stroke_color": "#7B2FF0",
         "label_box": {
             "enabled": True,
             "text": "",
@@ -367,6 +370,7 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
         },
     },
     "slope_arrow": {
+        "stroke_color": "#0E7C86",
         "stroke_width": 0.004,
         "end_arrow": True,
         "inline_text": {
@@ -379,35 +383,45 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "facility_zone": {
         "fill_mode": "translucent",
+        "fill_color": "#F08A24",
+        "stroke_color": "#A44D00",
     },
     "trash_collection_point": {
         "fill_mode": "solid",
-        "fill_color": "#DCE8C8",
+        "fill_color": "#E03020",
+        "stroke_color": "#E03020",
         "legend_enabled": True,
     },
     "sponge_zone": {
         "fill_mode": "translucent",
+        "fill_color": "#00A6A6",
+        "stroke_color": "#006D6D",
     },
     "ecological_ditch_line": {
-        "stroke_color": "#7AA35A",
+        "stroke_color": "#00897B",
         "stroke_style": "dashed",
     },
     "runoff_line": {
-        "stroke_color": "#3070D0",
+        "stroke_color": "#1565C0",
         "end_arrow": True,
     },
     "accessible_facility_zone": {
         "fill_mode": "translucent",
+        "fill_color": "#7B2FF0",
+        "stroke_color": "#4C1D95",
     },
     "accessible_point": {
         "fill_mode": "translucent",
-        "fill_color": "#DCE8C8",
+        "fill_color": "#FFFFFF",
+        "stroke_color": "#7B2FF0",
     },
     "civil_defense_zone": {
         "fill_mode": "translucent",
+        "fill_color": "#C2185B",
+        "stroke_color": "#7B113A",
     },
     "text_label": {
-        "stroke_color": "#333333",
+        "stroke_color": "#1A1A1A",
         "text_content": "文字",
         "font_size": 0.024,
         "legend_enabled": False,
