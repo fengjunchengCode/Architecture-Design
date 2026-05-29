@@ -2103,6 +2103,129 @@
     return Array.isArray(geo.coords) ? geo.coords.map(safePoint).filter(Boolean) : [];
   }
 
+  function selectedStrokeColor(color, selected) {
+    return selected && isHexColor(color) ? darkenHex(color, 0.2) : color;
+  }
+
+  function renderSharedVertexHandles(points, fill, stroke) {
+    return (points || []).map(([x, y]) => renderHandleSvg(x, y, fill, stroke)).join("");
+  }
+
+  function renderSharedPathHitLayer({ objectId, pathD, points, closed, style, fillVisible, borderVisible }) {
+    if (state.currentPoints.length > 0) return "";
+    const classes = "zone-hit geometry-hit";
+    const safeStyle = style || {};
+    if (closed) {
+      if (borderVisible) {
+        if (pathD) {
+          return `
+            <path
+              class="${classes}"
+              data-object-id="${escapeHtml(objectId)}"
+              d="${pathD}"
+              fill="none"
+              stroke="transparent"
+              stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+              pointer-events="stroke"
+            ></path>
+          `;
+        }
+        return `
+          <polygon
+            class="${classes}"
+            data-object-id="${escapeHtml(objectId)}"
+            points="${(points || []).map((point) => point.join(",")).join(" ")}"
+            fill="none"
+            stroke="transparent"
+            stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+            pointer-events="stroke"
+          ></polygon>
+        `;
+      }
+      if (fillVisible) {
+        if (pathD) {
+          return `
+            <path
+              class="${classes}"
+              data-object-id="${escapeHtml(objectId)}"
+              d="${pathD}"
+              fill="transparent"
+              stroke="none"
+              pointer-events="fill"
+            ></path>
+          `;
+        }
+        return `
+          <polygon
+            class="${classes}"
+            data-object-id="${escapeHtml(objectId)}"
+            points="${(points || []).map((point) => point.join(",")).join(" ")}"
+            fill="transparent"
+            stroke="none"
+            pointer-events="fill"
+          ></polygon>
+        `;
+      }
+      return "";
+    }
+    if (pathD) {
+      return `
+        <path
+          class="${classes}"
+          data-object-id="${escapeHtml(objectId)}"
+          d="${pathD}"
+          fill="none"
+          stroke="transparent"
+          stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+          pointer-events="stroke"
+        ></path>
+      `;
+    }
+    return `
+      <polyline
+        class="${classes}"
+        data-object-id="${escapeHtml(objectId)}"
+        points="${(points || []).map((point) => point.join(",")).join(" ")}"
+        fill="none"
+        stroke="transparent"
+        stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+        pointer-events="stroke"
+      ></polyline>
+    `;
+  }
+
+  function renderSharedCircleHitLayer({ objectId, cx, cy, radius, style }) {
+    if (state.currentPoints.length > 0) return "";
+    return `
+      <circle
+        class="zone-hit geometry-hit"
+        data-object-id="${escapeHtml(objectId)}"
+        cx="${cx}"
+        cy="${cy}"
+        r="${radius}"
+        fill="transparent"
+        stroke="transparent"
+        stroke-width="${getZoneHitStrokeWidth(style || {})}"
+        pointer-events="all"
+      ></circle>
+    `;
+  }
+
+  function renderSharedPolygonHitLayer({ objectId, points, style }) {
+    if (state.currentPoints.length > 0) return "";
+    return `
+      <polygon
+        class="zone-hit geometry-hit"
+        data-object-id="${escapeHtml(objectId)}"
+        points="${(points || []).map((point) => point.join(",")).join(" ")}"
+        fill="transparent"
+        stroke="transparent"
+        stroke-width="${getZoneHitStrokeWidth(style || {})}"
+        pointer-events="all"
+      ></polygon>
+    `;
+  }
+
   function renderObjectSvg(obj) {
     if (isFunctionalZoning() && obj.type === "functional_zone") {
       return renderFunctionalZoneSvg(obj);
@@ -2120,14 +2243,16 @@
       const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
                    (obj.style_hints && (obj.style_hints.fill_mode === "translucent" || obj.style_hints.fill_mode === "hatch")) ? (obj.style_hints.fill_color || style.fill) : "none";
       const fillOpacity = (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? "0.42" : "1";
-      const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
+      const stroke = selectedStrokeColor((obj.style_hints && obj.style_hints.stroke_color) || style.stroke, selected);
       const borderW = (obj.style_hints && obj.style_hints.stroke_width) || 0.003;
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-      shape = `<circle data-object-id="${escapeHtml(obj.id)}" cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash}></circle>`;
+      shape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></circle>`;
       if (style.hints.border_style === "double") {
         const innerR = Math.max(0.004, r - (style.hints.double_border_gap || 0.006));
-        shape += `<circle data-object-id="${escapeHtml(obj.id)}" cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}"></circle>`;
+        shape += `<circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></circle>`;
       }
+      shape += renderSharedCircleHitLayer({ objectId: obj.id, cx, cy, radius: r, style: style.hints });
+      if (selected) shape += renderSharedVertexHandles([[cx, cy], [Math.min(1, cx + r), cy]], "#fff", stroke);
       labelPoint = [cx, cy - r];
     } else if (geo.kind === "triangle") {
       const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
@@ -2138,13 +2263,15 @@
       const points = pts.map(p => p.join(",")).join(" ");
       const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
                    (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
-      const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
+      const stroke = selectedStrokeColor((obj.style_hints && obj.style_hints.stroke_color) || style.stroke, selected);
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-      shape = `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${dash}></polygon>`;
+      shape = `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${dash} pointer-events="none"></polygon>`;
       if (style.hints.border_style === "double") {
         const innerPts = Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot);
-        shape += `<polygon data-object-id="${escapeHtml(obj.id)}" points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${width}"></polygon>`;
+        shape += `<polygon points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${width}" pointer-events="none"></polygon>`;
       }
+      shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
+      if (selected) shape += renderSharedVertexHandles(pts, "#fff", stroke);
       labelPoint = [cx, cy - size];
     } else if (geo.kind === "path" && geo.closed) {
       // Closed path (polygon)
@@ -2155,20 +2282,42 @@
         const pathD = segmentsToPathD(segments, true);
         const fill = pathFillValue(obj, style);
         const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${style.stroke}" stroke-width="${width}" stroke-linejoin="round"${dash}></path>`;
+        const stroke = selectedStrokeColor(style.stroke, selected);
+        shape = `<path d="${pathD}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
         if (style.hints.border_style === "double") {
-          shape += `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" stroke-linejoin="round"></path>`;
+          shape += `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" stroke-linejoin="round" pointer-events="none"></path>`;
         }
+        shape += renderSharedPathHitLayer({
+          objectId: obj.id,
+          pathD,
+          closed: true,
+          style: style.hints,
+          fillVisible: fill.color !== "none",
+          borderVisible: style.hints.border_style !== "none",
+        });
       } else {
         const points = closedCoords.map(p => p.join(",")).join(" ");
         const fill = pathFillValue(obj, style);
         const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${style.stroke}" stroke-width="${width}"${dash}></polygon>`;
+        const stroke = selectedStrokeColor(style.stroke, selected);
+        shape = `<polygon points="${points}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${width}"${dash} pointer-events="none"></polygon>`;
         if (style.hints.border_style === "double") {
-          shape += `<polygon data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}"></polygon>`;
+          shape += `<polygon points="${points}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" pointer-events="none"></polygon>`;
         }
+        shape += renderSharedPathHitLayer({
+          objectId: obj.id,
+          points: closedCoords,
+          closed: true,
+          style: style.hints,
+          fillVisible: fill.color !== "none",
+          borderVisible: style.hints.border_style !== "none",
+        });
       }
-      if (selected) shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: style.stroke });
+      if (selected) {
+        const stroke = selectedStrokeColor(style.stroke, true);
+        shape += renderSharedVertexHandles(closedCoords, "#fff", stroke);
+        shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: stroke });
+      }
       labelPoint = closedCoords[Math.floor(closedCoords.length / 2)] || closedCoords[0];
     } else if (geo.kind === "point") {
       const [x, y] = safePoint((geo.coords || [])[0]) || [0.5, 0.5];
@@ -2181,14 +2330,22 @@
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, false);
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<path data-object-id="${escapeHtml(obj.id)}" d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}></path>`;
+        const stroke = selectedStrokeColor(style.stroke, selected);
+        shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
+        shape += renderSharedPathHitLayer({ objectId: obj.id, pathD, closed: false, style: style.hints });
       } else if (coords.length >= 2) {
         const points = coords.map(p => p.join(",")).join(" ");
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<polyline data-object-id="${escapeHtml(obj.id)}" points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}></polyline>`;
+        const stroke = selectedStrokeColor(style.stroke, selected);
+        shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
+        shape += renderSharedPathHitLayer({ objectId: obj.id, points: coords, closed: false, style: style.hints });
       }
       shape += renderArrowHeads(coords, style.hints, obj.id);
-      if (selected && coords.length >= 2) shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: style.stroke });
+      if (selected && coords.length >= 2) {
+        const stroke = selectedStrokeColor(style.stroke, true);
+        shape += renderSharedVertexHandles(coords, "#fff", stroke);
+        shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: stroke });
+      }
       if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
     }
     const overlays = renderSemanticTextOverlays(obj, labelPoint, style.hints);
@@ -2223,35 +2380,14 @@
           pointer-events="none"
         ></path>
       `;
-      const isDrawing = state.currentPoints.length > 0;
-      if (!isDrawing) {
-        const hasVisibleBorder = style.border_style !== "none";
-        const hasVisibleFill = style.fill_enabled;
-        if (hasVisibleBorder) {
-          hitShape = `
-            <path
-              class="zone-hit"
-              data-object-id="${escapeHtml(obj.id)}"
-              d="${pathD}"
-              fill="none"
-              stroke="transparent"
-              stroke-width="${getZoneHitStrokeWidth(style)}"
-              pointer-events="stroke"
-            ></path>
-          `;
-        } else if (hasVisibleFill) {
-          hitShape = `
-            <path
-              class="zone-hit"
-              data-object-id="${escapeHtml(obj.id)}"
-              d="${pathD}"
-              fill="transparent"
-              stroke="none"
-              pointer-events="fill"
-            ></path>
-          `;
-        }
-      }
+      hitShape = renderSharedPathHitLayer({
+        objectId: obj.id,
+        pathD,
+        closed: true,
+        style,
+        fillVisible: style.fill_enabled,
+        borderVisible: style.border_style !== "none",
+      });
     } else {
       const points = coords.map((point) => point.join(",")).join(" ");
       visibleShape = `
@@ -2265,42 +2401,21 @@
           pointer-events="none"
         ></polygon>
       `;
-      const isDrawing = state.currentPoints.length > 0;
-      if (!isDrawing) {
-        const hasVisibleBorder = style.border_style !== "none";
-        const hasVisibleFill = style.fill_enabled;
-        if (hasVisibleBorder) {
-          hitShape = `
-            <polygon
-              class="zone-hit"
-              data-object-id="${escapeHtml(obj.id)}"
-              points="${points}"
-              fill="none"
-              stroke="transparent"
-              stroke-width="${getZoneHitStrokeWidth(style)}"
-              pointer-events="stroke"
-            ></polygon>
-          `;
-        } else if (hasVisibleFill) {
-          hitShape = `
-            <polygon
-              class="zone-hit"
-              data-object-id="${escapeHtml(obj.id)}"
-              points="${points}"
-              fill="transparent"
-              stroke="none"
-              pointer-events="fill"
-            ></polygon>
-          `;
-        }
-      }
+      hitShape = renderSharedPathHitLayer({
+        objectId: obj.id,
+        points: coords,
+        closed: true,
+        style,
+        fillVisible: style.fill_enabled,
+        borderVisible: style.border_style !== "none",
+      });
     }
 
     // 选中时显示 handles
     let handles = "";
     if (selected) {
       // vertex handles
-      handles = coords.map(([x, y]) => renderHandleSvg(x, y, "#fff", darkenHex(style.fill_color, 0.28))).join("");
+      handles = renderSharedVertexHandles(coords, "#fff", darkenHex(style.fill_color, 0.28));
       // 从 coords 初始化 segments（如果还没有）
       const segs = ensureSegments(obj);
       handles += renderSegmentHandles(obj.id, segs, style);
@@ -2411,7 +2526,7 @@
 
   function renderHandleSvg(x, y, fill, stroke) {
     const strokeAttr = stroke === "none" ? 'stroke="none"' : `stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}"`;
-    return `<ellipse cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
+    return `<ellipse class="geometry-vertex-handle" cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
   }
 
   function renderCloseHandleSvg(x, y, fill) {
