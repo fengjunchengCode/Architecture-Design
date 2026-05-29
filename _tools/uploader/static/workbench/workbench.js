@@ -802,6 +802,10 @@
     return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
   }
 
+  function shouldRenderArrowHeads(obj) {
+    return obj && (obj.type === "turning_radius" || obj.type === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(obj.type));
+  }
+
   function styleSpecFor(specKey) {
     return PRIMITIVE_STYLE_SPEC[specKey] || PRIMITIVE_STYLE_SPEC.closed_path;
   }
@@ -2558,7 +2562,7 @@
         shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, points: coords, closed: false, style: style.hints });
       }
-      shape += renderArrowHeads(coords, style.hints, obj.id);
+      if (shouldRenderArrowHeads(obj)) shape += renderArrowHeads(coords, style.hints, obj.id);
       if (selected && coords.length >= 2) {
         const stroke = selectedStrokeColor(style.stroke, true);
         shape += renderSharedVertexHandles(coords, "#fff", stroke);

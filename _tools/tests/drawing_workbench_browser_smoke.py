@@ -124,6 +124,16 @@ def assert_no_bad_kinds(objects: list[dict], drawing_type: str) -> None:
 
 
 def assert_fz_regression(page) -> None:
+    fill_values = page.eval_on_selector_all(
+        '[data-style-segment="fill_mode"]',
+        "(nodes) => nodes.map((node) => node.dataset.styleValue)",
+    )
+    border_values = page.eval_on_selector_all(
+        '[data-style-segment="border_style"]',
+        "(nodes) => nodes.map((node) => node.dataset.styleValue)",
+    )
+    assert fill_values == ["none", "translucent", "solid", "hatch"], f"FZ fill controls not unified: {fill_values}"
+    assert border_values == ["none", "solid", "dashed", "double"], f"FZ border controls not unified: {border_values}"
     page.wait_for_function(
         "() => window.DrawingWorkbenchTest.getObjects().some((o) => o.id === 'obj-legacy')",
         timeout=15000,
@@ -159,6 +169,16 @@ def assert_fz_regression(page) -> None:
 def assert_control_rules(page, drawing_type: str, tools: list[str]) -> None:
     if "closed_path" in tools and drawing_type != "functional_zoning":
         page.click('[data-tool-id="closed_path"]')
+        fill_values = page.eval_on_selector_all(
+            '[data-style-segment="fill_mode"]',
+            "(nodes) => nodes.map((node) => node.dataset.styleValue)",
+        )
+        border_values = page.eval_on_selector_all(
+            '[data-style-segment="border_style"]',
+            "(nodes) => nodes.map((node) => node.dataset.styleValue)",
+        )
+        assert fill_values == ["none", "translucent", "solid", "hatch"], f"{drawing_type}: polygon fill controls differ from FZ"
+        assert border_values == ["none", "solid", "dashed", "double"], f"{drawing_type}: polygon border controls differ from FZ"
         assert page.locator("#styleStartArrow").count() == 0, f"{drawing_type}: polygon shows start arrow control"
         assert page.locator("#styleEndArrow").count() == 0, f"{drawing_type}: polygon shows end arrow control"
         assert page.locator("#styleArrowSize").count() == 0, f"{drawing_type}: polygon shows arrow size control"
@@ -194,6 +214,19 @@ def assert_stroke_width_honored(page, drawing_type: str, tool: str) -> None:
     )
     assert any(abs(value - 0.011) < 0.0005 for value in widths), (
         f"{drawing_type}/{tool}: visible stroke-width does not honor 0.011; got {widths}"
+    )
+
+
+def assert_hatch_fill_renders(page, drawing_type: str, tool: str) -> None:
+    if tool != "closed_path":
+        return
+    pattern_count = page.locator("#sketchOverlay pattern[id^='hatch-']").count()
+    fills = page.locator(
+        "#sketchOverlay path:not(.geometry-hit):not(.zone-arc-handle), "
+        "#sketchOverlay polygon:not(.geometry-hit):not(.zone-arc-handle)"
+    ).evaluate_all("(nodes) => nodes.map((node) => node.getAttribute('fill') || '')")
+    assert pattern_count >= 1 and any(value.startswith("url(#hatch-") for value in fills), (
+        f"{drawing_type}/{tool}: hatch fill did not render as SVG pattern; patterns={pattern_count}, fills={fills}"
     )
 
 
@@ -266,6 +299,8 @@ def main() -> int:
                                 el.dispatchEvent(new Event("input", { bubbles: true }));
                             }""",
                         )
+                    if drawing_type != "functional_zoning" and tool == "closed_path":
+                        page.click('[data-style-segment="fill_mode"][data-style-value="hatch"]')
                     page.evaluate(
                         "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
                         {"tool": tool, "pts": tool_points(tool)},
@@ -273,6 +308,7 @@ def main() -> int:
                     assert_shared_interaction_dom(page, drawing_type, tool)
                     if drawing_type != "functional_zoning":
                         assert_stroke_width_honored(page, drawing_type, tool)
+                        assert_hatch_fill_renders(page, drawing_type, tool)
                 after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                 assert len(after_objects) == before + len(creatable_tools), (
                     f"{drawing_type}: object count did not increase by tools; before={before}, after={len(after_objects)}, tools={creatable_tools}"
