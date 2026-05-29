@@ -2583,6 +2583,19 @@
     return (points || []).map((point) => aspectCompensatePoint(point, center, k));
   }
 
+  function extendScreenPoint(center, point, distance = 0.038) {
+    const stage = stageSize();
+    const cx = center[0] * stage.width;
+    const cy = center[1] * stage.height;
+    const px = point[0] * stage.width;
+    const py = point[1] * stage.height;
+    const dx = px - cx;
+    const dy = py - cy;
+    const length = Math.hypot(dx, dy) || 1;
+    const extra = distance * stage.width;
+    return [(px + (dx / length) * extra) / stage.width, (py + (dy / length) * extra) / stage.height];
+  }
+
   function objectPathCoords(obj) {
     const geo = (obj && obj.geometry) || {};
     if (Array.isArray(geo.segments) && geo.segments.length) return Model.sampleSegments(geo.segments, !!geo.closed);
@@ -2810,10 +2823,19 @@
       }
       shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
       if (selected) {
-        shape += renderSharedVertexHandles([pts[0], pts[2]], "#fff", stroke, {
+        shape += renderSharedVertexHandles(pts, "#fff", stroke, {
           objectId: obj.id,
-          roles: ["triangle-rotate", "triangle-size"],
+          roles: ["triangle-size", "triangle-size", "triangle-size"],
         });
+        const rotatePoint = extendScreenPoint([cx, cy], pts[0]);
+        shape += `<line class="geometry-rotate-stem" x1="${pts[0][0]}" y1="${pts[0][1]}" x2="${rotatePoint[0]}" y2="${rotatePoint[1]}" stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}" pointer-events="none"></line>`;
+        shape += renderHandleSvg(
+          rotatePoint[0],
+          rotatePoint[1],
+          "#fff",
+          stroke,
+          `data-vertex-object-id="${escapeHtml(obj.id)}" data-vertex-index="rotate" data-vertex-role="triangle-rotate"`,
+        );
       }
       labelPoint = [cx, cy - size];
     } else if ((geo.kind === "path" && geo.closed) || geo.kind === "polygon") {
