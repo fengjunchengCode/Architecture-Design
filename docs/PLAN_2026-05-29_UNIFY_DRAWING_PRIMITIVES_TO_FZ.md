@@ -190,15 +190,85 @@
 
 ---
 
+# 第二批（第四轮）：统一交互层——保证画布操作/选中手感对齐 FZ
+
+> 背景：第一批（Task 1–5）统一了**模型/控件/渲染**三层，但**事件/交互层**仍有 23 处 `isFunctionalZoning()` 分叉，用户实测「画布上的操作与选中方式跟功能分区完全不一样」。本批专治交互层。
+> **优先级（用户拍板）：以「像 FZ」为准；与原始规格 §2.x 抵触的手感细节让位。**
+> **手感对齐范围（用户拍板）**：多边形/线段 = 创建+选中+渲染+编辑**全程**对齐 FZ；圆形/三角形 = 选中/渲染/编辑/样式对齐 FZ，仅「创建那一下」按几何走（圆=点圆心+拖半径；三角=点一下+定尺寸/旋转）。
+
+## Task 6：线段/多边形支持多点创建（修「线段两点就自动闭合」）
+
+**Files:** Modify `workbench.js`（`addPoint` 2092、`TOOL_GEOMETRY` 28、`finishObject` 2124）
+
+- [ ] **Step 1：写失败断言（必须先红）**
+  浏览器冒烟新增 `assert_line_multipoint`：选「线段」工具，依次点 4 个不共线的点，断言此时**尚未生成对象**（`state.objects` 不增、`#sketchOverlay` 草图 polyline 有 4 个点）；再点「完成」按钮→断言生成 1 个 `geometry.kind==="path" && closed===false` 且 `coords.length===4` 的对象。
+- [ ] **Step 2：跑测试确认红**
+  Run: `python _tools/tests/drawing_workbench_browser_smoke.py`
+  Expected: FAIL（现状第 2 点即 `createObjectFromTool` 自动收尾，加不了第 3 点）。
+- [ ] **Step 3：去掉「到 minPoints 自动建对象」分支**
+  `addPoint`(2117) 删除 `if (len >= minPoints && minPoints <= 2) createObjectFromTool(...)` 这段自动收尾。改为：path 类（closed_path/open_path/turning_radius/slope_arrow）一律**累积点 + 重绘草图**，只在**显式完成**（完成按钮 / Enter / 双击 / 点闭合手柄）时收尾——与 FZ 多边形同流程。`minPoints` 仅在 `finishObject` 内做**最小点数校验**（线段≥2，多边形≥3），不再触发自动建。
+  point 类（circle/triangle，minPoints:1）保留「点一下即建默认尺寸对象、随后拖拽调整」——这是几何决定的创建方式。
+- [ ] **Step 4：跑测试确认绿**
+  Run: `python _tools/tests/drawing_workbench_browser_smoke.py`
+  Expected: PASS（`assert_line_multipoint` + 既有断言）。
+- [ ] **Step 5：codex 视觉自检 + 提交**
+  线段连点 5 个 → 折线持续延伸 → 完成 → 5 点折线；可拖某段中点成弧。
+  ```bash
+  git add -A && git commit -m "fix(workbench): polyline/polygon accumulate points until explicit finish (no 2-point auto-close)"
+  ```
+
+## Task 7：统一草图预览 / 闭合手柄 / 完成 / 键盘——折叠 isFunctionalZoning 分叉
+
+**Files:** Modify `workbench.js`（`renderDraftSvg` 2663、`addPoint` 2099/2104、`finishObject`/`finishFunctionalZone` 2124/2141、Enter 处理器 2949、`selectObject` 2859、完成按钮文案 1543）
+
+- [ ] **Step 1：草图预览统一**
+  `renderDraftSvg`(2663) 删 `isFunctionalZoning` 分叉：所有 path 草图都用 FZ 的形态——顶点用 `renderHandleSvg`；**闭合类（closed_path/functional_zone）在第一点且点数≥3 时渲染 `renderCloseHandleSvg`（点它收口）**；开放类（open_path 等）不渲染闭合手柄。线宽统一用 FZ 草图常量。
+- [ ] **Step 2：完成路径统一**
+  把 `finishFunctionalZone`(2141) 与 `finishObject`(2124) 的非 FZ 分支合并为一个 `finishObject()`：按 `geometry.closed`/kind 决定校验点数与是否闭合，**不再按 `isFunctionalZoning()` 分流**；`addPoint`(2099/2104) 的「开画前清选中 + 累积点」逻辑去掉 FZ 分叉；`selectObject`(2859) 选中后抓默认样式对所有类型一致。
+- [ ] **Step 3：键盘/按钮统一**
+  Enter 处理器(2949)：任意「正在多点绘制」状态（`currentPoints.length >= 该工具 minPoints`）按 Enter 即完成，不限 FZ；完成按钮文案(1543) 由当前工具标签驱动即可（可保留动态文案，但分流逻辑删除）。
+- [ ] **Step 4：跑门禁**
+  Run: `node --check _tools/uploader/static/workbench/workbench.js && python _tools/tests/drawing_workbench_browser_smoke.py`
+  Expected: PASS（含 `assert_fz_regression`——FZ 创建/收口/选中行为逐像素不变）。
+- [ ] **Step 5：结构红线 grep**
+  Run: `grep -nE "isFunctionalZoning" _tools/uploader/static/workbench/workbench.js | grep -nE "addPoint|finish|renderDraftSvg|key|Enter|selectObject" ; grep -c "isFunctionalZoning" _tools/uploader/static/workbench/workbench.js`
+  Expected: 第一条**无输出**（创建/完成/草图/键盘/选中处理器里 0 个 `isFunctionalZoning`）；总数从 23 降到个位数（只剩 `drawingType`/类型路由等合法用途）。
+- [ ] **Step 6：codex 视觉自检 + 提交**
+  并排：FZ 多边形 vs 新多边形——逐点画、第一点闭合手柄、回车收口、虚线草图，操作**一模一样**。
+  ```bash
+  git add -A && git commit -m "refactor(workbench): unify draft/close/finish/select interaction across primitives"
+  ```
+
+## Task 8：行为等价门禁——把 FZ 的交互脚本原样跑在每个图元上（本批红线）
+
+**Files:** Modify `_tools/tests/drawing_workbench_browser_smoke.py`
+
+- [ ] **Step 1：抽出 FZ 交互序列为可复用函数**
+  把现有 `assert_fz_regression` 里「点 N 点→点闭合手柄收口→选中→pointerdown 拖某段中点→断言该段 `kind==="quadratic"`→断言选中加深/zone-hit/handle 齐全」抽成 `drive_polygon_interaction(page, tool_id)`。
+- [ ] **Step 2：对每个图元跑同一脚本**
+  - `closed_path`（任一非 FZ 图纸）：`drive_polygon_interaction` **一字不改**通过（含闭合手柄、拖边成弧）。
+  - `open_path`：多点折线版（无闭合手柄）——连点≥3、拖边成弧、选中加深、handle 齐全。
+  - `circle`/`triangle`：创建后**选中→拖拽编辑→改色/线宽**与 FZ 同源函数驱动（创建按几何，不跑闭合手柄那步）。
+- [ ] **Step 3：跑全门禁确认绿**
+  Run: `python _tools/tests/drawing_workbench_browser_smoke.py`
+  Expected: PASS，0 console error。**这是本批红线：FZ 能过的交互,新图元必须同脚本过。**
+- [ ] **Step 4：提交**
+  ```bash
+  git add -A && git commit -m "test(workbench): drive FZ interaction script verbatim on every primitive"
+  ```
+
+---
+
 ## 验收红线汇总（mac claude 最终审会逐条看实际输出）
 
 1. **结构（二值，骗不过）**：`renderFunctionalZoneSvg` / `renderTrimmedRegistryStyleControls` / `renderRegistryStyleControls` / 两个旧 bind 函数 / 写死 `0.008`·`0.012` 线宽——grep 全 0。
 2. **行为**：closed_path/open_path/triangle 设线宽 X → 可见图形 `stroke-width≈X`；填充 4 态在多边形渲染正确（半透明 opacity、斜线 pattern）；箭头仅 flow 类出现。
 3. **FZ 回归（红线）**：FZ 带弧分区存→重载弧不丢；`fill_enabled` 旧档迁移为 `none/translucent` 后渲染与改前**逐像素一致**（FZ 控件现含 4 态填充/双线边框，但现存数据不取这些值，故旧分区不变）；选中后 `zone-hit` 命中层 + 顶点 + 弧线 handle 齐全；图例分组不变。
-4. 其余既有门禁（py_compile / node --check / API smoke / validate_record）全过。
+4. **交互层（第四轮红线）**：① 线段支持多点——连点≥3 不自动收尾，显式完成才生成（`assert_line_multipoint`）；② `addPoint`/`finishObject`/`renderDraftSvg`/键盘/`selectObject` 处理器里 `isFunctionalZoning` grep 为 0，总数降至个位数；③ **FZ 的交互脚本 `drive_polygon_interaction` 原样跑在 closed_path/open_path 上必须通过**（逐点画、闭合手柄收口、拖边成弧、选中加深、handle 齐全）；圆/三角选中+拖拽+样式同源脚本通过。
+5. 其余既有门禁（py_compile / node --check / API smoke / validate_record）全过。
 
 ## 交付约定
 
-- 5 个任务各一次提交，提交信息如上。
+- 第一批 5 任务 + 第二批（第四轮）Task 6–8，各一次提交，提交信息如上。第二批是在第一批已落地基础上继续。
 - **不要改 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`**——审阅线程留给 mac claude。
 - 回推后通知 mac claude 做最终审 + 看结构 grep 与行为断言的实际输出。
