@@ -230,6 +230,37 @@ def assert_hatch_fill_renders(page, drawing_type: str, tool: str) -> None:
     )
 
 
+def click_canvas_point(page, point: list[float]) -> None:
+    box = page.locator("#workbenchStage").bounding_box()
+    assert box, "workbench stage has no bounding box"
+    page.mouse.click(box["x"] + point[0] * box["width"], box["y"] + point[1] * box["height"])
+    page.wait_for_timeout(80)
+
+
+def assert_line_multipoint(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="open_path"]')
+    before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
+    points = [[0.12, 0.24], [0.32, 0.31], [0.48, 0.22], [0.66, 0.36]]
+    for point in points:
+        click_canvas_point(page, point)
+    during = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
+    assert during == before, f"{drawing_type}: open_path auto-finished before explicit Finish"
+    draft_points = page.locator("#sketchOverlay polyline:not(.geometry-hit)").last.get_attribute("points") or ""
+    assert len(draft_points.split()) == 4, f"{drawing_type}: draft polyline does not keep 4 points: {draft_points!r}"
+    page.click("#finishObject")
+    page.wait_for_function(
+        "(count) => window.DrawingWorkbenchTest.getObjects().length === count + 1",
+        arg=before,
+        timeout=10000,
+    )
+    created = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
+    geometry = created.get("geometry") or {}
+    assert geometry.get("kind") == "path" and geometry.get("closed") is False, (
+        f"{drawing_type}: finished line is not an open path: {geometry}"
+    )
+    assert len(geometry.get("coords") or []) == 4, f"{drawing_type}: finished line did not keep 4 points: {geometry}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -266,6 +297,7 @@ def main() -> int:
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
             page.goto(f"{BASE}/?project={TEST_PROJECT}&page=workbench&drawing=functional_zoning", wait_until="networkidle", timeout=30000)
             page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+            line_multipoint_checked = False
 
             for drawing_type, info in enabled.items():
                 page.click(f'[data-drawing-type="{drawing_type}"]')
@@ -285,6 +317,9 @@ def main() -> int:
                     assert page.locator("[data-style-controls='true']").count() == 1, f"{drawing_type}: missing style controls"
                     assert page.locator("[data-supporting-panel='true']").count() == 0, f"{drawing_type}: supporting panel shown before supporting tool is active"
                     assert_control_rules(page, drawing_type, tools)
+                    if not line_multipoint_checked and "open_path" in tools:
+                        assert_line_multipoint(page, drawing_type)
+                        line_multipoint_checked = True
 
                 before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
                 creatable_tools = [tool for tool in tools if tool != "supporting_images"]

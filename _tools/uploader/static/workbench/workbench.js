@@ -2043,7 +2043,8 @@
     const index = state.objects.length + 1;
     const id = options.id || nextObjectId();
     const label = options.label || (objectLabel && objectLabel.value.trim()) || `${objectName(objectType)} ${index}`;
-    const geometry = defaultGeometryForTool(toolId, points.slice(0, minPoints), objectType);
+    const geometryPoints = spec.kind === "path" ? points.slice() : points.slice(0, minPoints);
+    const geometry = defaultGeometryForTool(toolId, geometryPoints, objectType);
     if (!geometry) return null;
     const style = draftStyleFor(objectType, toolId);
     if (toolId === "turning_radius") {
@@ -2114,10 +2115,11 @@
     if (!spec) return;
     state.currentPoints.push(point);
     markDirty();
-    if (state.currentPoints.length >= (spec.minPoints || 1) && (spec.minPoints || 1) <= 2) {
+    if (spec.kind !== "path" && state.currentPoints.length >= (spec.minPoints || 1)) {
       createObjectFromTool(activeTool, state.currentPoints);
     } else {
-      renderObjects();
+      renderCanvasLayers("add-draft-point");
+      renderObjectList();
     }
   }
 
