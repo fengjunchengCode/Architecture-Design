@@ -251,6 +251,7 @@ _BASE_STYLE: dict[str, Any] = {
     "stroke_color": "#333333",
     "stroke_width": 0.003,
     "stroke_style": "solid",
+    "dash_scale": 1,
     "border_style": "solid",
     "double_border_gap": 0.006,
     "start_arrow": False,

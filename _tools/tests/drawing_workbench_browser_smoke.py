@@ -504,6 +504,35 @@ def assert_legend_non_fz(page, drawing_type: str) -> None:
     assert entries >= 2, f"{drawing_type}: expected at least 2 legend entries, got {entries}; text={text!r}"
 
 
+def assert_dash_scale(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="open_path"]')
+    page.click('[data-style-segment="stroke_style"][data-style-value="dashed"]')
+    assert page.locator("#styleDashScale").count() == 1, f"{drawing_type}: missing dash_scale control for dashed line"
+    page.eval_on_selector(
+        "#styleDashScale",
+        """(el) => {
+            el.value = "2";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    created = page.evaluate(
+        """() => window.DrawingWorkbenchTest.createObject("open_path", [[0.18, 0.72], [0.72, 0.74]])"""
+    )
+    obj_id = created["id"]
+    shape = page.locator("#sketchOverlay polyline:not(.geometry-hit):not(.zone-arc-handle)").last
+    dash_large = shape.get_attribute("stroke-dasharray")
+    assert dash_large == "0.028 0.02", f"{drawing_type}: dash_scale=2 did not update dasharray, got {dash_large!r}"
+    page.eval_on_selector(
+        "#styleDashScale",
+        """(el) => {
+            el.value = "0.5";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    dash_small = shape.get_attribute("stroke-dasharray")
+    assert dash_small == "0.007 0.005", f"{drawing_type}: dash_scale=0.5 did not update selected dasharray, got {dash_small!r}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -608,6 +637,9 @@ def main() -> int:
                 )
                 assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "planting_design":
+                    assert_dash_scale(page, drawing_type)
+                    after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+                    assert_no_bad_kinds(after_objects, drawing_type)
                     assert_legend_non_fz(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)

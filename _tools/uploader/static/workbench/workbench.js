@@ -395,6 +395,22 @@
     return style && style[key] !== undefined && style[key] !== null ? style[key] : fallback;
   }
 
+  function dashScale(style) {
+    const value = Number(style && style.dash_scale);
+    if (!Number.isFinite(value)) return 1;
+    return Math.min(2.5, Math.max(0.4, value));
+  }
+
+  function dashArray(style, dash = 0.014, gap = 0.01) {
+    const scale = dashScale(style);
+    return `${Number((dash * scale).toFixed(4))} ${Number((gap * scale).toFixed(4))}`;
+  }
+
+  function legendDashArray(style, dash = 4, gap = 3) {
+    const scale = dashScale(style);
+    return `${Number((dash * scale).toFixed(2))} ${Number((gap * scale).toFixed(2))}`;
+  }
+
   function draftKey(toolId, objectType) {
     return `${drawingType()}|${toolId || ""}|${objectType || ""}`;
   }
@@ -956,6 +972,8 @@
     const geo = context.geometry || {};
     const showArrows = spec.arrows === "flow-only" && shouldShowArrowControls(context.toolId || specKey, context.objectType);
     const showStrokeSection = spec.strokeWidth || spec.strokeStyle || spec.border || showArrows;
+    const showDashScale =
+      (spec.strokeStyle && style.stroke_style === "dashed") || (spec.border && style.border_style === "dashed");
     const strokeLabel = spec.fill ? "边框宽" : "线宽";
     const strokeMax = spec.maxStrokeWidth || 0.018;
     return `
@@ -1062,6 +1080,19 @@
                       "stroke_style",
                       spec.strokeStyle.map((value) => ({ value, label: STROKE_STYLE_LABELS[value] || value })),
                       style.stroke_style || "solid",
+                    )
+                  : ""
+              }
+              ${
+                showDashScale
+                  ? rangeControl(
+                      "styleDashScale",
+                      "虚线密度",
+                      dashScale(style),
+                      "0.4",
+                      "2.5",
+                      "0.1",
+                      'data-style-input="dash_scale" data-style-kind="number"',
                     )
                   : ""
               }
@@ -1464,7 +1495,7 @@
       const borderColor = hasBorder ? style.stroke_color || style.fill_color : "transparent";
       // swatch viewBox 24x16，映射 stroke_width 到 1-3px 范围以区分线宽差异
       const borderWidth = hasBorder ? Math.max(1, Math.min(3, Math.round(style.stroke_width * 300))) : 0;
-      const dashArray = style.border_style === "dashed" ? "4 3" : "";
+      const dashArrayValue = style.border_style === "dashed" ? legendDashArray(style) : "";
       return `
         <div class="zone-legend-item">
           <svg class="zone-legend-swatch" viewBox="0 0 24 16" aria-hidden="true">
@@ -1473,7 +1504,7 @@
               fill-opacity="${fillVisible ? String(style.fill_opacity ?? 0.42) : '0'}"
               stroke="${borderColor}"
               stroke-width="${borderWidth}"
-              ${dashArray ? `stroke-dasharray="${dashArray}"` : ''}
+              ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ''}
             />
           </svg>
           <span class="zone-legend-label">${escapeHtml(groupName)}</span>
@@ -1519,7 +1550,7 @@
     const closed = meta.closed === true;
     const stroke = style.stroke_color || style.fill_color || "#333333";
     const strokeWidth = Math.max(1, Math.min(4, Math.round((Number(style.stroke_width) || 0.003) * 320)));
-    const dashArray = style.stroke_style === "dashed" || style.border_style === "dashed" ? "4 3" : "";
+    const dashArrayValue = style.stroke_style === "dashed" || style.border_style === "dashed" ? legendDashArray(style) : "";
     if (kind === "circle") {
       const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent";
       return `
@@ -1528,7 +1559,7 @@
           fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
           stroke="${style.border_style === "none" ? "transparent" : stroke}"
           stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
-          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+          ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
     if (kind === "triangle") {
@@ -1539,7 +1570,7 @@
           fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
           stroke="${style.border_style === "none" ? "transparent" : stroke}"
           stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
-          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+          ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
     if (kind === "text") {
@@ -1553,7 +1584,7 @@
           fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
           stroke="${style.border_style === "none" ? "transparent" : stroke}"
           stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
-          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+          ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
     return `
@@ -1562,7 +1593,7 @@
         stroke="${stroke}"
         stroke-width="${strokeWidth}"
         stroke-linecap="${style.stroke_style === "dashed" ? "butt" : "round"}"
-        ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+        ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
       />`;
   }
 
@@ -2670,7 +2701,7 @@
       const borderVisible = style.hints.border_style !== "none";
       const stroke = borderVisible ? selectedStrokeColor(style.stroke, selected) : "none";
       const borderW = borderVisible ? sw : 0;
-      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
       shape = `<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${ry}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></ellipse>`;
       if (borderVisible && style.hints.border_style === "double") {
         const innerR = Math.max(0.004, r - (style.hints.double_border_gap || 0.006));
@@ -2698,7 +2729,7 @@
       const borderVisible = style.hints.border_style !== "none";
       const stroke = borderVisible ? selectedStrokeColor(style.stroke, selected) : "none";
       const borderW = borderVisible ? sw : 0;
-      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
       shape = `<polygon points="${points}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></polygon>`;
       if (borderVisible && style.hints.border_style === "double") {
         const innerPts = aspectCompensatePoints(Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot), [cx, cy]);
@@ -2719,7 +2750,7 @@
       const segments = geo.segments;
       const stroke = style.hints.border_style === "none" ? "none" : selectedStrokeColor(style.stroke, selected);
       const borderWidth = style.hints.border_style === "none" ? 0 : sw;
-      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, true);
         const fill = pathFillValue(obj, style);
@@ -2768,13 +2799,13 @@
       const stroke = selectedStrokeColor(style.stroke, selected);
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, false);
-        const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
+        const dash = style.hints.stroke_style === "dashed" ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
         const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
         shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, pathD, closed: false, style: style.hints });
       } else if (coords.length >= 2) {
         const points = coords.map(p => p.join(",")).join(" ");
-        const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
+        const dash = style.hints.stroke_style === "dashed" ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
         const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
         shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, points: coords, closed: false, style: style.hints });

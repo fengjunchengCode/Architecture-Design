@@ -23,6 +23,7 @@
     stroke_color: "#333333",
     stroke_width: 0.003,
     stroke_style: "solid",
+    dash_scale: 1,
     border_style: "solid",
     double_border_gap: 0.006,
     start_arrow: false,
@@ -428,6 +429,7 @@
         s.border_style || "",
         s.stroke_color || "",
         String(s.stroke_width || ""),
+        String(s.dash_scale || ""),
         String(s.double_border_gap || "")
       );
     } else if (kind === "triangle") {
@@ -437,7 +439,8 @@
         String(s.fill_opacity || ""),
         s.border_style || "",
         s.stroke_color || "",
-        String(s.stroke_width || "")
+        String(s.stroke_width || ""),
+        String(s.dash_scale || "")
       );
     } else {
       // path
@@ -451,13 +454,15 @@
           String(s.hatch_spacing || ""),
           s.border_style || "",
           s.stroke_color || "",
-          String(s.stroke_width || "")
+          String(s.stroke_width || ""),
+          String(s.dash_scale || "")
         );
       } else {
         parts.push(
           s.stroke_color || "",
           String(s.stroke_width || ""),
           s.stroke_style || "",
+          String(s.dash_scale || ""),
           String(s.start_arrow || false),
           String(s.end_arrow || false),
           String(s.arrow_size || "")
