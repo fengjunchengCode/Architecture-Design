@@ -2427,18 +2427,80 @@
     return parts.join("");
   }
 
-  function renderArrowHead(from, tip, style, objectId) {
+  function stageSize() {
+    const stage = $("#workbenchStage");
+    const rect = stage && stage.getBoundingClientRect();
+    return {
+      width: rect && rect.width ? rect.width : 1,
+      height: rect && rect.height ? rect.height : 1,
+    };
+  }
+
+  function arrowGeometry(from, tip, style) {
     from = safePoint(from);
     tip = safePoint(tip);
-    if (!from || !tip) return "";
+    if (!from || !tip) return null;
+    const stage = stageSize();
+    const fromPx = [from[0] * stage.width, from[1] * stage.height];
+    const tipPx = [tip[0] * stage.width, tip[1] * stage.height];
+    const dx = tipPx[0] - fromPx[0];
+    const dy = tipPx[1] - fromPx[1];
+    const length = Math.hypot(dx, dy);
+    if (!length) return null;
     const size = Number(style.arrow_size) || 0.028;
-    const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
-    const back = [Math.cos(angle) * size, Math.sin(angle) * size];
-    const side = [-Math.sin(angle) * size * 0.42, Math.cos(angle) * size * 0.42];
-    const p1 = tip;
-    const p2 = [tip[0] - back[0] + side[0], tip[1] - back[1] + side[1]];
-    const p3 = [tip[0] - back[0] - side[0], tip[1] - back[1] - side[1]];
+    const sizePx = Math.min(size * stage.width, length * 0.45);
+    const sidePx = sizePx * 0.42;
+    const ux = dx / length;
+    const uy = dy / length;
+    const basePx = [tipPx[0] - ux * sizePx, tipPx[1] - uy * sizePx];
+    const side = [-uy * sidePx, ux * sidePx];
+    const toNorm = (point) => [point[0] / stage.width, point[1] / stage.height];
+    return {
+      tip,
+      base: toNorm(basePx),
+      p2: toNorm([basePx[0] + side[0], basePx[1] + side[1]]),
+      p3: toNorm([basePx[0] - side[0], basePx[1] - side[1]]),
+    };
+  }
+
+  function arrowBasePoint(from, tip, style) {
+    const geometry = arrowGeometry(from, tip, style);
+    return geometry ? geometry.base : safePoint(tip);
+  }
+
+  function renderArrowHead(from, tip, style, objectId) {
+    const geometry = arrowGeometry(from, tip, style);
+    if (!geometry) return "";
+    const p1 = geometry.tip;
+    const p2 = geometry.p2;
+    const p3 = geometry.p3;
     return `<polygon data-object-id="${escapeHtml(objectId)}" points="${[p1, p2, p3].map((p) => p.join(",")).join(" ")}" fill="${style.stroke_color || "#333333"}"></polygon>`;
+  }
+
+  function trimOpenPathCoordsForArrows(coords, style) {
+    const next = (coords || []).map((point) => safePoint(point)).filter(Boolean);
+    if (next.length < 2) return next;
+    if (style.start_arrow) next[0] = arrowBasePoint(next[1], next[0], style);
+    if (style.end_arrow) next[next.length - 1] = arrowBasePoint(next[next.length - 2], next[next.length - 1], style);
+    return next;
+  }
+
+  function trimOpenSegmentsForArrows(segments, style) {
+    const next = (segments || []).map((segment) => ({ ...segment }));
+    if (!next.length) return next;
+    if (style.start_arrow) {
+      const first = next[0];
+      const from = safePoint(first.from);
+      const toward = safePoint(first.kind === "quadratic" ? first.control : first.to);
+      if (from && toward) first.from = arrowBasePoint(toward, from, style);
+    }
+    if (style.end_arrow) {
+      const last = next[next.length - 1];
+      const to = safePoint(last.to);
+      const from = safePoint(last.kind === "quadratic" ? last.control : last.from);
+      if (from && to) last.to = arrowBasePoint(from, to, style);
+    }
+    return next;
   }
 
   function renderSemanticTextOverlays(obj, fallbackPoint, style) {
@@ -2800,13 +2862,16 @@
       const segments = geo.segments;
       const stroke = selectedStrokeColor(style.stroke, selected);
       if (segments && segments.length > 0) {
-        const pathD = segmentsToPathD(segments, false);
+        const visibleSegments = shouldRenderArrowHeads(obj) ? trimOpenSegmentsForArrows(segments, style.hints) : segments;
+        const pathD = segmentsToPathD(visibleSegments, false);
+        const hitPathD = segmentsToPathD(segments, false);
         const dash = style.hints.stroke_style === "dashed" ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
         const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
         shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
-        shape += renderSharedPathHitLayer({ objectId: obj.id, pathD, closed: false, style: style.hints });
+        shape += renderSharedPathHitLayer({ objectId: obj.id, pathD: hitPathD, closed: false, style: style.hints });
       } else if (coords.length >= 2) {
-        const points = coords.map(p => p.join(",")).join(" ");
+        const visibleCoords = shouldRenderArrowHeads(obj) ? trimOpenPathCoordsForArrows(coords, style.hints) : coords;
+        const points = visibleCoords.map(p => p.join(",")).join(" ");
         const dash = style.hints.stroke_style === "dashed" ? ` stroke-dasharray="${dashArray(style.hints)}"` : "";
         const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
         shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;

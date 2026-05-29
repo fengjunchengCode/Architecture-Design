@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -543,6 +544,73 @@ def assert_dash_scale(page, drawing_type: str) -> None:
     assert dash_small == "0.007 0.005", f"{drawing_type}: dash_scale=0.5 did not update selected dasharray, got {dash_small!r}"
 
 
+def _parse_svg_points(value: str) -> list[list[float]]:
+    points: list[list[float]] = []
+    for item in (value or "").strip().split():
+        xy = item.split(",")
+        if len(xy) == 2:
+            points.append([float(xy[0]), float(xy[1])])
+    return points
+
+
+def _screen_angle_deg(a: list[float], b: list[float], width: float, height: float) -> float:
+    return math.degrees(math.atan2((b[1] - a[1]) * height, (b[0] - a[0]) * width))
+
+
+def _angle_delta(a: float, b: float) -> float:
+    return abs(((a - b + 180) % 360) - 180)
+
+
+def assert_arrow_geometry(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="open_path"]')
+    if page.locator("#objectType").count():
+        page.select_option("#objectType", "vehicle_flow")
+    points = [[0.20, 0.70], [0.72, 0.34]]
+    created = page.evaluate(
+        """(pts) => window.DrawingWorkbenchTest.createObject("open_path", pts)""",
+        points,
+    )
+    obj_id = created["id"]
+    stage = page.locator("#workbenchStage").evaluate(
+        """node => {
+            const rect = node.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+        }"""
+    )
+    visible_points = _parse_svg_points(
+        page.locator("#sketchOverlay polyline:not(.geometry-hit):not(.zone-arc-handle)").last.get_attribute("points") or ""
+    )
+    assert len(visible_points) >= 2, f"{drawing_type}: arrow line did not render as visible polyline"
+    original_end = points[-1]
+    rendered_end = visible_points[-1]
+    full_len = math.hypot(
+        (original_end[0] - points[0][0]) * stage["width"],
+        (original_end[1] - points[0][1]) * stage["height"],
+    )
+    trimmed_len = math.hypot(
+        (rendered_end[0] - points[0][0]) * stage["width"],
+        (rendered_end[1] - points[0][1]) * stage["height"],
+    )
+    gap_to_tip = math.hypot(
+        (original_end[0] - rendered_end[0]) * stage["width"],
+        (original_end[1] - rendered_end[1]) * stage["height"],
+    )
+    assert trimmed_len < full_len and gap_to_tip > 8, (
+        f"{drawing_type}: line endpoint was not trimmed for arrowhead; rendered_end={rendered_end}, original_end={original_end}"
+    )
+    arrow_points = _parse_svg_points(
+        page.locator(f"#sketchOverlay polygon[data-object-id='{obj_id}']").first.get_attribute("points") or ""
+    )
+    assert len(arrow_points) == 3, f"{drawing_type}: missing arrowhead triangle"
+    tip, p2, p3 = arrow_points
+    base_mid = [(p2[0] + p3[0]) / 2, (p2[1] + p3[1]) / 2]
+    line_angle = _screen_angle_deg(points[0], original_end, stage["width"], stage["height"])
+    arrow_angle = _screen_angle_deg(base_mid, tip, stage["width"], stage["height"])
+    assert _angle_delta(line_angle, arrow_angle) <= 5, (
+        f"{drawing_type}: arrowhead angle off; line={line_angle:.2f}, arrow={arrow_angle:.2f}, points={arrow_points}"
+    )
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -654,6 +722,10 @@ def main() -> int:
                     assert_line_legend_straight(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)
+                    after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+                    assert_no_bad_kinds(after_objects, drawing_type)
+                if drawing_type == "traffic_analysis":
+                    assert_arrow_geometry(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
 
