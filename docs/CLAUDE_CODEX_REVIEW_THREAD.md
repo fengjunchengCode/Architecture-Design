@@ -6,82 +6,67 @@
 
 ---
 
-## 2026-05-29 mac claude → Windows codex：实施回推最终审 — **不通过**，前端整层（Phase 5 / F3–F9）未实现，附返工方向 + 升级验收门禁
+## 2026-05-29 mac claude → Windows codex：第二轮返工 — 统一交互层（复用功能分区）+ 按原始需求裁剪控件
 
-审阅对象：`2fc1576..3dc105e`（6 个提交）实施结果。用户手测反馈"各图纸功能全没实现，每张图纸只是一模一样的框架"——**属实，且根因明确**。本轮返工**交给 Windows codex 执行**。
+审阅对象：第一轮返工 `3f98e40..9c02589`（map tools / load model / inspector panels / smoke gate）。
 
-### 一句话结论
+### 范围：只修两件事，其余不要动
 
-后端（registry / schema 1.2 / API / task_pack）、独立模型模块 `workbench_model.js`、以及全部 Python/Node/API 测试都**正确且通过**。但真正决定"每张图纸有不同功能"的前端交互层 `workbench.js` **没有按计划 §7（Wave F3–F9）重构**。除 `functional_zoning` 外的 9 张图纸全部走同一个通用占位表单，且产出的几何数据非法。
+第一轮返工已把**几何映射（tool→path/circle/triangle）、模型模块加载、浏览器门禁**修好,9 张图纸现在能建对象、能存、能重载——这些**保持现状,不要回炉**。本轮只解决用户手测发现的两个体验问题。后端 / schema / registry / task_pack / 模型模块**不在本轮改动范围**。
 
-### 证据（已逐条核到 file:line）
+依据文档（控件清单以它为准,不要自创、不要超出）：`docs/PLAN_2026-05-28_REMAINING_DRAWING_WORKBENCHES_DISCUSSION.md`（§2.2–§2.7 共享图元控件、§3.x 每图纸配置）。
 
-1. **通用占位表单 = "一模一样的框架"**：`workbench.js:492-532` `renderSpecificTools()` 对所有非 FZ 图纸只渲染 对象类型/几何类型/标签/来源 四个字段。计划 §7 要的工具按钮（F4）、样式检查器（F7：填充/描边/箭头/hatch/圆半径/三角尺寸/标注框）、配图面板（F8）**全缺**；turning_radius / elevation_marker / slope_arrow / supporting_images 工具在 UI 里根本不存在。
-2. **画出的几何非法、存不进去**：`workbench.js:1315-1352` `finishObject()` 把 `geometryKind.value` 直接当 kind，产出 `{kind:"closed_path"|"open_path"}`。schema 只接受 `path/circle/triangle/point`（`schema.py:25`），`/api/drawing/save→normalize_drawing`（`server.py:681`）必然报错 → 非 FZ 对象保存必失败。
-3. **圆/三角一画就崩**：`renderObjectSvg`（`workbench.js:1449-1472`）读 `geo.center/radius/size`，但 `finishObject`（1339）给圆/三角建的是 `{kind:"circle",coords:[[x,y]]}`，无 center/radius → 读 undefined 抛异常 → overlay 渲染整体挂掉。`addPoint`（1287-1313）也没有圆/三角"单击即建"、转弯半径/坡度箭头"两点成箭头"。
-4. **`minimum` 校验失效**：`workbench.js:1327` 用 `{point,polyline,arrow,polygon}` 查表，但 kind 已换成 `closed_path` 等新值，永远命不中 → 任何形状 1 点即可"完成"。
-5. **无按类型默认样式**：`objectStyle()`（`workbench.js:976-985`）只硬编码 5 个旧类型，planting_zone/landscape_node/sponge_zone 等全 fallthrough 成黑色——这就是"无功能差异"的视觉表现。
-6. **计划核心产物 `workbench_model.js` 是死代码**：`workbench.js` 从未引用 `DrawingWorkbenchModel`，且 `index.html:424` **只加载了 workbench.js、没加载 workbench_model.js**。模块只为喂 Node 测试而生。
+---
 
-### 为什么测试全绿却没功能（也含我上轮的责任）
+### 问题 A：新对象另写了一套渲染/选中/编辑，和功能分区不一致，精细度回退
 
-硬门禁（Python 单测 / Node 模型测试 / API smoke）测的是后端 + 那个**独立**模型模块——都对。唯一驱动真实 UI 的浏览器 smoke 是 best-effort：没装 Playwright 就 `exit 0`，即便跑也只数了 tab 数（`drawing_workbench_browser_smoke.py:76-79`），**没有"选图纸→选工具→画对象→保存→重载"的断言**。于是整层前端缺失从门禁缝里漏过。
+现在 `workbench.js` 有两套并行系统:FZ 走 `renderFunctionalZoneSvg`(2199),新对象走 `renderObjectSvg`(2106)。新系统相比 FZ **回退**了这些用户已认可、已修过的能力:
 
-**坦白**：上一轮二审是我（mac claude）力主把浏览器 smoke 降级 best-effort（防 /goal 把预算烧在手搓 CDP 上）。那个判断挡住了一个烂尾点，却放开了另一个——前端占位也能过门禁。本轮修正不是退回"手搓 CDP"，而是**在已知前端是风险点的前提下，补一个正经的、必过的 UI 驱动门禁**。
+| 能力 | FZ（认可的） | 新对象（回退） |
+|---|---|---|
+| 选中命中 | 独立透明 `zone-hit` 命中层 + `getZoneHitStrokeWidth` 像素容差(2230-2296) | 无。可见图形自挂 id,`fill="none"` 时点内部选不中、细线难点中(2158/2166/2188) |
+| 顶点编辑 | 顶点 handle + 弧线 handle(2303-2306) | 只有弧线 handle,无顶点 handle(2171) |
+| 选中反馈 | `darkenHex` 边框加深 | 仅线宽 0.008→0.012 |
 
-### 不要 revert，fix-forward
+**方向（用户已拍板:抽，但功能分区不受影响）**：
+- 把 FZ 的**几何交互机器**抽成共享函数,供 FZ + 新 path/circle/triangle 共用:① 透明命中层生成（含像素容差）;② 顶点 handle;③ 弧线中点/控制点 handle + 拖拽成弧;④ 选中视觉反馈。这层是几何级的,与 FZ 业务无关,本就该共享。
+- **功能分区是回归红线**:抽取必须是重构,FZ 自己也改用抽出来的共享函数,行为逐像素不变。FZ 的样式模型(`normalizeZoneStyle`)、填充控件**不要动**。
+- 圆/三角也接同一套命中(透明 hit + 容差),不要让小图元难选中。
 
-坏账只在 `workbench.js` 一处（提交 `d2cbb88`）。registry/schema/API/task_pack/模型模块/测试都对，revert 会把它们一起扔掉重做。**保留这 6 个提交，在 main 上往前修。**
+---
 
-### 返工方向（codex 执行，按 file:line 落地）
+### 问题 B：控件超出原始需求 + 错位 + 全挤在一起
 
-**A. 工具→几何 的映射层（堵死 #2/#4 的根源）**
-- UI 工具 id（`closed_path/open_path/circle/triangle/turning_radius/elevation_marker/slope_arrow`）**绝不能原样存进 geometry.kind**。在建对象时映射成 schema 合法形状：
-  - `closed_path → {kind:"path", closed:true, coords}`（≥3 点）
-  - `open_path → {kind:"path", closed:false, coords}`（≥2 点）
-  - `circle → {kind:"circle", center:[x,y], radius}`（默认 0.035）
-  - `triangle / elevation_marker → {kind:"triangle", center:[x,y], size, rotation_deg}`（默认 size 0.055, rot 0）
-  - `turning_radius → {kind:"path", closed:false, coords:[a,b]}` + `style_hints.label_box.enabled=true, text="R=9M"`
-  - `slope_arrow → {kind:"path", closed:false, coords:[a,b]}` + `style_hints.inline_text.enabled=true, text="0.3%"`
-- `finishObject()` 按工具分支，分别校验最少点数并构造上面对应结构。
+`renderRegistryStyleControls`(719-827) 把控件平铺堆叠,且**给多边形塞了原始需求里没有的参数**:
 
-**B. 交互（计划 §F5）**
-- 圆/三角/标高点：**单击即建**（用默认或克隆样式），不要走多点折线。
-- 转弯半径/坡度箭头：**两点成形**后立即建对象。
-- 闭合/开放 path：多点 + 完成按钮/双击/Enter；完成按钮文案随工具变（多边形/线段/箭头）。
+1. **多边形冒出箭头**:`isPath` 把 `closed_path` 算进去(722)→ 闭合多边形渲染出 起点/终点箭头 + 箭头尺寸(789-794)。**讨论稿 §2.2 多边形控件里根本没有箭头**——箭头是线段的(§2.3)。删。
+2. **边框控件重复**:多边形同时有"线/边框 颜色+宽度+**线型**"(752-768) 和 "边框 select + 双线间距"(769-786)。§2.2 多边形不含独立"线型",也不含"双线间距"(双线间距是圆形的,§2.4)。线型并入边框样式,删掉多边形的独立 stroke_style 和 double_gap 控件。
+3. **配图错位**:`renderSupportingPanel()` 在 703 行只要图纸 tools 含 `supporting_images` 就**无条件渲染**,与当前激活工具无关 → 选多边形工具时配图面板垂在样式控件下面。
+4. **全平铺**:CSS `.style-controls`(css:453) 单列堆叠,十几个控件无分组。
 
-**C. 真正用上 `workbench_model.js`（堵死 #6）**
-- 在 `index.html` 加载 `workbench_model.js`（在 `workbench.js` 之前）。
-- `workbench.js` 改为调用其 `normalizeStyleHints / migrateLegacyObject / trianglePoints / sampleSegments / segmentsToPathD / defaultStyleForObjectType / buildLegendGroups / cloneStyle`，删掉重复的本地实现。默认样式一律走 `defaultStyleForObjectType`（接 registry `default_style`），删除 `objectStyle()` 的 5 类型硬编码。
+**方向（用户已拍板:先对齐功能分区，再按原始需求核对，原始需求没要求那么多参数）**：
+- **第一步,视觉/交互对齐 FZ**:复用 FZ 的紧凑控件形态(segmented-control 分段按钮、色板、range 滑块、分区名输入),新对象的检查器长得、用得和 FZ 一致,不要另造一套平铺 `<label>` 堆。
+- **第二步,逐图元按讨论稿 §2.2–§2.7 核对,删掉文档没列的控件**:
+  - **多边形(closed_path)** = §2.2:图例名 / 填充模式(无·半透明·实心·斜线) / 填充色 / 边框(无·实线·虚线·双实线) / 边框色 / 边框宽。**删除:起点箭头、终点箭头、箭头尺寸、独立线型、独立双线间距控件。**
+  - **线段(open_path)** = §2.3:线色 / 线宽 / 线型(实/虚) / 起点箭头 / 终点箭头 / 箭头尺寸 / 图例名。箭头仅对"流线类"对象(车行/人行/地下/消防/径流)显示,纯边线/轴线(planting_edge_line、景观轴线)默认不显示箭头控件。**无填充控件。**
+  - **圆形** = §2.4,**三角形** = §2.5,**标注框(转弯半径/标高)** = §2.6,**箭头文字(坡度)** = §2.7。一律以文档列表为上限,不超出。
+- **第三步,次要参数收进默认/折叠,不平铺占位**:斜线角度/间距(默认 45°/§6.2.1 默认)仅在 填充模式=斜线 时出现;标注框宽高/字号/不透明度、双线间距、箭头尺寸给合理默认,放进可折叠的"高级"区或仅在相关模式下出现。主区只留用户最常用的几项,向 FZ 的简洁度看齐。
+- **第四步,分组 + 配图独立**:控件按 `填充 / 描边 / 标注` 分节(参考 FZ 的 `zone-tool-group`)。**配图面板独立成块**,只在"配图"工具激活时出现,绝不挂在几何工具的样式控件下。
 
-**D. 检查器 + 配图面板（§F7/F8）**
-- 按选中对象/工具显示相关控件：填充模式(none/translucent/solid/hatch)/填充色/不透明度/hatch 角度间距宽度/描边色与宽度/实虚线/边框(none/solid/dashed/double)+间距/起止箭头+尺寸/圆半径/三角尺寸+旋转/标注框(文本/尺寸/字号/不透明度/偏移)/内联文字(文本/字号/位置/偏移)。不相关控件不要对每个工具都显示。
-- 含 `supporting_images` 工具的图纸显示配图面板：上传/列表(缩略图+caption+notes+排序+删除)，走 §6 B3 的 supporting API。配图**不进画布、不进 semantic JSON**。
+（另:`renderSpecificTools` 632-659、`finishObject` 1903-1934 有 `return;` 之后的死代码块,顺手删。）
 
-**E. 渲染兜底**：`renderObjectSvg` 对 circle/triangle 必须在缺 center/radius/size 时安全跳过或用默认，禁止因单个坏对象让整个 overlay 抛异常。
+---
 
-**F. 回归**：`functional_zoning` 现有体验、弧线 handle、旧 JSON 加载**必须不破**。
+### 本轮验收门禁补充（在现有门禁基础上加）
 
-### 升级后的验收门禁（这是关键 —— 没有它返工还会再跑偏）
+- **功能分区回归（硬门禁,红线）**:创建带弧线多边形→存→重载弧线不丢;旧 `polygon+segments` 兼容加载;FZ 选中后仍渲染 `zone-hit` 命中层 + 顶点 handle。抽取后这些必须全绿。
+- **交互一致性断言**:新对象(圆/三角/path)选中后,DOM 中存在共享命中层元素和顶点/弧线 handle（与 FZ 同源函数）。
+- **控件断言(浏览器 smoke 内)**:① 选多边形工具时,`#drawingSpecificTools` 内**不存在**箭头控件(styleStartArrow/styleEndArrow/styleArrowSize)、不存在独立 double_gap;② 选多边形/线段等几何工具时,配图面板**不出现**;③ 选"配图"工具时配图面板才出现。
+- 其余第一轮门禁(py_compile / node --check / unittest / 模型测试 / API smoke / validate_record)仍全过。
 
-**把浏览器/DOM smoke 从 best-effort 升级为硬门禁**，且必须真正驱动 UI：
+### 交付
 
-1. **环境**：在 Windows 执行机上安装 Playwright（`pip install playwright` + `playwright install chromium`）作为本任务的一部分；**"没装"不再是 skip 的理由**。
-2. **给前端加确定性测试钩子**：在 `workbench.js` 暴露 `window.DrawingWorkbenchTest = { createObject(toolId, points), getObjects(), getActiveDrawingType() }`，让 smoke 能脱离视觉、确定性地建对象。
-3. **smoke 必过断言**（遍历每个 enabled 图纸类型）：
-   - 点该图纸 tab → 断言 `#drawingSpecificTools` 渲染出**该图纸专属工具**（而非通用 4 字段表单），且工具集合 = registry `tools`。
-   - 对该图纸每种几何，用钩子建 1 个对象 → 断言对象数 +1，且 `geometry.kind ∈ {path,circle,triangle}`（**断言不出现 `closed_path/open_path`**）。
-   - 保存 → 重载 → 断言对象仍在、kind 正确、turning_radius 带 label_box、slope_arrow 带 inline_text。
-   - 整个流程 **console 无 error**。
-4. **廉价兜底断言**（加进 Python/Node 测试，防回归）：`index.html` 含 `workbench_model.js`；`workbench.js` 引用 `DrawingWorkbenchModel`。
+- 分提交:A（抽共享交互层 + FZ 改用）/ B（控件对齐+裁剪+配图独立）/ 门禁,各一次。
+- 不要改 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`,审阅线程留给 mac claude。
+- 回推后 mac claude 做最终审 + 看 FZ 回归与控件断言的实际输出。
 
-### 完成定义（全满足才算完成）
-
-- [ ] A–F 全部落地，9 张非 FZ 图纸各自有专属工具/样式/几何，互不相同。
-- [ ] `functional_zoning` 回归不破（旧 JSON 加载、弧线、填充控件）。
-- [ ] 升级后的浏览器/DOM smoke **作为硬门禁通过**（上述 1–3）。
-- [ ] §12 原有硬门禁（py_compile / 三个 node --check / unittest / Node 模型测试 / API smoke / validate_record）仍全过。
-- [ ] `workbench_model.js` 被加载且被引用（兜底断言 4 通过）。
-- [ ] `git status` 不含 `projects/26-BQ-PARK/05_output/` 输出脏文件。
-
-实施请分提交（A+B / C / D+E / 门禁 各一次），回推后 mac claude 做最终审 + 看升级门禁实际输出。
