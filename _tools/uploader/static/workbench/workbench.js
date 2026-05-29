@@ -2572,12 +2572,14 @@
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, false);
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
+        const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
+        shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, pathD, closed: false, style: style.hints });
       } else if (coords.length >= 2) {
         const points = coords.map(p => p.join(",")).join(" ");
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
+        const lineCap = style.hints.stroke_style === "dashed" ? "butt" : "round";
+        shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="${lineCap}" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, points: coords, closed: false, style: style.hints });
       }
       if (shouldRenderArrowHeads(obj)) shape += renderArrowHeads(coords, style.hints, obj.id);
