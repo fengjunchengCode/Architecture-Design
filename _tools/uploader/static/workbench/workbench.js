@@ -1,4 +1,8 @@
 (function () {
+  const Model = window.DrawingWorkbenchModel;
+  if (!Model) {
+    throw new Error("DrawingWorkbenchModel must be loaded before workbench.js");
+  }
   const DEFAULT_DRAWING_TYPE = "functional_zoning";
   const DRAWING_STATUS = new Set(["enabled", "planned", "deprecated"]);
   const DRAWING_CATEGORY = new Set(["analysis_a", "context_b", "other"]);
@@ -272,12 +276,11 @@
   }
 
   function defaultObjectStyle(type) {
-    const info = REGISTRY_OBJECTS[type] || {};
-    return JSON.parse(JSON.stringify(info.default_style || {}));
+    return Model.defaultStyleForObjectType(type);
   }
 
   function objectStyleHints(type, overrides = {}) {
-    return { ...defaultObjectStyle(type), ...overrides };
+    return Model.normalizeStyleHints(overrides, type);
   }
 
   function objectStyleValue(style, key, fallback) {
@@ -1102,15 +1105,17 @@
     el.textContent = `当前风格：${approved}，主色 ${primary}，上次更新 ${updated}。修改风格请到对话窗口与 agent 协商。`;
   }
 
-  function objectStyle(type) {
-    const styles = {
-      functional_zone: { stroke: "#256d4f", fill: "rgba(60,145,110,0.28)" },
-      vehicle_flow: { stroke: "#f97316", fill: "none" },
-      pedestrian_flow: { stroke: "#0f766e", fill: "none" },
-      main_entrance: { stroke: "#dc2626", fill: "#dc2626" },
-      label: { stroke: "#111827", fill: "#111827" },
+  function objectStyle(type, rawStyle = {}) {
+    const style = Model.normalizeStyleHints(rawStyle, type);
+    const fill =
+      style.fill_mode === "solid" || style.fill_mode === "translucent" || style.fill_mode === "hatch"
+        ? style.fill_color
+        : "none";
+    return {
+      stroke: style.stroke_color || "#111827",
+      fill,
+      hints: style,
     };
-    return styles[type] || styles.label;
   }
 
   function objectName(type) {
@@ -1152,7 +1157,15 @@
     const params = new URLSearchParams({ project, drawing_type: drawingType() });
     const data = await api(`/api/drawing/load?${params}`);
     state.drawing = data.drawing;
-    state.objects = Array.isArray(data.drawing.objects) ? data.drawing.objects : [];
+    state.objects = Array.isArray(data.drawing.objects)
+      ? data.drawing.objects.map((obj) => {
+          const migrated = Model.migrateLegacyObject(obj);
+          return {
+            ...migrated,
+            style_hints: Model.normalizeStyleHints(migrated.style_hints, migrated.type),
+          };
+        })
+      : [];
     if (isFunctionalZoning()) {
       state.objects = state.objects
         .filter((obj) => obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true)))
@@ -1237,7 +1250,7 @@
           // Preserve segments if they contain quadratic arcs
           if (obj.geometry.segments && obj.geometry.segments.some((s) => s.kind === "quadratic")) {
             geometry.segments = obj.geometry.segments;
-            geometry.coords = sampleSegments(obj.geometry.segments);
+            geometry.coords = Model.sampleSegments(obj.geometry.segments, true);
           }
           return {
             id: obj.id,
@@ -1256,7 +1269,7 @@
           label: obj.label || "",
           confidence: obj.confidence || "medium",
           source: obj.source || "user_sketch",
-          style_hints: obj.style_hints || {},
+          style_hints: Model.normalizeStyleHints(obj.style_hints, obj.type),
         };
       });
     return {
@@ -1275,38 +1288,9 @@
     };
   }
 
-  function sampleSegments(segments) {
-    if (!segments || !segments.length) return [];
-    const coords = [segments[0].from];
-    for (const segment of segments) {
-      if (segment.kind === "line") {
-        coords.push(segment.to);
-      } else if (segment.kind === "quadratic") {
-        const [fx, fy] = segment.from;
-        const [cx, cy] = segment.control;
-        const [tx, ty] = segment.to;
-        const steps = 16;
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          const mt = 1 - t;
-          coords.push([
-            Number((mt * mt * fx + 2 * mt * t * cx + t * t * tx).toFixed(6)),
-            Number((mt * mt * fy + 2 * mt * t * cy + t * t * ty).toFixed(6)),
-          ]);
-        }
-      }
-    }
-    // T2: 开环 — 去掉等于首点的尾点，保证 ≥3 点
-    if (coords.length > 3) {
-      const first = coords[0];
-      const last = coords[coords.length - 1];
-      if (Math.abs(first[0] - last[0]) < 1e-5 && Math.abs(first[1] - last[1]) < 1e-5) {
-        coords.pop();
-      }
-    }
-    return coords;
+  function sampleSegments(segments, closed) {
+    return Model.sampleSegments(segments, closed !== false);
   }
-
   async function saveDrawing() {
     if (!isEnabled()) {
       setStatus("该图纸工作台待设计，暂不能保存。", false);
@@ -1662,7 +1646,7 @@
     if (isFunctionalZoning() && obj.type === "functional_zone") {
       return renderFunctionalZoneSvg(obj);
     }
-    const style = objectStyle(obj.type);
+    const style = objectStyle(obj.type, obj.style_hints);
     const selected = obj.id === state.selectedId;
     const width = selected ? 0.012 : 0.008;
     const geo = obj.geometry;
@@ -1682,11 +1666,7 @@
       const cx = geo.center[0], cy = geo.center[1];
       const size = geo.size || 0.055;
       const rot = geo.rotation_deg || 0;
-      const halfBase = size / Math.sqrt(3);
-      const rawPts = [[0, -size * (2/3)], [-halfBase, size * (1/3)], [halfBase, size * (1/3)]];
-      const rad = rot * Math.PI / 180;
-      const cos = Math.cos(rad), sin = Math.sin(rad);
-      const pts = rawPts.map(([px, py]) => [cx + px * cos - py * sin, cy + px * sin + py * cos]);
+      const pts = Model.trianglePoints([cx, cy], size, rot);
       const points = pts.map(p => p.join(",")).join(" ");
       const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
                    (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
@@ -1838,17 +1818,7 @@
   }
 
   function segmentsToPathD(segments, closed) {
-    if (!segments || !segments.length) return "";
-    let d = `M ${segments[0].from[0]} ${segments[0].from[1]}`;
-    for (const seg of segments) {
-      if (seg.kind === "line") {
-        d += ` L ${seg.to[0]} ${seg.to[1]}`;
-      } else if (seg.kind === "quadratic") {
-        d += ` Q ${seg.control[0]} ${seg.control[1]} ${seg.to[0]} ${seg.to[1]}`;
-      }
-    }
-    if (closed !== false) d += " Z";
-    return d;
+    return Model.segmentsToPathD(segments, closed !== false);
   }
 
   function renderSegmentHandles(objectId, segments, style) {
