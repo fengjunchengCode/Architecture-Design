@@ -35,6 +35,13 @@
     elevation_marker: { kind: "triangle", minPoints: 1 },
   };
   const SPECIAL_TOOL_TYPES = new Set(["turning_radius", "elevation_marker", "slope_arrow"]);
+  const FLOW_ARROW_OBJECT_TYPES = new Set([
+    "vehicle_flow",
+    "pedestrian_flow",
+    "underground_flow",
+    "fire_route_line",
+    "runoff_line",
+  ]);
   const UNDO_LIMIT = 50;
   const PALETTE_FALLBACK = [
     "#D6CBB8",
@@ -251,14 +258,15 @@
 
   function normalizeActiveTool(type = drawingType()) {
     if (isFunctionalZoning(type)) return "closed_path";
-    const tools = drawingTools(type);
+    const tools = drawingConfig(type).tools || [];
     if (tools.includes(state.activeTool)) return state.activeTool;
-    state.activeTool = tools[0] || "";
+    state.activeTool = drawingTools(type)[0] || tools[0] || "";
     return state.activeTool;
   }
 
   function toolObjectTypes(toolId = normalizeActiveTool()) {
     const objectTypes = drawingConfig().objectTypes || [];
+    if (toolId === "supporting_images") return [];
     if (!toolId) return objectTypes;
     if (SPECIAL_TOOL_TYPES.has(toolId)) return objectTypes.filter((item) => item.value === toolId);
     return objectTypes.filter((item) => (item.defaultTool || item.defaultGeometry) === toolId);
@@ -274,7 +282,7 @@
   }
 
   function setActiveTool(toolId) {
-    if (!supportsTool(toolId) || toolId === "supporting_images") return;
+    if (!supportsTool(toolId)) return;
     state.activeTool = toolId;
     state.currentPoints = [];
     renderSpecificTools();
@@ -628,35 +636,6 @@
       return;
     }
     renderRegistryTools(tools, config);
-    return;
-    const currentObject = $("#objectType") && $("#objectType").value;
-    const objectTypes = config.objectTypes || [];
-    const selectedObject = objectTypes.some((item) => item.value === currentObject)
-      ? currentObject
-      : (objectTypes[0] && objectTypes[0].value) || "label";
-    const selectedGeometry =
-      (objectTypes.find((item) => item.value === selectedObject) || {}).defaultGeometry || "point";
-    tools.innerHTML = `
-      <label>
-        <span>对象类型</span>
-        <select id="objectType">${optionHtml(objectTypes, selectedObject)}</select>
-      </label>
-      <label>
-        <span>几何类型</span>
-        <select id="geometryKind">${optionHtml(GEOMETRY_OPTIONS, selectedGeometry)}</select>
-      </label>
-      <label>
-        <span>标签文本</span>
-        <input id="objectLabel" placeholder="如：主入口 / 休闲活动区">
-      </label>
-      <label>
-        <span>来源</span>
-        <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
-      </label>
-    `;
-    const objectType = $("#objectType");
-    if (objectType) objectType.addEventListener("change", setDefaultGeometry);
-    setDefaultGeometry();
   }
 
   function renderRegistryTools(tools, config) {
@@ -697,10 +676,10 @@
               <span>来源</span>
               <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
             </label>
-            ${renderRegistryStyleControls(activeTool, selectedObject)}
+            ${renderTrimmedRegistryStyleControls(activeTool, selectedObject)}
           `
       }
-      ${rawTools.includes("supporting_images") ? renderSupportingPanel() : ""}
+      ${activeTool === "supporting_images" ? renderSupportingPanel() : ""}
     `;
     tools.querySelectorAll("[data-tool-id]").forEach((button) => {
       button.addEventListener("click", () => setActiveTool(button.dataset.toolId));
@@ -716,109 +695,184 @@
     bindSupportingPanel();
   }
 
-  function renderRegistryStyleControls(toolId, objectType) {
+  function shouldShowArrowControls(toolId, objectType) {
+    return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+  }
+
+  function segmentedStyleControl(label, field, options, selected) {
+    return `
+      <div class="zone-tool-group">
+        <span>${escapeHtml(label)}</span>
+        <div class="segmented-control">
+          ${options
+            .map(
+              (item) => `
+                <button
+                  type="button"
+                  class="${String(selected) === String(item.value) ? "active" : ""}"
+                  data-style-segment="${escapeHtml(field)}"
+                  data-style-value="${escapeHtml(item.value)}"
+                >${escapeHtml(item.label)}</button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function rangeControl(id, label, value, min, max, step) {
+    return `
+      <div class="zone-tool-group">
+        <span>${escapeHtml(label)}</span>
+        <input id="${escapeHtml(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}">
+      </div>
+    `;
+  }
+
+  function colorControl(id, label, value) {
+    return `
+      <div class="zone-tool-group">
+        <span>${escapeHtml(label)}</span>
+        <input id="${escapeHtml(id)}" type="color" value="${escapeHtml(value || "#333333")}">
+      </div>
+    `;
+  }
+
+  function renderTrimmedRegistryStyleControls(toolId, objectType) {
     const style = draftStyleFor(objectType, toolId);
     const geo = draftGeometryFor(objectType, toolId);
-    const isPath = ["closed_path", "open_path", "turning_radius", "slope_arrow"].includes(toolId);
     const isClosed = toolId === "closed_path";
+    const isOpenPath = toolId === "open_path";
     const isCircle = toolId === "circle";
     const isTriangle = toolId === "triangle" || toolId === "elevation_marker";
     const hasFill = isClosed || isCircle || isTriangle;
     const hasLabelBox = toolId === "turning_radius" || toolId === "elevation_marker";
     const hasInline = toolId === "slope_arrow";
+    const showArrows = shouldShowArrowControls(toolId, objectType);
+    const fillModes = isClosed
+      ? [
+          { value: "none", label: "无" },
+          { value: "translucent", label: "半透明" },
+          { value: "solid", label: "实心" },
+          { value: "hatch", label: "斜线" },
+        ]
+      : [
+          { value: "none", label: "无" },
+          { value: "translucent", label: "半透明" },
+          { value: "solid", label: "实心" },
+        ];
+    const borderModes = [
+      { value: "none", label: "无" },
+      { value: "solid", label: "实线" },
+      { value: "dashed", label: "虚线" },
+      { value: "double", label: "双实线" },
+    ];
     return `
-      <div class="style-controls" data-style-controls="true">
+      <div class="style-controls compact-style-controls" data-style-controls="true">
         ${
           hasFill
             ? `
-              <label><span>填充模式</span><select id="styleFillMode">
-                ${optionHtml(
-                  [
-                    { value: "none", label: "无填充" },
-                    { value: "translucent", label: "半透明" },
-                    { value: "solid", label: "实心" },
-                    { value: "hatch", label: "斜线" },
-                  ],
-                  style.fill_mode || "none",
-                )}
-              </select></label>
-              <label><span>填充色</span><input id="styleFillColor" type="color" value="${escapeHtml(style.fill_color || "#DCE8C8")}"></label>
-              <label><span>不透明度</span><input id="styleFillOpacity" type="range" min="0.1" max="1" step="0.05" value="${escapeHtml(String(style.fill_opacity || 0.42))}"></label>
-              <label><span>斜线角度</span><input id="styleHatchAngle" type="number" min="0" max="180" step="5" value="${escapeHtml(String(style.hatch_angle_deg || 45))}"></label>
-              <label><span>斜线间距</span><input id="styleHatchSpacing" type="number" min="0.006" max="0.06" step="0.002" value="${escapeHtml(String(style.hatch_spacing || 0.018))}"></label>
+              <div class="style-section-title">填充</div>
+              ${segmentedStyleControl("填充模式", "fill_mode", fillModes, style.fill_mode || "none")}
+              ${colorControl("styleFillColor", "填充色", style.fill_color || "#DCE8C8")}
+              ${
+                style.fill_mode === "hatch"
+                  ? `
+                    <details class="style-advanced" open>
+                      <summary>斜线参数</summary>
+                      <label><span>角度</span><input id="styleHatchAngle" type="number" min="0" max="180" step="5" value="${escapeHtml(String(style.hatch_angle_deg || 45))}"></label>
+                      <label><span>间距</span><input id="styleHatchSpacing" type="number" min="0.006" max="0.06" step="0.002" value="${escapeHtml(String(style.hatch_spacing || 0.018))}"></label>
+                    </details>
+                  `
+                  : ""
+              }
+            `
+            : ""
+        }
+        <div class="style-section-title">描边</div>
+        ${colorControl("styleStrokeColor", isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow" ? "线色" : "边框色", style.stroke_color || "#333333")}
+        ${rangeControl("styleStrokeWidth", isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow" ? "线宽" : "边框宽", style.stroke_width || 0.003, "0.001", "0.018", "0.001")}
+        ${
+          isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow"
+            ? segmentedStyleControl(
+                "线型",
+                "stroke_style",
+                [
+                  { value: "solid", label: "实线" },
+                  { value: "dashed", label: "虚线" },
+                ],
+                style.stroke_style || "solid",
+              )
+            : segmentedStyleControl("边框", "border_style", borderModes, style.border_style || "solid")
+        }
+        ${
+          isCircle && style.border_style === "double"
+            ? `
+              <details class="style-advanced" open>
+                <summary>双线参数</summary>
+                <label><span>间距</span><input id="styleDoubleGap" type="number" min="0.002" max="0.03" step="0.001" value="${escapeHtml(String(style.double_border_gap || 0.006))}"></label>
+              </details>
             `
             : ""
         }
         ${
-          isPath || hasFill
+          showArrows
             ? `
-              <label><span>线/边框颜色</span><input id="styleStrokeColor" type="color" value="${escapeHtml(style.stroke_color || "#333333")}"></label>
-              <label><span>线/边框宽度</span><input id="styleStrokeWidth" type="range" min="0.001" max="0.018" step="0.001" value="${escapeHtml(String(style.stroke_width || 0.003))}"></label>
-              <label><span>线型</span><select id="styleStrokeStyle">
-                ${optionHtml(
-                  [
-                    { value: "solid", label: "实线" },
-                    { value: "dashed", label: "虚线" },
-                  ],
-                  style.stroke_style || "solid",
-                )}
-              </select></label>
+              <div class="zone-tool-group arrow-controls">
+                <span>箭头</span>
+                <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" ${style.start_arrow ? "checked" : ""}> 起点</label>
+                <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" ${style.end_arrow ? "checked" : ""}> 终点</label>
+                <details class="style-advanced">
+                  <summary>箭头尺寸</summary>
+                  ${rangeControl("styleArrowSize", "尺寸", style.arrow_size || 0.028, "0.012", "0.07", "0.002")}
+                </details>
+              </div>
             `
             : ""
         }
         ${
-          hasFill
+          isCircle
             ? `
-              <label><span>边框</span><select id="styleBorderStyle">
-                ${optionHtml(
-                  [
-                    { value: "none", label: "无边框" },
-                    { value: "solid", label: "单实线" },
-                    { value: "dashed", label: "虚线" },
-                    { value: "double", label: "双实线" },
-                  ],
-                  style.border_style || "solid",
-                )}
-              </select></label>
-              <label><span>双线间距</span><input id="styleDoubleGap" type="number" min="0.002" max="0.03" step="0.001" value="${escapeHtml(String(style.double_border_gap || 0.006))}"></label>
+              <div class="style-section-title">标记</div>
+              ${rangeControl("geometryRadius", "圆半径", geo.radius, "0.012", "0.12", "0.002")}
             `
             : ""
         }
-        ${
-          isPath
-            ? `
-              <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" ${style.start_arrow ? "checked" : ""}> 起点箭头</label>
-              <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" ${style.end_arrow ? "checked" : ""}> 终点箭头</label>
-              <label><span>箭头尺寸</span><input id="styleArrowSize" type="range" min="0.012" max="0.07" step="0.002" value="${escapeHtml(String(style.arrow_size || 0.028))}"></label>
-            `
-            : ""
-        }
-        ${isCircle ? `<label><span>圆半径</span><input id="geometryRadius" type="range" min="0.012" max="0.12" step="0.002" value="${escapeHtml(String(geo.radius))}"></label>` : ""}
         ${
           isTriangle
             ? `
-              <label><span>三角尺寸</span><input id="geometrySize" type="range" min="0.025" max="0.13" step="0.002" value="${escapeHtml(String(geo.size))}"></label>
-              <label><span>旋转角度</span><input id="geometryRotation" type="range" min="0" max="360" step="5" value="${escapeHtml(String(geo.rotation_deg))}"></label>
+              <div class="style-section-title">标记</div>
+              ${rangeControl("geometrySize", "三角尺寸", geo.size, "0.025", "0.13", "0.002")}
+              ${rangeControl("geometryRotation", "旋转角度", geo.rotation_deg, "0", "360", "5")}
             `
             : ""
         }
         ${
           hasLabelBox
             ? `
+              <div class="style-section-title">标注</div>
               <label><span>标注文本</span><input id="labelBoxText" value="${escapeHtml((style.label_box && style.label_box.text) || (toolId === "turning_radius" ? "R=9M" : ""))}"></label>
-              <label><span>标注框宽</span><input id="labelBoxWidth" type="range" min="0.05" max="0.22" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.width) || 0.09))}"></label>
-              <label><span>标注框高</span><input id="labelBoxHeight" type="range" min="0.025" max="0.09" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.height) || 0.035))}"></label>
-              <label><span>标注字号</span><input id="labelBoxFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.label_box && style.label_box.font_size) || 0.018))}"></label>
-              <label><span>标注透明度</span><input id="labelBoxOpacity" type="range" min="0.08" max="0.45" step="0.02" value="${escapeHtml(String((style.label_box && style.label_box.opacity) || 0.18))}"></label>
+              <details class="style-advanced">
+                <summary>标注框参数</summary>
+                <label><span>宽</span><input id="labelBoxWidth" type="range" min="0.05" max="0.22" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.width) || 0.09))}"></label>
+                <label><span>高</span><input id="labelBoxHeight" type="range" min="0.025" max="0.09" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.height) || 0.035))}"></label>
+                <label><span>字号</span><input id="labelBoxFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.label_box && style.label_box.font_size) || 0.018))}"></label>
+                <label><span>透明度</span><input id="labelBoxOpacity" type="range" min="0.08" max="0.45" step="0.02" value="${escapeHtml(String((style.label_box && style.label_box.opacity) || 0.18))}"></label>
+              </details>
             `
             : ""
         }
         ${
           hasInline
             ? `
+              <div class="style-section-title">标注</div>
               <label><span>坡度文本</span><input id="inlineText" value="${escapeHtml((style.inline_text && style.inline_text.text) || "0.3%")}"></label>
-              <label><span>坡度字号</span><input id="inlineTextFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.inline_text && style.inline_text.font_size) || 0.018))}"></label>
-              <label><span>文本位置</span><input id="inlineTextPosition" type="range" min="0.15" max="0.85" step="0.05" value="${escapeHtml(String((style.inline_text && style.inline_text.position) || 0.5))}"></label>
+              <details class="style-advanced">
+                <summary>文字参数</summary>
+                <label><span>字号</span><input id="inlineTextFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.inline_text && style.inline_text.font_size) || 0.018))}"></label>
+                <label><span>位置</span><input id="inlineTextPosition" type="range" min="0.15" max="0.85" step="0.05" value="${escapeHtml(String((style.inline_text && style.inline_text.position) || 0.5))}"></label>
+              </details>
             `
             : ""
         }
@@ -826,7 +880,20 @@
     `;
   }
 
+  function renderRegistryStyleControls(toolId, objectType) {
+    return renderTrimmedRegistryStyleControls(toolId, objectType);
+  }
+
   function bindRegistryStyleControls(toolId, objectType) {
+    document.querySelectorAll("[data-style-segment]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.styleSegment;
+        const value = button.dataset.styleValue;
+        if (!key) return;
+        updateActiveStyle(toolId, objectType, { [key]: value });
+        renderSpecificTools();
+      });
+    });
     const styleMap = {
       styleFillMode: ["fill_mode", "string"],
       styleFillColor: ["fill_color", "string"],
@@ -1296,7 +1363,13 @@
       "#canvasZoomIn",
     ].forEach((selector) => {
       const el = $(selector);
-      if (el) el.disabled = !enabled || (selector === "#exportDrawing" && !state.svgExists);
+      if (el) {
+        const supportToolActive = !isFunctionalZoning() && normalizeActiveTool() === "supporting_images";
+        el.disabled =
+          !enabled ||
+          (selector === "#exportDrawing" && !state.svgExists) ||
+          (supportToolActive && ["#finishObject", "#undoPoint"].includes(selector));
+      }
     });
     const notes = $("#taskUserNotes");
     if (notes) notes.placeholder = drawingConfig().agentNotesPlaceholder || "";
@@ -1894,43 +1967,11 @@
     const spec = TOOL_GEOMETRY[activeTool];
     if (!spec) return;
     if (state.currentPoints.length < (spec.minPoints || 1)) {
-      setStatus(`${TOOL_LABELS[activeTool] || activeTool} 至少需要 ${spec.minPoints || 1} 个点。`, false);
+      setStatus(`${TOOL_LABELS[activeTool] || activeTool} needs ${spec.minPoints || 1} points.`, false);
       return;
     }
     pushUndoSnapshot();
     createObjectFromTool(activeTool, state.currentPoints);
-    return;
-    const geometryKind = $("#geometryKind");
-    const objectType = $("#objectType");
-    const objectLabel = $("#objectLabel");
-    const objectSource = $("#objectSource");
-    if (!geometryKind || !objectType || !objectSource) return;
-    const kind = geometryKind.value;
-    const minimum = { point: 1, polyline: 2, arrow: 2, polygon: 3 }[kind] || 1;
-    if (state.currentPoints.length < minimum) {
-      setStatus(`${geometryName(kind)} 至少需要 ${minimum} 个点。`, false);
-      return;
-    }
-    pushUndoSnapshot();
-    const index = state.objects.length + 1;
-    const id = nextObjectId();
-    const label = (objectLabel && objectLabel.value.trim()) || `${objectName(objectType.value)} ${index}`;
-    const object = {
-      id,
-      type: objectType.value,
-      geometry: { kind, coords: state.currentPoints.slice() },
-      label,
-      confidence: "medium",
-      source: objectSource.value,
-      style_hints: {},
-    };
-    state.objects.push(object);
-    state.selectedId = id;
-    state.currentPoints = [];
-    markDirty();
-    renderCanvasLayers("finish-object");
-    renderObjectList();
-    setStatus(`已添加：${label}`);
   }
 
   function finishFunctionalZone() {

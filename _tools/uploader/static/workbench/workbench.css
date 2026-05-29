@@ -458,6 +458,38 @@
   border-top: 1px solid var(--line);
 }
 
+.compact-style-controls {
+  gap: 10px;
+}
+
+.style-section-title {
+  padding-top: 8px;
+  border-top: 1px solid rgba(215, 209, 198, 0.72);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.style-section-title:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.style-advanced {
+  display: grid;
+  gap: 6px;
+}
+
+.style-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.style-advanced label {
+  margin-top: 6px;
+}
+
 .style-controls label,
 .supporting-panel label {
   display: grid;
