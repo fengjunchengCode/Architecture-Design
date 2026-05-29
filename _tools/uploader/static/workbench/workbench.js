@@ -1646,7 +1646,7 @@
   }
 
   function objectStyle(type, rawStyle = {}) {
-    const style = Model.normalizeStyleHints(rawStyle, type);
+    const style = type === "functional_zone" ? normalizeZoneStyle(rawStyle) : Model.normalizeStyleHints(rawStyle, type);
     const fill =
       style.fill_mode === "solid" || style.fill_mode === "translucent" || style.fill_mode === "hatch"
         ? style.fill_color
@@ -2229,7 +2229,25 @@
   function pathFillValue(obj, style) {
     const mode = style.hints.fill_mode;
     if (mode === "solid") return { color: style.hints.fill_color || style.fill, opacity: 1 };
-    if (mode === "translucent" || mode === "hatch") {
+    if (mode === "hatch") {
+      const patternId = `hatch-${String(obj.id || "object").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      const spacing = Number(style.hints.hatch_spacing) || 0.018;
+      const angle = Number(style.hints.hatch_angle_deg) || 45;
+      const width = Number(style.hints.hatch_width) || 0.002;
+      const color = style.hints.fill_color || style.fill;
+      return {
+        color: `url(#${patternId})`,
+        opacity: 1,
+        defs: `
+          <defs>
+            <pattern id="${patternId}" width="${spacing}" height="${spacing}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})">
+              <line x1="0" y1="0" x2="0" y2="${spacing}" stroke="${color}" stroke-width="${width}"></line>
+            </pattern>
+          </defs>
+        `,
+      };
+    }
+    if (mode === "translucent") {
       return { color: style.hints.fill_color || style.fill, opacity: style.hints.fill_opacity || 0.42 };
     }
     return { color: "none", opacity: 1 };
@@ -2428,27 +2446,25 @@
   }
 
   function renderObjectSvg(obj) {
-    if (isFunctionalZoning() && obj.type === "functional_zone") {
-      return renderFunctionalZoneSvg(obj);
-    }
     const style = objectStyle(obj.type, obj.style_hints);
     const selected = obj.id === state.selectedId;
-    const width = selected ? 0.012 : 0.008;
-    const geo = obj.geometry;
+    const sw = Number(style.hints.stroke_width) > 0 ? Number(style.hints.stroke_width) : 0.003;
+    const geo = obj.geometry || {};
     let shape = "";
     let labelPoint = [0.5, 0.5];
 
     if (geo.kind === "circle") {
       const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
       const cx = center[0], cy = center[1], r = Number(geo.radius) > 0 ? Number(geo.radius) : 0.035;
-      const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
-                   (obj.style_hints && (obj.style_hints.fill_mode === "translucent" || obj.style_hints.fill_mode === "hatch")) ? (obj.style_hints.fill_color || style.fill) : "none";
-      const fillOpacity = (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? "0.42" : "1";
-      const stroke = selectedStrokeColor((obj.style_hints && obj.style_hints.stroke_color) || style.stroke, selected);
-      const borderW = (obj.style_hints && obj.style_hints.stroke_width) || 0.003;
+      const fillVisible = style.hints.fill_mode === "solid" || style.hints.fill_mode === "translucent";
+      const fill = fillVisible ? style.hints.fill_color || style.fill : "none";
+      const fillOpacity = style.hints.fill_mode === "translucent" ? String(style.hints.fill_opacity || 0.42) : "1";
+      const borderVisible = style.hints.border_style !== "none";
+      const stroke = borderVisible ? selectedStrokeColor(style.stroke, selected) : "none";
+      const borderW = borderVisible ? sw : 0;
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
       shape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></circle>`;
-      if (style.hints.border_style === "double") {
+      if (borderVisible && style.hints.border_style === "double") {
         const innerR = Math.max(0.004, r - (style.hints.double_border_gap || 0.006));
         shape += `<circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></circle>`;
       }
@@ -2462,31 +2478,35 @@
       const rot = geo.rotation_deg || 0;
       const pts = Model.trianglePoints([cx, cy], size, rot);
       const points = pts.map(p => p.join(",")).join(" ");
-      const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
-                   (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
-      const stroke = selectedStrokeColor((obj.style_hints && obj.style_hints.stroke_color) || style.stroke, selected);
+      const fillVisible = style.hints.fill_mode === "solid" || style.hints.fill_mode === "translucent";
+      const fill = fillVisible ? style.hints.fill_color || style.fill : "none";
+      const fillOpacity = style.hints.fill_mode === "translucent" ? String(style.hints.fill_opacity || 0.42) : "1";
+      const borderVisible = style.hints.border_style !== "none";
+      const stroke = borderVisible ? selectedStrokeColor(style.stroke, selected) : "none";
+      const borderW = borderVisible ? sw : 0;
       const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-      shape = `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${dash} pointer-events="none"></polygon>`;
-      if (style.hints.border_style === "double") {
+      shape = `<polygon points="${points}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"${dash} pointer-events="none"></polygon>`;
+      if (borderVisible && style.hints.border_style === "double") {
         const innerPts = Model.trianglePoints([cx, cy], Math.max(0.01, size - (style.hints.double_border_gap || 0.006)), rot);
-        shape += `<polygon points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${width}" pointer-events="none"></polygon>`;
+        shape += `<polygon points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></polygon>`;
       }
       shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
       if (selected) shape += renderSharedVertexHandles(pts, "#fff", stroke);
       labelPoint = [cx, cy - size];
-    } else if (geo.kind === "path" && geo.closed) {
+    } else if ((geo.kind === "path" && geo.closed) || geo.kind === "polygon") {
       // Closed path (polygon)
       const closedCoords = objectPathCoords(obj);
       if (closedCoords.length < 3) return "";
       const segments = geo.segments;
+      const stroke = style.hints.border_style === "none" ? "none" : selectedStrokeColor(style.stroke, selected);
+      const borderWidth = style.hints.border_style === "none" ? 0 : sw;
+      const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, true);
         const fill = pathFillValue(obj, style);
-        const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-        const stroke = selectedStrokeColor(style.stroke, selected);
-        shape = `<path d="${pathD}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
+        shape = `${fill.defs || ""}<path d="${pathD}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${borderWidth}" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
         if (style.hints.border_style === "double") {
-          shape += `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" stroke-linejoin="round" pointer-events="none"></path>`;
+          shape += `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, borderWidth - (style.hints.double_border_gap || 0.006) / 2)}" stroke-linejoin="round" pointer-events="none"></path>`;
         }
         shape += renderSharedPathHitLayer({
           objectId: obj.id,
@@ -2499,11 +2519,9 @@
       } else {
         const points = closedCoords.map(p => p.join(",")).join(" ");
         const fill = pathFillValue(obj, style);
-        const dash = (style.hints.stroke_style === "dashed" || style.hints.border_style === "dashed") ? ' stroke-dasharray="0.014 0.01"' : "";
-        const stroke = selectedStrokeColor(style.stroke, selected);
-        shape = `<polygon points="${points}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${width}"${dash} pointer-events="none"></polygon>`;
+        shape = `${fill.defs || ""}<polygon points="${points}" fill="${fill.color}" fill-opacity="${fill.opacity}" stroke="${stroke}" stroke-width="${borderWidth}"${dash} pointer-events="none"></polygon>`;
         if (style.hints.border_style === "double") {
-          shape += `<polygon points="${points}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, width - (style.hints.double_border_gap || 0.006) / 2)}" pointer-events="none"></polygon>`;
+          shape += `<polygon points="${points}" fill="none" stroke="${stroke}" stroke-width="${Math.max(0.001, borderWidth - (style.hints.double_border_gap || 0.006) / 2)}" pointer-events="none"></polygon>`;
         }
         shape += renderSharedPathHitLayer({
           objectId: obj.id,
@@ -2528,17 +2546,16 @@
       // Open path (polyline/arrow/line)
       const coords = objectPathCoords(obj);
       const segments = geo.segments;
+      const stroke = selectedStrokeColor(style.stroke, selected);
       if (segments && segments.length > 0) {
         const pathD = segmentsToPathD(segments, false);
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        const stroke = selectedStrokeColor(style.stroke, selected);
-        shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
+        shape = `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></path>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, pathD, closed: false, style: style.hints });
       } else if (coords.length >= 2) {
         const points = coords.map(p => p.join(",")).join(" ");
         const dash = style.hints.stroke_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-        const stroke = selectedStrokeColor(style.stroke, selected);
-        shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
+        shape = `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"${dash} pointer-events="none"></polyline>`;
         shape += renderSharedPathHitLayer({ objectId: obj.id, points: coords, closed: false, style: style.hints });
       }
       shape += renderArrowHeads(coords, style.hints, obj.id);
@@ -2550,80 +2567,9 @@
       if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
     }
     const overlays = renderSemanticTextOverlays(obj, labelPoint, style.hints);
-    const plainLabel = style.hints.label_box && style.hints.label_box.enabled ? "" : style.hints.inline_text && style.hints.inline_text.enabled ? "" : renderSvgLabel(obj.label, labelPoint, style.stroke);
+    const hideLabel = drawingConfig().hideCanvasLabels || obj.type === "functional_zone";
+    const plainLabel = hideLabel || style.hints.label_box && style.hints.label_box.enabled ? "" : style.hints.inline_text && style.hints.inline_text.enabled ? "" : renderSvgLabel(obj.label, labelPoint, style.stroke);
     return `${shape}${overlays}${plainLabel}`;
-  }
-
-  function renderFunctionalZoneSvg(obj) {
-    const selected = obj.id === state.selectedId;
-    const style = normalizeZoneStyle(obj.style_hints);
-    const coords = obj.geometry.coords;
-    const segments = obj.geometry.segments;
-    const fillVisible = style.fill_mode !== "none";
-    const fill = fillVisible ? style.fill_color : "none";
-    const fillOpacity = fillVisible ? String(style.fill_opacity ?? 0.42) : "1";
-    const strokeBase = style.stroke_color || style.fill_color;
-    const strokeColor = style.border_style === "none" ? "none" : selectedStrokeColor(strokeBase, selected);
-    const strokeWidth = style.border_style === "none" ? 0 : (style.stroke_width || ZONE_EDIT_WIDTH);
-    const dash = style.border_style === "dashed" ? ' stroke-dasharray="0.014 0.01"' : "";
-
-    // 有 segments 用 <path>，无 segments 用 <polygon>
-    let visibleShape = "";
-    let hitShape = "";
-    if (segments && segments.length > 0) {
-      const pathD = segmentsToPathD(segments);
-      visibleShape = `
-        <path
-          d="${pathD}"
-          fill="${fill}"
-          fill-opacity="${fillOpacity}"
-          stroke="${strokeColor}"
-          stroke-width="${strokeWidth}"
-          stroke-linejoin="round"${dash}
-          pointer-events="none"
-        ></path>
-      `;
-      hitShape = renderSharedPathHitLayer({
-        objectId: obj.id,
-        pathD,
-        closed: true,
-        style,
-        fillVisible,
-        borderVisible: style.border_style !== "none",
-      });
-    } else {
-      const points = coords.map((point) => point.join(",")).join(" ");
-      visibleShape = `
-        <polygon
-          points="${points}"
-          fill="${fill}"
-          fill-opacity="${fillOpacity}"
-          stroke="${strokeColor}"
-          stroke-width="${strokeWidth}"
-          stroke-linejoin="round"${dash}
-          pointer-events="none"
-        ></polygon>
-      `;
-      hitShape = renderSharedPathHitLayer({
-        objectId: obj.id,
-        points: coords,
-        closed: true,
-        style,
-        fillVisible,
-        borderVisible: style.border_style !== "none",
-      });
-    }
-
-    // 选中时显示 handles
-    let handles = "";
-    if (selected) {
-      // vertex handles
-      handles = renderSharedVertexHandles(coords, "#fff", darkenHex(strokeBase, 0.28));
-      // 从 coords 初始化 segments（如果还没有）
-      const segs = ensureSegments(obj);
-      handles += renderSegmentHandles(obj.id, segs, style);
-    }
-    return `${visibleShape}${hitShape}${handles}`;
   }
 
   function segmentsToPathD(segments, closed) {

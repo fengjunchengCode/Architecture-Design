@@ -180,6 +180,23 @@ def assert_shared_interaction_dom(page, drawing_type: str, tool: str) -> None:
         assert page.locator(".zone-arc-handle").count() >= 1, f"{drawing_type}/{tool}: missing shared arc handles"
 
 
+def assert_stroke_width_honored(page, drawing_type: str, tool: str) -> None:
+    if tool not in {"closed_path", "open_path", "triangle"}:
+        return
+    widths = page.locator(
+        "#sketchOverlay path:not(.geometry-hit):not(.zone-arc-handle), "
+        "#sketchOverlay polygon:not(.geometry-hit):not(.zone-arc-handle), "
+        "#sketchOverlay polyline:not(.geometry-hit):not(.zone-arc-handle)"
+    ).evaluate_all(
+        """(nodes) => nodes
+            .map((node) => Number(node.getAttribute("stroke-width") || 0))
+            .filter((value) => Number.isFinite(value) && value > 0)"""
+    )
+    assert any(abs(value - 0.011) < 0.0005 for value in widths), (
+        f"{drawing_type}/{tool}: visible stroke-width does not honor 0.011; got {widths}"
+    )
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -239,11 +256,23 @@ def main() -> int:
                 before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
                 creatable_tools = [tool for tool in tools if tool != "supporting_images"]
                 for tool in creatable_tools:
+                    if drawing_type != "functional_zoning":
+                        page.click(f'[data-tool-id="{tool}"]')
+                    if drawing_type != "functional_zoning" and tool in {"closed_path", "open_path", "triangle"}:
+                        page.eval_on_selector(
+                            "#styleStrokeWidth",
+                            """(el) => {
+                                el.value = "0.011";
+                                el.dispatchEvent(new Event("input", { bubbles: true }));
+                            }""",
+                        )
                     page.evaluate(
                         "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
                         {"tool": tool, "pts": tool_points(tool)},
                     )
                     assert_shared_interaction_dom(page, drawing_type, tool)
+                    if drawing_type != "functional_zoning":
+                        assert_stroke_width_honored(page, drawing_type, tool)
                 after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                 assert len(after_objects) == before + len(creatable_tools), (
                     f"{drawing_type}: object count did not increase by tools; before={before}, after={len(after_objects)}, tools={creatable_tools}"
