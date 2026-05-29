@@ -5,8 +5,32 @@
       "functional_zoning": [
         52
       ],
+      "planting_design": [
+        51
+      ],
+      "landscape_analysis": [
+        53
+      ],
       "traffic_analysis": [
         54
+      ],
+      "fire_route": [
+        55
+      ],
+      "vertical_analysis": [
+        56
+      ],
+      "supporting_facilities": [
+        57
+      ],
+      "sponge_city": [
+        58
+      ],
+      "accessibility_design": [
+        59
+      ],
+      "civil_defense": [
+        60
       ]
     }
   },

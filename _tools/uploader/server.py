@@ -25,8 +25,14 @@ ENV_FILE = REPO_ROOT / ".env"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from _tools.drawing_workbench.schema import (
+from _tools.drawing_workbench.registry import (
+    DRAWING_REGISTRY,
     DRAWING_TYPES,
+    OBJECT_TYPE_REGISTRY,
+    default_base_path_for,
+    default_object_style,
+)
+from _tools.drawing_workbench.schema import (
     drawing_output_paths,
     empty_drawing,
     normalize_drawing,
@@ -287,8 +293,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_spatial(parsed.query)
             elif parsed.path == "/api/cad-preview":
                 self.handle_cad_preview(parsed.query, run=False)
+            elif parsed.path == "/api/drawing/registry":
+                self.handle_drawing_registry()
             elif parsed.path == "/api/drawing/load":
                 self.handle_drawing_load(parsed.query)
+            elif parsed.path == "/api/drawing/supporting/list":
+                self.handle_supporting_list(parsed.query)
             elif parsed.path == "/api/style/load":
                 self.handle_style_load(parsed.query)
             elif parsed.path == "/api/project-file":
@@ -323,6 +333,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_drawing_base_upload(parsed.query)
             elif parsed.path == "/api/drawing/save":
                 self.handle_drawing_save()
+            elif parsed.path == "/api/drawing/supporting/upload":
+                self.handle_supporting_upload(parsed.query)
+            elif parsed.path == "/api/drawing/supporting/update":
+                self.handle_supporting_update()
+            elif parsed.path == "/api/drawing/supporting/delete":
+                self.handle_supporting_delete()
             elif parsed.path == "/api/drawing/task-pack":
                 self.handle_drawing_task_pack()
             elif parsed.path == "/api/drawing/export":
@@ -403,7 +419,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         return f"/api/project-file?project={code}&path={rel_path}"
 
     def default_drawing_for_project(self, code: str, proj: Path, drawing_type: str) -> dict[str, object]:
-        base_rel = "05_output/drawings/base/master_plan.jpg"
+        base_rel = default_base_path_for(drawing_type)
         width = 1
         height = 1
         base_path = proj / base_rel
@@ -424,12 +440,173 @@ class UploaderHandler(BaseHTTPRequestHandler):
             base_source="user_upload",
         )
 
+    def handle_drawing_registry(self) -> None:
+        drawings = {}
+        for dt_id, dt_info in DRAWING_REGISTRY.items():
+            drawings[dt_id] = {
+                "label": dt_info["label"],
+                "status": dt_info["status"],
+                "category": dt_info["category"],
+                "default_base_path": dt_info["default_base_path"],
+                "object_types": dt_info["object_types"],
+                "tools": dt_info["tools"],
+            }
+        objects = {}
+        for ot_id, ot_info in OBJECT_TYPE_REGISTRY.items():
+            objects[ot_id] = {
+                "label": ot_info["label"],
+                "geometry": ot_info["geometry"],
+                "closed": ot_info["closed"],
+                "default_style": default_object_style(ot_id),
+            }
+        self.send_json({
+            "ok": True,
+            "schema_version": "1.0",
+            "default_drawing_type": "functional_zoning",
+            "drawings": drawings,
+            "objects": objects,
+        })
+
+    def handle_supporting_list(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        proj = project_dir(code)
+        manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
+        if not manifest_path.exists():
+            self.send_json({"ok": True, "project": code, "drawing_type": drawing_type, "images": [], "count": 0})
+            return
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        images = manifest.get("images", [])
+        self.send_json({
+            "ok": True,
+            "project": code,
+            "drawing_type": drawing_type,
+            "images": images,
+            "count": len(images),
+        })
+
+    def handle_supporting_upload(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        proj = project_dir(code)
+
+        content_type = self.headers.get("Content-Type", "")
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length) if length > 0 else b""
+        files = iter_multipart_files(content_type, body) if "multipart/form-data" in content_type else []
+        if not files:
+            raise ValueError("请选择图片文件")
+
+        allowed_ext = {".jpg", ".jpeg", ".png", ".webp"}
+        sup_dir = proj / "05_output" / "drawings" / "supporting" / drawing_type
+        sup_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = sup_dir / "manifest.json"
+
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        else:
+            manifest = {"schema_version": "1.0", "project_code": code, "drawing_type": drawing_type, "updated_at": now_iso(), "images": []}
+
+        saved = []
+        for fname, payload in files:
+            filename = sanitize_filename(fname)
+            suffix = Path(filename).suffix.lower()
+            if suffix not in allowed_ext:
+                raise ValueError(f"不支持的文件格式: {suffix}")
+            out = unique_dash_path(sup_dir, filename)
+            out.write_bytes(payload)
+            rel = str(out.relative_to(proj)).replace("\\", "/")
+            img_id = f"img-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{len(manifest['images'])+1:03d}"
+            entry = {
+                "id": img_id,
+                "file": rel,
+                "original_name": filename,
+                "caption": "",
+                "sort_order": len(manifest["images"]) + 1,
+                "notes": "",
+                "uploaded_at": now_iso(),
+            }
+            manifest["images"].append(entry)
+            saved.append(entry)
+
+        manifest["updated_at"] = now_iso()
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        self.send_json({
+            "ok": True,
+            "project": code,
+            "drawing_type": drawing_type,
+            "saved": saved,
+            "count": len(saved),
+        })
+
+    def handle_supporting_update(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        drawing_type = str(payload.get("drawing_type", "")).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        proj = project_dir(code)
+        manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
+        if not manifest_path.exists():
+            raise ValueError("manifest 不存在")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        image_id = str(payload.get("image_id", "")).strip()
+        for img in manifest.get("images", []):
+            if img.get("id") == image_id:
+                if "caption" in payload:
+                    img["caption"] = str(payload["caption"])
+                if "notes" in payload:
+                    img["notes"] = str(payload["notes"])
+                if "sort_order" in payload:
+                    img["sort_order"] = int(payload["sort_order"])
+                break
+        else:
+            raise ValueError(f"image_id {image_id} not found")
+        manifest["updated_at"] = now_iso()
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.send_json({"ok": True, "project": code, "drawing_type": drawing_type})
+
+    def handle_supporting_delete(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        drawing_type = str(payload.get("drawing_type", "")).strip()
+        if drawing_type not in DRAWING_TYPES:
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        proj = project_dir(code)
+        manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
+        if not manifest_path.exists():
+            raise ValueError("manifest 不存在")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        image_id = str(payload.get("image_id", "")).strip()
+        sup_dir = proj / "05_output" / "drawings" / "supporting" / drawing_type
+        new_images = []
+        deleted_file = None
+        for img in manifest.get("images", []):
+            if img.get("id") == image_id:
+                file_path = (proj / img.get("file", "")).resolve()
+                if sup_dir.resolve() in file_path.parents and file_path.exists():
+                    file_path.unlink()
+                    deleted_file = img.get("file")
+            else:
+                new_images.append(img)
+        manifest["images"] = new_images
+        manifest["updated_at"] = now_iso()
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.send_json({"ok": True, "project": code, "drawing_type": drawing_type, "deleted_file": deleted_file})
+
     def handle_drawing_load(self, query: str) -> None:
         params = parse_qs(query)
         code = safe_project(params.get("project", [""])[0])
         drawing_type = str(params.get("drawing_type", [""])[0]).strip()
         if drawing_type not in DRAWING_TYPES:
-            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
         proj = project_dir(code)
         paths = self.drawing_paths(proj, drawing_type)
         rels = drawing_output_paths(drawing_type)
@@ -521,7 +698,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         code = safe_project(str(payload.get("project", "")))
         drawing_type = str(payload.get("drawing_type") or "").strip()
         if drawing_type not in DRAWING_TYPES:
-            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
         rels = drawing_output_paths(drawing_type)
         pack_path = build_task_pack(
             code,
@@ -544,7 +721,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         code = safe_project(params.get("project", [""])[0])
         drawing_type = str(params.get("drawing_type", [""])[0]).strip()
         if drawing_type not in DRAWING_TYPES:
-            raise ValueError("drawing_type must be functional_zoning or traffic_analysis")
+            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
         proj = project_dir(code)
         rels = drawing_output_paths(drawing_type)
         svg_path = proj / rels["svg"]

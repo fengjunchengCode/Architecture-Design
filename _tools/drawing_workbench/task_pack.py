@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from _tools.drawing_workbench.pdf_page_extract import extract_page
-from _tools.drawing_workbench.schema import DRAWING_TYPES, drawing_output_paths, normalize_drawing
+from _tools.drawing_workbench.registry import DRAWING_TYPES, default_base_path_for
+from _tools.drawing_workbench.schema import drawing_output_paths, normalize_drawing
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -84,8 +85,12 @@ def build_task_pack(
     context_files = _write_record_context(proj, context_dir)
 
     reference_files, reference_errors = _write_reference_pages(pack_dir, drawing_type)
+
+    # Supporting images
+    supporting_images = _copy_supporting_images(proj, pack_dir, drawing_type)
+
     task = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "task_id": task_id,
         "created_at": now_iso(),
         "project_code": code,
@@ -99,12 +104,42 @@ def build_task_pack(
             "style_spec": "style_spec.json",
             "context": context_files,
             "references": reference_files,
+            "supporting_images": supporting_images,
         },
     }
     if reference_errors:
         task["reference_errors"] = reference_errors
     (pack_dir / "task.json").write_text(json.dumps(task, ensure_ascii=False, indent=2), encoding="utf-8")
     return pack_dir
+
+
+def _copy_supporting_images(proj: Path, pack_dir: Path, drawing_type: str) -> dict[str, Any]:
+    manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
+    if not manifest_path.exists():
+        return {"manifest": None, "images_dir": None, "count": 0}
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    images = manifest.get("images", [])
+    if not images:
+        return {"manifest": None, "images_dir": None, "count": 0}
+
+    sup_dir = pack_dir / "supporting"
+    sup_dir.mkdir(exist_ok=True)
+    images_dir = sup_dir / "images"
+    images_dir.mkdir(exist_ok=True)
+
+    copied = 0
+    for img in images:
+        file_rel = img.get("file", "")
+        src = (proj / file_rel).resolve()
+        if proj.resolve() in src.parents and src.exists():
+            shutil.copy2(src, images_dir / src.name)
+            copied += 1
+
+    (sup_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"manifest": "supporting/manifest.json", "images_dir": "supporting/images", "count": copied}
 
 
 def _write_record_context(proj: Path, context_dir: Path) -> dict[str, str | None]:
