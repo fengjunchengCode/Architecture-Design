@@ -783,9 +783,9 @@
               (toolId) => `
                 <button
                   type="button"
-                  class="tool-button ${activeTool === toolId ? "active" : ""}"
+                  class="tool-button ${toolId === "text_label" ? "text-tool" : ""} ${activeTool === toolId ? "active" : ""}"
                   data-tool-id="${escapeHtml(toolId)}"
-                >${escapeHtml(TOOL_LABELS[toolId] || toolId)}</button>
+                >${toolButtonContent(toolId)}</button>
               `,
             )
             .join("")}
@@ -826,6 +826,14 @@
       bindStyleControls(activeTool, selectedObject, { toolId: activeTool });
     }
     bindSupportingPanel();
+  }
+
+  function toolButtonContent(toolId) {
+    const label = escapeHtml(TOOL_LABELS[toolId] || toolId);
+    if (toolId === "text_label") {
+      return `<span class="tool-icon" aria-hidden="true">T</span><span>${label}</span>`;
+    }
+    return label;
   }
 
   function shouldShowArrowControls(toolId, objectType) {

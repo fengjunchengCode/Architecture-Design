@@ -501,6 +501,12 @@ def assert_text_tool(page, drawing_type: str) -> None:
         assert not auto_labels, f"{drawing_type}: open_path still renders automatic plain label"
 
     assert page.locator('[data-tool-id="text_label"]').count() == 1, f"{drawing_type}: missing text_label tool"
+    text_button = page.locator('[data-tool-id="text_label"]').first
+    assert text_button.is_visible(), f"{drawing_type}: text_label tool is not visible"
+    assert text_button.locator(".tool-icon").count() == 1, f"{drawing_type}: text_label tool lacks recognizable T icon"
+    assert text_button.evaluate("(node) => node.scrollWidth <= node.clientWidth + 1"), (
+        f"{drawing_type}: text_label button content is clipped"
+    )
     page.click('[data-tool-id="text_label"]')
     page.eval_on_selector(
         "#textLabelContent",
