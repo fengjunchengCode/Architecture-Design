@@ -3,10 +3,10 @@
   const DRAWING_STATUS = new Set(["enabled", "planned", "deprecated"]);
   const DRAWING_CATEGORY = new Set(["analysis_a", "context_b", "other"]);
   const GEOMETRY_OPTIONS = [
-    { value: "polygon", label: "多边形" },
-    { value: "arrow", label: "箭头" },
-    { value: "polyline", label: "折线" },
-    { value: "point", label: "点" },
+    { value: "closed_path", label: "多边形" },
+    { value: "open_path", label: "线段" },
+    { value: "circle", label: "圆形" },
+    { value: "triangle", label: "三角形" },
   ];
   const SOURCE_OPTIONS = [
     { value: "user_sketch", label: "用户手绘" },
@@ -39,60 +39,44 @@
   const CANVAS_ZOOM_MAX = 8;
   const CANVAS_BUTTON_ZOOM_FACTOR = 1.25;
   const CANVAS_WHEEL_ZOOM_FACTOR = 1.1;
-  const DRAWING_WORKBENCHES = {
+
+  // Registry-loaded data (populated from /api/drawing/registry)
+  let DRAWING_WORKBENCHES = {};
+  let REGISTRY_OBJECTS = {};
+  let registryLoaded = false;
+  let registryLoadError = null;
+
+  // Minimal fallback so page doesn't crash if registry fails
+  const FALLBACK_WORKBENCHES = {
     functional_zoning: {
       status: "enabled",
       category: "analysis_a",
       label: "功能分区",
       title: "功能分区工作台",
-      description: "标注功能区边界、功能名称和必要标签，保存为后续精绘分区图的语义证据。",
+      description: "标注功能区边界、功能名称和必要标签。",
       fixedObjectType: "functional_zone",
-      fixedGeometry: "polygon",
+      fixedGeometry: "closed_path",
       fixedSource: "user_sketch",
       hideCanvasLabels: true,
       paletteFallback: PALETTE_FALLBACK,
       objectTypes: [
-        { value: "functional_zone", label: "功能区", defaultGeometry: "polygon" },
+        { value: "functional_zone", label: "功能区", defaultGeometry: "closed_path" },
       ],
       taskButtonLabel: "生成分区图任务包",
       agentNotesPlaceholder: "例如：请把不同功能区整理为低饱和分区色块，并生成底部图例。",
     },
-    traffic_analysis: {
-      status: "enabled",
-      category: "analysis_a",
-      label: "交通分析",
-      title: "交通分析工作台",
-      description: "标注车行、人行、入口和关键流线，保存为后续精绘交通组织图的语义证据。",
-      objectTypes: [
-        { value: "vehicle_flow", label: "车行流线", defaultGeometry: "arrow" },
-        { value: "pedestrian_flow", label: "人行流线", defaultGeometry: "arrow" },
-        { value: "main_entrance", label: "主入口", defaultGeometry: "point" },
-        { value: "label", label: "标签", defaultGeometry: "point" },
-      ],
-      taskButtonLabel: "生成交通图任务包",
-      agentNotesPlaceholder: "例如：请将橙色理解为车行主流线，蓝绿色为人行流线。",
-    },
-    landscape_analysis: {
-      status: "planned",
-      category: "analysis_a",
-      label: "景观分析",
-      title: "景观分析工作台",
-      description: "待设计：景观节点、视线廊道、活动场景、水系关系等。",
-    },
-    fire_route: {
-      status: "planned",
-      category: "analysis_a",
-      label: "消防流线",
-      title: "消防流线工作台",
-      description: "待设计：消防车道、登高面、回车场、消防出入口等。",
-    },
-    vertical_analysis: {
-      status: "planned",
-      category: "analysis_a",
-      label: "竖向分析",
-      title: "竖向分析工作台",
-      description: "待设计：场地高差、坡向、台地、挡墙和排水组织等。",
-    },
+  };
+
+  // Tool label map for display
+  const TOOL_LABELS = {
+    closed_path: "多边形",
+    open_path: "线段",
+    circle: "圆形",
+    triangle: "三角形",
+    turning_radius: "转弯半径",
+    elevation_marker: "标高点",
+    slope_arrow: "坡度箭头",
+    supporting_images: "配图",
   };
 
   const state = {
@@ -129,6 +113,58 @@
       return data;
     });
   };
+
+  // Load registry from backend API
+  async function loadRegistry() {
+    try {
+      const data = await api("/api/drawing/registry");
+      if (!data.ok || !data.drawings) {
+        throw new Error("registry response invalid");
+      }
+      // Convert registry format to workbench config format
+      const benches = {};
+      for (const [dtId, dtInfo] of Object.entries(data.drawings)) {
+        const objectTypes = (dtInfo.object_types || []).map(otId => {
+          const otInfo = (data.objects || {})[otId] || {};
+          return {
+            value: otId,
+            label: otInfo.label || otId,
+            defaultGeometry: otInfo.geometry === "circle" ? "circle" :
+                             otInfo.geometry === "triangle" ? "triangle" :
+                             otInfo.closed === true ? "closed_path" : "open_path",
+          };
+        });
+        benches[dtId] = {
+          status: dtInfo.status,
+          category: dtInfo.category,
+          label: dtInfo.label,
+          title: `${dtInfo.label}工作台`,
+          description: `${dtInfo.label}语义标注工作台。`,
+          objectTypes,
+          tools: dtInfo.tools || [],
+          taskButtonLabel: `生成${dtInfo.label}任务包`,
+          agentNotesPlaceholder: `例如：请按照风格规范处理${dtInfo.label}。`,
+        };
+        // Keep functional_zoning special behavior
+        if (dtId === "functional_zoning") {
+          benches[dtId].fixedObjectType = "functional_zone";
+          benches[dtId].fixedGeometry = "closed_path";
+          benches[dtId].fixedSource = "user_sketch";
+          benches[dtId].hideCanvasLabels = true;
+          benches[dtId].paletteFallback = PALETTE_FALLBACK;
+        }
+      }
+      DRAWING_WORKBENCHES = benches;
+      REGISTRY_OBJECTS = data.objects || {};
+      registryLoaded = true;
+      registryLoadError = null;
+    } catch (err) {
+      console.error("[workbench] registry load failed, using fallback:", err);
+      DRAWING_WORKBENCHES = { ...FALLBACK_WORKBENCHES };
+      registryLoaded = false;
+      registryLoadError = err.message;
+    }
+  }
 
   validateRegistry();
 
@@ -949,6 +985,8 @@
   }
 
   function objectName(type) {
+    // Try registry first
+    if (REGISTRY_OBJECTS[type]) return REGISTRY_OBJECTS[type].label || type;
     for (const config of Object.values(DRAWING_WORKBENCHES)) {
       const item = (config.objectTypes || []).find((entry) => entry.value === type);
       if (item) return item.label;
@@ -987,7 +1025,7 @@
     state.objects = Array.isArray(data.drawing.objects) ? data.drawing.objects : [];
     if (isFunctionalZoning()) {
       state.objects = state.objects
-        .filter((obj) => obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon")
+        .filter((obj) => obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true)))
         .map((obj) => ({ ...obj, source: "user_sketch", style_hints: normalizeZoneStyle(obj.style_hints) }));
       state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
       rebuildRecentColorsFromObjects();
@@ -1062,11 +1100,11 @@
     const naturalHeight =
       (image && image.naturalHeight) || (state.drawing && state.drawing.base_image.natural_height) || 1;
     const objects = state.objects
-      .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && obj.geometry.kind === "polygon"))
+      .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true))))
       .map((obj) => {
         if (isFunctionalZoning()) {
-          const geometry = { kind: "polygon", coords: obj.geometry.coords };
-          // T1: 仅含 ≥1 条真弧（quadratic）才持久化 segments
+          const geometry = { kind: "path", closed: true, coords: obj.geometry.coords };
+          // Preserve segments if they contain quadratic arcs
           if (obj.geometry.segments && obj.geometry.segments.some((s) => s.kind === "quadratic")) {
             geometry.segments = obj.geometry.segments;
             geometry.coords = sampleSegments(obj.geometry.segments);
@@ -1088,13 +1126,11 @@
           label: obj.label || "",
           confidence: obj.confidence || "medium",
           source: obj.source || "user_sketch",
-          style_hints: {},
+          style_hints: obj.style_hints || {},
         };
       });
-    // T1: 条件写版本号 — 仅含 ≥1 条真弧（quadratic）才标 1.1
-    const hasSegments = objects.some((obj) => obj.geometry && obj.geometry.segments);
     return {
-      schema_version: hasSegments ? "1.1" : "1.0",
+      schema_version: "1.2",
       drawing_type: drawingType(),
       project_code: state.project || projectCode(),
       base_image: {
@@ -1330,7 +1366,7 @@
     const object = {
       id,
       type: "functional_zone",
-      geometry: { kind: "polygon", coords: state.currentPoints.slice() },
+      geometry: { kind: "path", closed: true, coords: state.currentPoints.slice() },
       label,
       confidence: "medium",
       source: "user_sketch",
@@ -1406,17 +1442,62 @@
     const style = objectStyle(obj.type);
     const selected = obj.id === state.selectedId;
     const width = selected ? 0.012 : 0.008;
-    const coords = obj.geometry.coords;
-    const points = coords.map((point) => point.join(",")).join(" ");
-    const labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
+    const geo = obj.geometry;
     let shape = "";
-    if (obj.geometry.kind === "polygon") {
-      shape = `<polygon points="${points}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${width}"></polygon>`;
-    } else if (obj.geometry.kind === "point") {
-      const [x, y] = coords[0];
+    let labelPoint = [0.5, 0.5];
+
+    if (geo.kind === "circle") {
+      const cx = geo.center[0], cy = geo.center[1], r = geo.radius;
+      const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
+                   (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
+      const fillOpacity = (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? "0.42" : "1";
+      const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
+      const borderW = (obj.style_hints && obj.style_hints.stroke_width) || 0.003;
+      shape = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-width="${borderW}"></circle>`;
+      labelPoint = [cx, cy - r];
+    } else if (geo.kind === "triangle") {
+      const cx = geo.center[0], cy = geo.center[1];
+      const size = geo.size || 0.055;
+      const rot = geo.rotation_deg || 0;
+      const halfBase = size / Math.sqrt(3);
+      const rawPts = [[0, -size * (2/3)], [-halfBase, size * (1/3)], [halfBase, size * (1/3)]];
+      const rad = rot * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      const pts = rawPts.map(([px, py]) => [cx + px * cos - py * sin, cy + px * sin + py * cos]);
+      const points = pts.map(p => p.join(",")).join(" ");
+      const fill = (obj.style_hints && obj.style_hints.fill_mode === "solid") ? (obj.style_hints.fill_color || style.fill) :
+                   (obj.style_hints && obj.style_hints.fill_mode === "translucent") ? (obj.style_hints.fill_color || style.fill) : "none";
+      const stroke = (obj.style_hints && obj.style_hints.stroke_color) || style.stroke;
+      shape = `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"></polygon>`;
+      labelPoint = [cx, cy - size];
+    } else if (geo.kind === "path" && geo.closed) {
+      // Closed path (polygon)
+      const closedCoords = geo.coords;
+      const segments = geo.segments;
+      if (segments && segments.length > 0) {
+        const pathD = segmentsToPathD(segments, true);
+        shape = `<path d="${pathD}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${width}" stroke-linejoin="round"></path>`;
+      } else {
+        const points = closedCoords.map(p => p.join(",")).join(" ");
+        shape = `<polygon points="${points}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${width}"></polygon>`;
+      }
+      labelPoint = closedCoords[Math.floor(closedCoords.length / 2)] || closedCoords[0];
+    } else if (geo.kind === "point") {
+      const [x, y] = geo.coords[0];
       shape = `<circle cx="${x}" cy="${y}" r="0.012" fill="${style.stroke}" stroke="#fff" stroke-width="0.004"></circle>`;
+      labelPoint = [x, y];
     } else {
-      shape = `<polyline points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+      // Open path (polyline/arrow/line)
+      const coords = geo.coords || [];
+      const segments = geo.segments;
+      if (segments && segments.length > 0) {
+        const pathD = segmentsToPathD(segments, false);
+        shape = `<path d="${pathD}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"></path>`;
+      } else if (coords.length >= 2) {
+        const points = coords.map(p => p.join(",")).join(" ");
+        shape = `<polyline points="${points}" fill="none" stroke="${style.stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+      }
+      if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
     }
     return `${shape}${renderSvgLabel(obj.label, labelPoint, style.stroke)}`;
   }
@@ -1533,7 +1614,7 @@
     return `${visibleShape}${hitShape}${handles}`;
   }
 
-  function segmentsToPathD(segments) {
+  function segmentsToPathD(segments, closed) {
     if (!segments || !segments.length) return "";
     let d = `M ${segments[0].from[0]} ${segments[0].from[1]}`;
     for (const seg of segments) {
@@ -1543,7 +1624,7 @@
         d += ` Q ${seg.control[0]} ${seg.control[1]} ${seg.to[0]} ${seg.to[1]}`;
       }
     }
-    d += " Z";
+    if (closed !== false) d += " Z";
     return d;
   }
 
@@ -1954,8 +2035,10 @@
     }
   }
 
-  function bind() {
+  async function bind() {
     if (!$("#drawingWorkbench")) return;
+    // Load registry first, then render
+    await loadRegistry();
     state.currentDrawingType = initialDrawingType();
     renderDrawingTabs();
     renderDrawingWorkspace();
