@@ -1587,14 +1587,16 @@
           ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
+    const arrow = style.end_arrow
+      ? `<polygon points="21,8 17,5.5 17,10.5" fill="${stroke}"></polygon>`
+      : "";
     return `
-      <path d="M3 11 C8 4, 15 4, 21 9"
-        fill="none"
+      <line x1="3" y1="8" x2="${style.end_arrow ? 18 : 21}" y2="8"
         stroke="${stroke}"
         stroke-width="${strokeWidth}"
         stroke-linecap="${style.stroke_style === "dashed" ? "butt" : "round"}"
         ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
-      />`;
+      />${arrow}`;
   }
 
   function renderGenericLegendPreview() {

@@ -504,6 +504,16 @@ def assert_legend_non_fz(page, drawing_type: str) -> None:
     assert entries >= 2, f"{drawing_type}: expected at least 2 legend entries, got {entries}; text={text!r}"
 
 
+def assert_line_legend_straight(page, drawing_type: str) -> None:
+    swatches = page.locator("#zoneLegendPreview .zone-legend-swatch")
+    has_line = swatches.locator("line").count() >= 1
+    curved_paths = swatches.locator("path").evaluate_all(
+        """nodes => nodes.map((node) => node.getAttribute("d") || "").filter((d) => /C|Q/.test(d))"""
+    )
+    assert has_line, f"{drawing_type}: line legend swatch does not render a straight <line>"
+    assert not curved_paths, f"{drawing_type}: line legend swatch still uses curved path(s): {curved_paths}"
+
+
 def assert_dash_scale(page, drawing_type: str) -> None:
     page.click('[data-tool-id="open_path"]')
     page.click('[data-style-segment="stroke_style"][data-style-value="dashed"]')
@@ -641,6 +651,7 @@ def main() -> int:
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                     assert_legend_non_fz(page, drawing_type)
+                    assert_line_legend_straight(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
