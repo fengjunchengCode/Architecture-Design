@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validation helpers for semantic drawing JSON."""
+"""Validation helpers for semantic drawing JSON — schema v1.2."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -7,32 +7,34 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
+from _tools.drawing_workbench.registry import (
+    DRAWING_ALIASES,
+    DRAWING_REGISTRY,
+    DRAWING_TYPES,
+    OBJECT_TYPE_ALIASES,
+    OBJECT_TYPE_REGISTRY,
+    OBJECT_TYPES,
+    default_object_style,
+    normalize_drawing_type,
+    normalize_object_type,
+)
 
-SCHEMA_VERSION = "1.1"
-ACCEPTED_SCHEMA_VERSIONS = {"1.0", "1.1"}
-DRAWING_TYPES = {"functional_zoning", "traffic_analysis"}
+SCHEMA_VERSION = "1.2"
+ACCEPTED_SCHEMA_VERSIONS = {"1.0", "1.1", "1.2"}
 BASE_SOURCES = {"user_upload", "cad_export", "sat_export", "render"}
-OBJECT_TYPES = {
-    "main_entrance",
-    "pedestrian_flow",
-    "vehicle_flow",
-    "functional_zone",
-    "label",
-}
-GEOMETRY_KINDS = {"point", "polyline", "polygon", "arrow"}
+GEOMETRY_KINDS = {"path", "circle", "triangle", "point"}
 SEGMENT_KINDS = {"line", "quadratic"}
 CONFIDENCE_LEVELS = {"low", "medium", "high"}
 OBJECT_SOURCES = {"user_sketch", "vision_inferred", "cad_extracted"}
-ZONE_BORDER_STYLES = {"solid", "dashed", "none"}
-ZONE_STROKE_WIDTH_KEYS = {"thin", "medium", "bold"}
-ZONE_STROKE_WIDTH_BY_KEY = {"thin": 0.002, "medium": 0.003, "bold": 0.0045}
-DEFAULT_ZONE_STYLE_HINTS = {
-    "fill_color": "#DCE8C8",
-    "fill_enabled": True,
-    "border_style": "solid",
-    "stroke_width": 0.003,
-}
 QUADRATIC_SAMPLE_STEPS = 16
+
+# Legacy geometry kinds accepted on read
+_LEGACY_GEOMETRY_KINDS = {"polygon", "polyline", "arrow", "point"}
+
+# Style validation ranges
+FILL_MODES = {"none", "translucent", "solid", "hatch"}
+STROKE_STYLES = {"solid", "dashed"}
+BORDER_STYLES = {"none", "solid", "dashed", "double"}
 
 
 class DrawingValidationError(ValueError):
@@ -103,15 +105,8 @@ def normalize_drawing(data: dict[str, Any], *, project_code: str | None = None) 
     )
     objects = _normalize_objects(payload.get("objects"), drawing_type=drawing_type)
 
-    # T1: 条件写版本号 — 仅含 ≥1 条真弧（quadratic）才标 1.1
-    has_segments = any(
-        any(seg.get("kind") == "quadratic" for seg in obj.get("geometry", {}).get("segments", []))
-        for obj in objects
-    )
-    out_version = "1.1" if has_segments else "1.0"
-
     return {
-        "schema_version": out_version,
+        "schema_version": SCHEMA_VERSION,
         "drawing_type": drawing_type,
         "project_code": actual_project,
         "base_image": base_image,
@@ -121,11 +116,18 @@ def normalize_drawing(data: dict[str, Any], *, project_code: str | None = None) 
     }
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
 def _clean_drawing_type(value: object) -> str:
-    drawing_type = str(value or "").strip()
-    if drawing_type not in DRAWING_TYPES:
-        raise DrawingValidationError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
-    return drawing_type
+    text = str(value or "").strip()
+    if text in DRAWING_REGISTRY:
+        return text
+    alias = DRAWING_ALIASES.get(text)
+    if alias and alias in DRAWING_REGISTRY:
+        return alias
+    raise DrawingValidationError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
 
 
 def _clean_choice(value: object, allowed: set[str], field: str) -> str:
@@ -184,8 +186,35 @@ def _normalize_objects(value: object, *, drawing_type: str) -> list[dict[str, An
         if object_id in seen_ids:
             raise DrawingValidationError(f"duplicate object id: {object_id}")
         seen_ids.add(object_id)
-        object_type = _clean_choice(raw.get("type"), OBJECT_TYPES, f"objects[{index}].type")
-        geometry = _normalize_geometry(raw.get("geometry"), index, object_type=object_type)
+
+        raw_type = str(raw.get("type") or "").strip()
+        # Resolve alias
+        resolved_type = OBJECT_TYPE_ALIASES.get(raw_type, raw_type)
+
+        # Migrate old main_entrance point -> entrance_marker triangle
+        geometry_raw = raw.get("geometry") or {}
+        raw_kind = str(geometry_raw.get("kind") or "").strip()
+        migrated_type = resolved_type
+        migrated_geometry = geometry_raw
+        if raw_kind == "point" and raw_type == "main_entrance":
+            migrated_type = "entrance_marker"
+            migrated_geometry = {
+                "kind": "triangle",
+                "center": geometry_raw.get("coords", [[0.5, 0.5]])[0] if geometry_raw.get("coords") else [0.5, 0.5],
+                "size": 0.055,
+                "rotation_deg": 0,
+            }
+
+        # Validate object type
+        if migrated_type not in OBJECT_TYPE_REGISTRY:
+            # Legacy: accept label and other old types if they use point geometry
+            if raw_kind == "point":
+                migrated_type = raw_type if raw_type else "label"
+            else:
+                raise DrawingValidationError(f"objects[{index}].type must be one of {sorted(OBJECT_TYPES)}")
+
+        object_type = migrated_type
+        geometry = _normalize_geometry(migrated_geometry, index, object_type=object_type)
         style_hints = _normalize_style_hints(
             raw.get("style_hints"),
             drawing_type=drawing_type,
@@ -221,8 +250,6 @@ def _normalize_style_hints(
     object_type: str,
     object_index: int,
 ) -> dict[str, Any]:
-    if drawing_type != "functional_zoning" or object_type != "functional_zone":
-        return {}
     if value is None:
         raw: dict[str, Any] = {}
     elif isinstance(value, dict):
@@ -230,46 +257,36 @@ def _normalize_style_hints(
     else:
         raise DrawingValidationError(f"objects[{object_index}].style_hints must be an object")
 
-    fill_color = str(raw.get("fill_color") or DEFAULT_ZONE_STYLE_HINTS["fill_color"]).strip()
-    if not _is_hex_color(fill_color):
-        raise DrawingValidationError(f"objects[{object_index}].style_hints.fill_color must be #RRGGBB")
-    fill_enabled = raw.get("fill_enabled", DEFAULT_ZONE_STYLE_HINTS["fill_enabled"])
-    if not isinstance(fill_enabled, bool):
-        raise DrawingValidationError(f"objects[{object_index}].style_hints.fill_enabled must be boolean")
-    border_style = _clean_choice(
-        raw.get("border_style") or DEFAULT_ZONE_STYLE_HINTS["border_style"],
-        ZONE_BORDER_STYLES,
-        f"objects[{object_index}].style_hints.border_style",
-    )
-    stroke_width = _normalize_zone_stroke_width(raw, object_index)
-    return {
-        "fill_color": fill_color.upper(),
-        "fill_enabled": fill_enabled,
-        "border_style": border_style,
-        "stroke_width": stroke_width,
-    }
+    defaults = default_object_style(object_type)
 
+    # Migrate legacy fill_enabled -> fill_mode
+    if "fill_enabled" in raw and "fill_mode" not in raw:
+        raw["fill_mode"] = "translucent" if raw["fill_enabled"] else "none"
+        del raw["fill_enabled"]
 
-def _normalize_zone_stroke_width(raw: dict[str, Any], object_index: int) -> float:
-    if raw.get("stroke_width") is not None:
-        try:
-            width = float(raw.get("stroke_width"))
-        except (TypeError, ValueError) as exc:
+    result = _merge_style(defaults, raw, object_index)
+
+    # Validate hex colors
+    for color_key in ("fill_color", "stroke_color"):
+        val = result.get(color_key, "")
+        if val and not _is_hex_color(val):
             raise DrawingValidationError(
-                f"objects[{object_index}].style_hints.stroke_width must be numeric"
-            ) from exc
-    elif raw.get("stroke_width_key") is not None:
-        key = _clean_choice(
-            raw.get("stroke_width_key"),
-            ZONE_STROKE_WIDTH_KEYS,
-            f"objects[{object_index}].style_hints.stroke_width_key",
-        )
-        width = ZONE_STROKE_WIDTH_BY_KEY[key]
-    else:
-        width = float(DEFAULT_ZONE_STYLE_HINTS["stroke_width"])
-    if not 0.001 <= width <= 0.012:
-        raise DrawingValidationError(f"objects[{object_index}].style_hints.stroke_width out of range")
-    return round(width, 4)
+                f"objects[{object_index}].style_hints.{color_key} must be #RRGGBB"
+            )
+        if val:
+            result[color_key] = val.upper()
+
+    return result
+
+
+def _merge_style(defaults: dict[str, Any], raw: dict[str, Any], object_index: int) -> dict[str, Any]:
+    result = deepcopy(defaults)
+    for key, value in raw.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = {**deepcopy(result[key]), **deepcopy(value)}
+        else:
+            result[key] = deepcopy(value)
+    return result
 
 
 def _is_hex_color(value: str) -> bool:
@@ -278,37 +295,126 @@ def _is_hex_color(value: str) -> bool:
     return all(char in "0123456789abcdefABCDEF" for char in value[1:])
 
 
+# ---------------------------------------------------------------------------
+# Geometry normalization
+# ---------------------------------------------------------------------------
+
 def _normalize_geometry(value: object, object_index: int, *, object_type: str = "") -> dict[str, Any]:
     if not isinstance(value, dict):
         raise DrawingValidationError(f"objects[{object_index}].geometry must be an object")
-    kind = _clean_choice(value.get("kind"), GEOMETRY_KINDS, f"objects[{object_index}].geometry.kind")
+
+    raw_kind = str(value.get("kind") or "").strip()
+
+    # Migrate legacy kinds
+    if raw_kind == "polygon":
+        return _normalize_path_geometry(value, object_index, closed=True, object_type=object_type)
+    elif raw_kind == "polyline" or raw_kind == "arrow":
+        return _normalize_path_geometry(value, object_index, closed=False, object_type=object_type)
+    elif raw_kind == "point":
+        return _normalize_point_geometry(value, object_index)
+    elif raw_kind == "path":
+        closed = bool(value.get("closed", False))
+        return _normalize_path_geometry(value, object_index, closed=closed, object_type=object_type)
+    elif raw_kind == "circle":
+        return _normalize_circle_geometry(value, object_index)
+    elif raw_kind == "triangle":
+        return _normalize_triangle_geometry(value, object_index)
+    else:
+        raise DrawingValidationError(
+            f"objects[{object_index}].geometry.kind must be one of {sorted(GEOMETRY_KINDS | _LEGACY_GEOMETRY_KINDS)}"
+        )
+
+
+def _normalize_path_geometry(value: dict, object_index: int, *, closed: bool, object_type: str) -> dict[str, Any]:
     coords = value.get("coords")
     if not isinstance(coords, list):
         raise DrawingValidationError(f"objects[{object_index}].geometry.coords must be an array")
     clean_coords = [_normalize_coord(coord, object_index) for coord in coords]
-    minimum = {"point": 1, "polyline": 2, "polygon": 3, "arrow": 2}[kind]
+    minimum = 3 if closed else 2
     if len(clean_coords) < minimum:
         raise DrawingValidationError(
-            f"objects[{object_index}].geometry.coords needs at least {minimum} points for {kind}"
+            f"objects[{object_index}].geometry.coords needs at least {minimum} points for {'closed' if closed else 'open'} path"
         )
-    if kind == "point" and len(clean_coords) != 1:
-        raise DrawingValidationError(f"objects[{object_index}].geometry point must have exactly 1 coord")
 
-    result: dict[str, Any] = {"kind": kind, "coords": clean_coords}
+    result: dict[str, Any] = {"kind": "path", "closed": closed, "coords": clean_coords}
 
-    # segments: 仅 functional_zone + polygon 允许
     raw_segments = value.get("segments")
     if raw_segments is not None:
-        if not (object_type == "functional_zone" and kind == "polygon"):
-            raise DrawingValidationError(
-                f"objects[{object_index}].geometry.segments only allowed for functional_zone + polygon"
-            )
-        segments = _normalize_segments(raw_segments, object_index)
+        segments = _normalize_segments(raw_segments, object_index, closed=closed)
         result["segments"] = segments
-        # segments 存在时，从 segments 重采样 coords（开环）
-        result["coords"] = _sample_segments(segments)
+        result["coords"] = _sample_segments(segments, closed=closed)
 
     return result
+
+
+def _normalize_circle_geometry(value: dict, object_index: int) -> dict[str, Any]:
+    center = value.get("center")
+    if not isinstance(center, (list, tuple)) or len(center) != 2:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be [x, y]")
+    try:
+        cx = float(center[0])
+        cy = float(center[1])
+    except (TypeError, ValueError) as exc:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be numeric") from exc
+    if not (0 <= cx <= 1 and 0 <= cy <= 1):
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be normalized 0-1")
+
+    radius = value.get("radius")
+    if radius is None:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.radius is required")
+    try:
+        r = float(radius)
+    except (TypeError, ValueError) as exc:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.radius must be numeric") from exc
+    if not (0.006 <= r <= 0.25):
+        raise DrawingValidationError(f"objects[{object_index}].geometry.radius must be between 0.006 and 0.25")
+
+    return {
+        "kind": "circle",
+        "center": [round(cx, 6), round(cy, 6)],
+        "radius": round(r, 6),
+    }
+
+
+def _normalize_triangle_geometry(value: dict, object_index: int) -> dict[str, Any]:
+    center = value.get("center")
+    if not isinstance(center, (list, tuple)) or len(center) != 2:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be [x, y]")
+    try:
+        cx = float(center[0])
+        cy = float(center[1])
+    except (TypeError, ValueError) as exc:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be numeric") from exc
+    if not (0 <= cx <= 1 and 0 <= cy <= 1):
+        raise DrawingValidationError(f"objects[{object_index}].geometry.center must be normalized 0-1")
+
+    size = value.get("size")
+    if size is None:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.size is required")
+    try:
+        s = float(size)
+    except (TypeError, ValueError) as exc:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.size must be numeric") from exc
+    if not (0.01 <= s <= 0.3):
+        raise DrawingValidationError(f"objects[{object_index}].geometry.size must be between 0.01 and 0.3")
+
+    rotation = float(value.get("rotation_deg", 0))
+    rotation = rotation % 360
+
+    return {
+        "kind": "triangle",
+        "center": [round(cx, 6), round(cy, 6)],
+        "size": round(s, 6),
+        "rotation_deg": round(rotation, 2),
+    }
+
+
+def _normalize_point_geometry(value: dict, object_index: int) -> dict[str, Any]:
+    coords = value.get("coords")
+    if not isinstance(coords, list) or len(coords) < 1:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.coords must have at least 1 point")
+    clean_coords = [_normalize_coord(coord, object_index) for coord in coords]
+    return {"kind": "point", "coords": clean_coords[:1]}
 
 
 def _normalize_coord(value: object, object_index: int) -> list[float]:
@@ -326,7 +432,7 @@ def _normalize_coord(value: object, object_index: int) -> list[float]:
     return [round(x, 6), round(y, 6)]
 
 
-def _normalize_segments(value: object, object_index: int) -> list[dict[str, Any]]:
+def _normalize_segments(value: object, object_index: int, *, closed: bool) -> list[dict[str, Any]]:
     if not isinstance(value, list) or len(value) == 0:
         raise DrawingValidationError(f"objects[{object_index}].geometry.segments must be a non-empty array")
     segments: list[dict[str, Any]] = []
@@ -346,34 +452,25 @@ def _normalize_segments(value: object, object_index: int) -> list[dict[str, Any]
         if kind == "quadratic":
             control = _normalize_coord(raw.get("control"), object_index)
             segment["control"] = control
-        elif kind == "cubic":
-            raise DrawingValidationError(
-                f"objects[{object_index}].geometry.segments[{seg_index}] cubic is reserved but not supported yet"
-            )
         segments.append(segment)
 
-    # 链连续性校验: segment[i].to == segment[i+1].from
+    # Chain continuity
     for i in range(len(segments) - 1):
         if segments[i]["to"] != segments[i + 1]["from"]:
             raise DrawingValidationError(
                 f"objects[{object_index}].geometry.segments: discontinuous chain at segment {i} -> {i + 1}"
             )
-    # 闭合校验: last.to == first.from
-    if segments[-1]["to"] != segments[0]["from"]:
-        raise DrawingValidationError(
-            f"objects[{object_index}].geometry.segments: ring not closed (last.to != first.from)"
-        )
+    # Closure check for closed paths
+    if closed:
+        if segments[-1]["to"] != segments[0]["from"]:
+            raise DrawingValidationError(
+                f"objects[{object_index}].geometry.segments: ring not closed (last.to != first.from)"
+            )
 
     return segments
 
 
-def _sample_segments(segments: list[dict[str, Any]]) -> list[list[float]]:
-    """从 segments 重采样生成 coords（开环）。
-
-    T2 收紧：coords 不含等于首点的尾点。
-    line 段只保留终点（首点由上一段或 first.from 提供）。
-    quadratic 段按 QUADRATIC_SAMPLE_STEPS 等分采样。
-    """
+def _sample_segments(segments: list[dict[str, Any]], *, closed: bool) -> list[list[float]]:
     if not segments:
         return []
     coords: list[list[float]] = [segments[0]["from"]]
@@ -390,8 +487,8 @@ def _sample_segments(segments: list[dict[str, Any]]) -> list[list[float]]:
                 x = mt * mt * from_pt[0] + 2 * mt * t * control[0] + t * t * to_pt[0]
                 y = mt * mt * from_pt[1] + 2 * mt * t * control[1] + t * t * to_pt[1]
                 coords.append([round(x, 6), round(y, 6)])
-    # T2: 开环 — 去掉等于首点的尾点，保证 ≥3 点
-    if len(coords) > 3:
+    # For open paths, remove trailing point if it matches first
+    if not closed and len(coords) > 2:
         first = coords[0]
         last = coords[-1]
         if abs(first[0] - last[0]) < 1e-5 and abs(first[1] - last[1]) < 1e-5:
