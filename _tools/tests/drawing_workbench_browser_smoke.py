@@ -644,6 +644,39 @@ def assert_arrow_geometry(page, drawing_type: str) -> None:
     )
 
 
+def assert_labelbox_white_draggable(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="turning_radius"]')
+    page.eval_on_selector(
+        "#objectLabel",
+        """(el) => {
+            el.value = "R=9M";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    created = page.evaluate(
+        """() => window.DrawingWorkbenchTest.createObject("turning_radius", [[0.26, 0.64], [0.62, 0.42]])"""
+    )
+    obj_id = created["id"]
+    color = (created.get("style_hints") or {}).get("stroke_color", "").upper()
+    rect = page.locator(f"#sketchOverlay rect[data-object-id='{obj_id}']").first
+    assert rect.get_attribute("fill") == "#FFFFFF", f"{drawing_type}: label_box fill is not white"
+    assert float(rect.get_attribute("fill-opacity") or 0) >= 0.8, f"{drawing_type}: label_box opacity too low"
+    text_fill = page.locator("#sketchOverlay text", has_text="R=9M").last.get_attribute("fill")
+    assert (text_fill or "").upper() == color, f"{drawing_type}: label_box text color {text_fill} != stroke {color}"
+    handle = page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='labelbox']").first
+    assert handle.count() == 1, f"{drawing_type}: label_box drag handle missing"
+    before = (created.get("style_hints") or {}).get("label_box", {}).get("offset")
+    drag_locator(page, handle, dx=56, dy=-34)
+    after = page.evaluate(
+        """(id) => {
+            const obj = window.DrawingWorkbenchTest.getObjects().find((item) => item.id === id);
+            return obj && obj.style_hints && obj.style_hints.label_box && obj.style_hints.label_box.offset;
+        }""",
+        obj_id,
+    )
+    assert after and after != before, f"{drawing_type}: label_box offset did not change after drag; before={before}, after={after}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -760,6 +793,10 @@ def main() -> int:
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "traffic_analysis":
                     assert_arrow_geometry(page, drawing_type)
+                    after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+                    assert_no_bad_kinds(after_objects, drawing_type)
+                if drawing_type == "fire_route":
+                    assert_labelbox_white_draggable(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
 

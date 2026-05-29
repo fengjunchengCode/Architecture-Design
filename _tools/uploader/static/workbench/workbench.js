@@ -1209,7 +1209,7 @@
                 ${rangeControl("labelBoxWidth", "宽", (style.label_box && style.label_box.width) || 0.09, "0.05", "0.22", "0.005", 'data-style-nested="label_box.width" data-style-kind="number"')}
                 ${rangeControl("labelBoxHeight", "高", (style.label_box && style.label_box.height) || 0.035, "0.025", "0.09", "0.005", 'data-style-nested="label_box.height" data-style-kind="number"')}
                 ${rangeControl("labelBoxFontSize", "字号", (style.label_box && style.label_box.font_size) || 0.018, "0.012", "0.04", "0.002", 'data-style-nested="label_box.font_size" data-style-kind="number"')}
-                ${rangeControl("labelBoxOpacity", "透明度", (style.label_box && style.label_box.opacity) || 0.18, "0.08", "0.45", "0.02", 'data-style-nested="label_box.opacity" data-style-kind="number"')}
+                ${rangeControl("labelBoxOpacity", "透明度", (style.label_box && style.label_box.opacity) || 0.82, "0.4", "1", "0.02", 'data-style-nested="label_box.opacity" data-style-kind="number"')}
               </details>
             `
             : ""
@@ -2515,9 +2515,20 @@
       const y = Math.min(Math.max(anchor[1] + Number(offset[1] || 0), 0.01), 0.98 - height);
       const color = style.stroke_color || style.fill_color || "#333333";
       const text = box.text || obj.label || "";
-      parts.push(`<rect data-object-id="${escapeHtml(obj.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="0.004" fill="${color}" fill-opacity="${box.opacity || 0.18}" stroke="${color}" stroke-width="0.001"></rect>`);
+      parts.push(`<rect data-object-id="${escapeHtml(obj.id)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="0.004" fill="#FFFFFF" fill-opacity="${box.opacity || 0.82}" stroke="${color}" stroke-width="0.001"></rect>`);
       if (text) {
         parts.push(`<text x="${x + width * 0.08}" y="${y + height * 0.65}" fill="${color}" font-size="${box.font_size || 0.018}" font-weight="700">${escapeHtml(text)}</text>`);
+      }
+      if (obj.id === state.selectedId) {
+        parts.push(
+          renderHandleSvg(
+            x + width,
+            y,
+            "#fff",
+            color,
+            `data-vertex-object-id="${escapeHtml(obj.id)}" data-vertex-index="labelbox" data-vertex-role="labelbox"`,
+          ),
+        );
       }
     }
     if (style.inline_text && style.inline_text.enabled) {
@@ -3196,7 +3207,20 @@
     }
     const obj = state.objects.find((o) => o.id === state.vertexDrag.objectId);
     if (!obj || !obj.geometry) return;
-    if (obj.geometry.kind === "circle") {
+    if (state.vertexDrag.role === "labelbox") {
+      const anchor = objectAnchorPoint(obj) || [0.5, 0.5];
+      const current = obj.style_hints || {};
+      const box = current.label_box || {};
+      const width = Number(box.width) || 0.09;
+      obj.style_hints = {
+        ...current,
+        label_box: {
+          ...box,
+          enabled: true,
+          offset: [Number((p[0] - anchor[0] - width).toFixed(6)), Number((p[1] - anchor[1]).toFixed(6))],
+        },
+      };
+    } else if (obj.geometry.kind === "circle") {
       if (state.vertexDrag.role === "circle-center") {
         obj.geometry.center = p;
       } else {

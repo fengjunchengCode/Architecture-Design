@@ -265,7 +265,7 @@ _BASE_STYLE: dict[str, Any] = {
         "width": 0.09,
         "height": 0.035,
         "font_size": 0.018,
-        "opacity": 0.18,
+        "opacity": 0.82,
         "offset": [0.02, -0.02],
     },
     "inline_text": {
@@ -349,7 +349,7 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
             "width": 0.09,
             "height": 0.035,
             "font_size": 0.018,
-            "opacity": 0.18,
+            "opacity": 0.82,
             "offset": [0.02, -0.02],
         },
     },
@@ -362,8 +362,8 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
             "width": 0.09,
             "height": 0.035,
             "font_size": 0.018,
-            "opacity": 0.18,
-            "offset": [0.02, -0.02],
+            "opacity": 0.82,
+            "offset": [-0.045, -0.09],
         },
     },
     "slope_arrow": {

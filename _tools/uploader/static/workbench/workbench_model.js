@@ -37,7 +37,7 @@
       width: 0.09,
       height: 0.035,
       font_size: 0.018,
-      opacity: 0.18,
+      opacity: 0.82,
       offset: [0.02, -0.02],
     },
     inline_text: {
@@ -117,7 +117,7 @@
         width: 0.09,
         height: 0.035,
         font_size: 0.018,
-        opacity: 0.18,
+        opacity: 0.82,
         offset: [0.02, -0.02],
       },
     },
@@ -130,8 +130,8 @@
         width: 0.09,
         height: 0.035,
         font_size: 0.018,
-        opacity: 0.18,
-        offset: [0.02, -0.02],
+        opacity: 0.82,
+        offset: [-0.045, -0.09],
       },
     },
     slope_arrow: {
