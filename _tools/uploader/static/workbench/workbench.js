@@ -2528,17 +2528,26 @@
         const start = coords[0];
         const end = coords[coords.length - 1];
         const offset = Array.isArray(inline.offset) ? inline.offset : [0, -0.018];
-        const dx = end[0] - start[0];
-        const dy = end[1] - start[1];
-        const length = Math.hypot(dx, dy) || 1;
-        const dxN = dx / length;
-        const dyN = dy / length;
+        const stage = stageSize();
+        const dxPx = (end[0] - start[0]) * stage.width;
+        const dyPx = (end[1] - start[1]) * stage.height;
+        const length = Math.hypot(dxPx, dyPx) || 1;
+        const dxN = dxPx / length;
+        const dyN = dyPx / length;
         const alongOffset = Number(offset[0] || 0);
-        const normalOffset = Number(offset[1] || 0);
-        const baseX = start[0] + dx * position;
-        const baseY = start[1] + dy * position;
-        const x = baseX + dxN * alongOffset - dyN * normalOffset;
-        const y = baseY + dyN * alongOffset + dxN * normalOffset * aspectK();
+        const normalOffset = Math.abs(Number(offset[1] || 0));
+        const basePx = [
+          (start[0] + (end[0] - start[0]) * position) * stage.width,
+          (start[1] + (end[1] - start[1]) * position) * stage.height,
+        ];
+        let nx = -dyN;
+        let ny = dxN;
+        if (ny > 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        const x = (basePx[0] + dxN * alongOffset * stage.width + nx * normalOffset * stage.width) / stage.width;
+        const y = (basePx[1] + dyN * alongOffset * stage.width + ny * normalOffset * stage.width) / stage.height;
         let angle = Model.lineAngleDeg(coords);
         if (angle > 90 || angle < -90) angle += 180;
         angle = ((angle % 360) + 360) % 360;

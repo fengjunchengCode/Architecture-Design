@@ -447,6 +447,31 @@ def assert_slope_text_upright(page, drawing_type: str) -> None:
         )
 
 
+def assert_slope_text_above(page, drawing_type: str) -> None:
+    cases = [
+        ("SMOKE-SLOPE-ABOVE-LR", [[0.24, 0.30], [0.66, 0.30]]),
+        ("SMOKE-SLOPE-ABOVE-RL", [[0.66, 0.42], [0.24, 0.42]]),
+        ("SMOKE-SLOPE-ABOVE-DIAG", [[0.72, 0.28], [0.30, 0.66]]),
+    ]
+    page.click('[data-tool-id="slope_arrow"]')
+    for label, points in cases:
+        page.eval_on_selector(
+            "#objectLabel",
+            """(el, value) => {
+                el.value = value;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+            label,
+        )
+        page.evaluate(
+            "({ pts }) => window.DrawingWorkbenchTest.createObject('slope_arrow', pts)",
+            {"pts": points},
+        )
+        text_y = float(page.locator("#sketchOverlay text", has_text=label).last.get_attribute("y") or 0)
+        mid_y = (points[0][1] + points[1][1]) / 2
+        assert text_y < mid_y, f"{drawing_type}: slope text {label} is not above line; text_y={text_y}, mid_y={mid_y}"
+
+
 def assert_text_tool(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="open_path"]').count() >= 1:
         page.click('[data-tool-id="open_path"]')
@@ -674,6 +699,7 @@ def main() -> int:
                         line_multipoint_checked = True
                     if "slope_arrow" in tools:
                         assert_slope_text_upright(page, drawing_type)
+                        assert_slope_text_above(page, drawing_type)
                     for interaction_tool in ["closed_path", "open_path", "circle", "triangle"]:
                         if not interaction_checked[interaction_tool] and interaction_tool in tools:
                             if interaction_tool in {"closed_path", "open_path"}:
