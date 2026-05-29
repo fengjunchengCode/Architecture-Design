@@ -458,10 +458,6 @@
   border-top: 1px solid var(--line);
 }
 
-.compact-style-controls {
-  gap: 10px;
-}
-
 .style-section-title {
   padding-top: 8px;
   border-top: 1px solid rgba(215, 209, 198, 0.72);
