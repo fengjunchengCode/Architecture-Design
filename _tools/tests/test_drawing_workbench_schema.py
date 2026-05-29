@@ -79,6 +79,10 @@ def _point(coord=None):
     return {"kind": "point", "coords": [coord or [0.5, 0.5]]}
 
 
+def _text(coord=None):
+    return {"kind": "text", "coords": [coord or [0.5, 0.5]]}
+
+
 class TestSchemaVersion(unittest.TestCase):
     def test_schema_version_is_12(self):
         self.assertEqual(SCHEMA_VERSION, "1.2")
@@ -252,6 +256,23 @@ class TestTriangleGeometry(unittest.TestCase):
         ], drawing_type="traffic_analysis")
         result = normalize_drawing(d, project_code="99-ZZ-TEST")
         self.assertEqual(result["objects"][0]["geometry"]["rotation_deg"], 45)
+
+
+class TestTextGeometry(unittest.TestCase):
+    def test_text_ok(self):
+        d = _make_drawing([
+            {"id": "o1", "type": "text_label", "geometry": _text(), "style_hints": {"text_content": "说明"}},
+        ], drawing_type="planting_design")
+        result = normalize_drawing(d, project_code="99-ZZ-TEST")
+        self.assertEqual(result["objects"][0]["geometry"]["kind"], "text")
+        self.assertEqual(result["objects"][0]["style_hints"]["text_content"], "说明")
+
+    def test_text_missing_coord_rejects(self):
+        d = _make_drawing([
+            {"id": "o1", "type": "text_label", "geometry": {"kind": "text", "coords": []}},
+        ], drawing_type="planting_design")
+        with self.assertRaises(DrawingValidationError):
+            normalize_drawing(d, project_code="99-ZZ-TEST")
 
 
 class TestStyleHints(unittest.TestCase):

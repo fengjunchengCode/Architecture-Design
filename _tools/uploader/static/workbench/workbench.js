@@ -11,6 +11,7 @@
     { value: "open_path", label: "线段" },
     { value: "circle", label: "圆形" },
     { value: "triangle", label: "三角形" },
+    { value: "text_label", label: "文字" },
   ];
   const SOURCE_OPTIONS = [
     { value: "user_sketch", label: "用户手绘" },
@@ -22,6 +23,7 @@
     circle: "圆形",
     triangle: "三角形",
     point: "点位",
+    text: "文字",
     closed_path: "多边形",
     open_path: "线段",
   };
@@ -33,6 +35,7 @@
     circle: { kind: "circle", minPoints: 1 },
     triangle: { kind: "triangle", minPoints: 1 },
     elevation_marker: { kind: "triangle", minPoints: 1 },
+    text_label: { kind: "text", minPoints: 1 },
   };
   const SPECIAL_TOOL_TYPES = new Set(["turning_radius", "elevation_marker", "slope_arrow"]);
   const FLOW_ARROW_OBJECT_TYPES = new Set([
@@ -107,6 +110,7 @@
     turning_radius: "转弯半径",
     elevation_marker: "标高点",
     slope_arrow: "坡度箭头",
+    text_label: "文字",
     supporting_images: "配图",
   };
   const PRIMITIVE_STYLE_SPEC = {
@@ -181,6 +185,11 @@
       inlineText: true,
       legendName: true,
     },
+    text_label: {
+      color: true,
+      textContent: true,
+      fontSize: true,
+    },
   };
   const FILL_LABELS = { none: "无", translucent: "半透明", solid: "实心", hatch: "斜线" };
   const BORDER_LABELS = { none: "无边框", solid: "实线", dashed: "虚线", double: "双实线" };
@@ -244,6 +253,7 @@
           const otInfo = (data.objects || {})[otId] || {};
           const defaultGeometry = otInfo.geometry === "circle" ? "circle" :
                                   otInfo.geometry === "triangle" ? "triangle" :
+                                  otInfo.geometry === "text" ? "text_label" :
                                   otInfo.closed === true ? "closed_path" : "open_path";
           return {
             value: otId,
@@ -945,10 +955,29 @@
         : Model.normalizeStyleHints(rawStyle || {}, context.objectType || specKey);
     const geo = context.geometry || {};
     const showArrows = spec.arrows === "flow-only" && shouldShowArrowControls(context.toolId || specKey, context.objectType);
+    const showStrokeSection = spec.strokeWidth || spec.strokeStyle || spec.border || showArrows;
     const strokeLabel = spec.fill ? "边框宽" : "线宽";
     const strokeMax = spec.maxStrokeWidth || 0.018;
     return `
       <div class="style-controls" data-style-controls="true">
+        ${
+          spec.textContent
+            ? `
+              <div class="style-section-title">文字</div>
+              <label><span>文字内容</span><input id="textLabelContent" value="${escapeHtml(style.text_content || "文字")}" data-style-input="text_content" data-style-kind="string"></label>
+              ${rangeControl(
+                "textLabelFontSize",
+                "字号",
+                style.font_size || 0.024,
+                "0.012",
+                "0.06",
+                "0.002",
+                'data-style-input="font_size" data-style-kind="number"',
+              )}
+              ${renderColorControl("stroke_color", "文字颜色", style.stroke_color || "#333333")}
+            `
+            : ""
+        }
         ${
           spec.fill
             ? `
@@ -1008,75 +1037,85 @@
             `
             : ""
         }
-        <div class="style-section-title">描边</div>
-        ${renderColorControl("stroke_color", spec.fill ? "边框色" : "线色", style.stroke_color || style.fill_color || "#333333")}
-        ${rangeControl(
-          "styleStrokeWidth",
-          strokeLabel,
-          style.stroke_width || 0.003,
-          "0.001",
-          String(strokeMax),
-          "0.0005",
-          'data-style-input="stroke_width" data-style-kind="number"',
-        )}
         ${
-          spec.strokeStyle
-            ? segmentedStyleControl(
-                "线型",
-                "stroke_style",
-                spec.strokeStyle.map((value) => ({ value, label: STROKE_STYLE_LABELS[value] || value })),
-                style.stroke_style || "solid",
-              )
-            : ""
-        }
-        ${
-          spec.border
-            ? segmentedStyleControl(
-                "边框",
-                "border_style",
-                spec.border.map((value) => ({ value, label: BORDER_LABELS[value] || value })),
-                style.border_style || "solid",
-              )
-            : ""
-        }
-        ${
-          spec.border && style.border_style === "double"
+          showStrokeSection
             ? `
-              <details class="style-advanced" open>
-                <summary>双线参数</summary>
-                ${numberControl(
-                  "styleDoubleGap",
-                  "间距",
-                  style.double_border_gap || 0.006,
-                  "0.002",
-                  "0.03",
-                  "0.001",
-                  'data-style-input="double_border_gap" data-style-kind="number"',
-                )}
-              </details>
-            `
-            : ""
-        }
-        ${
-          showArrows
-            ? `
-              <div class="zone-tool-group arrow-controls">
-                <span>箭头</span>
-                <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" data-style-input="start_arrow" data-style-kind="boolean" ${style.start_arrow ? "checked" : ""}> 起点</label>
-                <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" data-style-input="end_arrow" data-style-kind="boolean" ${style.end_arrow ? "checked" : ""}> 终点</label>
-                <details class="style-advanced">
-                  <summary>箭头尺寸</summary>
-                  ${rangeControl(
-                    "styleArrowSize",
-                    "尺寸",
-                    style.arrow_size || 0.028,
-                    "0.012",
-                    "0.07",
-                    "0.002",
-                    'data-style-input="arrow_size" data-style-kind="number"',
-                  )}
-                </details>
-              </div>
+              <div class="style-section-title">描边</div>
+              ${renderColorControl("stroke_color", spec.fill ? "边框色" : "线色", style.stroke_color || style.fill_color || "#333333")}
+              ${
+                spec.strokeWidth
+                  ? rangeControl(
+                      "styleStrokeWidth",
+                      strokeLabel,
+                      style.stroke_width || 0.003,
+                      "0.001",
+                      String(strokeMax),
+                      "0.0005",
+                      'data-style-input="stroke_width" data-style-kind="number"',
+                    )
+                  : ""
+              }
+              ${
+                spec.strokeStyle
+                  ? segmentedStyleControl(
+                      "线型",
+                      "stroke_style",
+                      spec.strokeStyle.map((value) => ({ value, label: STROKE_STYLE_LABELS[value] || value })),
+                      style.stroke_style || "solid",
+                    )
+                  : ""
+              }
+              ${
+                spec.border
+                  ? segmentedStyleControl(
+                      "边框",
+                      "border_style",
+                      spec.border.map((value) => ({ value, label: BORDER_LABELS[value] || value })),
+                      style.border_style || "solid",
+                    )
+                  : ""
+              }
+              ${
+                spec.border && style.border_style === "double"
+                  ? `
+                    <details class="style-advanced" open>
+                      <summary>双线参数</summary>
+                      ${numberControl(
+                        "styleDoubleGap",
+                        "间距",
+                        style.double_border_gap || 0.006,
+                        "0.002",
+                        "0.03",
+                        "0.001",
+                        'data-style-input="double_border_gap" data-style-kind="number"',
+                      )}
+                    </details>
+                  `
+                  : ""
+              }
+              ${
+                showArrows
+                  ? `
+                    <div class="zone-tool-group arrow-controls">
+                      <span>箭头</span>
+                      <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" data-style-input="start_arrow" data-style-kind="boolean" ${style.start_arrow ? "checked" : ""}> 起点</label>
+                      <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" data-style-input="end_arrow" data-style-kind="boolean" ${style.end_arrow ? "checked" : ""}> 终点</label>
+                      <details class="style-advanced">
+                        <summary>箭头尺寸</summary>
+                        ${rangeControl(
+                          "styleArrowSize",
+                          "尺寸",
+                          style.arrow_size || 0.028,
+                          "0.012",
+                          "0.07",
+                          "0.002",
+                          'data-style-input="arrow_size" data-style-kind="number"',
+                        )}
+                      </details>
+                    </div>
+                  `
+                  : ""
+              }
             `
             : ""
         }
@@ -2047,6 +2086,9 @@
     if (toolId === "triangle" || toolId === "elevation_marker") {
       return { kind: "triangle", center: cleanPoints[0], size: draft.size, rotation_deg: draft.rotation_deg };
     }
+    if (toolId === "text_label") {
+      return { kind: "text", coords: cleanPoints.slice(0, 1) };
+    }
     return null;
   }
 
@@ -2095,6 +2137,10 @@
         enabled: true,
         text: (objectLabel && objectLabel.value.trim()) || (style.inline_text && style.inline_text.text) || "0.3%",
       };
+    }
+    if (toolId === "text_label") {
+      const text = (style.text_content || "").trim() || (objectLabel && objectLabel.value.trim()) || "文字";
+      style.text_content = text;
     }
     const object = {
       id,
@@ -2313,6 +2359,7 @@
   function objectAnchorPoint(obj) {
     const geo = (obj && obj.geometry) || {};
     if (geo.kind === "circle" || geo.kind === "triangle") return safePoint(geo.center);
+    if (geo.kind === "text") return safePoint((geo.coords || [])[0]);
     const coords = objectPathCoords(obj);
     return coords[Math.floor(coords.length / 2)] || null;
   }
@@ -2495,7 +2542,28 @@
     let shape = "";
     let labelPoint = [0.5, 0.5];
 
-    if (geo.kind === "circle") {
+    if (geo.kind === "text") {
+      const [x, y] = safePoint((geo.coords || [])[0]) || [0.5, 0.5];
+      const color = style.hints.stroke_color || style.stroke || "#333333";
+      const fontSize = Number(style.hints.font_size) > 0 ? Number(style.hints.font_size) : 0.024;
+      const text = style.hints.text_content || obj.label || "文字";
+      shape = `<text data-object-id="${escapeHtml(obj.id)}" x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-size="${fontSize}" font-weight="700">${escapeHtml(text)}</text>`;
+      shape += renderSharedCircleHitLayer({
+        objectId: obj.id,
+        cx: x,
+        cy: y,
+        radius: Math.max(0.028, fontSize * 2.2),
+        ry: Math.max(0.02, fontSize * 1.5 * aspectK()),
+        style: style.hints,
+      });
+      if (selected) {
+        shape += renderSharedVertexHandles([[x, y]], "#fff", color, {
+          objectId: obj.id,
+          roles: ["text-anchor"],
+        });
+      }
+      labelPoint = [x, y];
+    } else if (geo.kind === "circle") {
       const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
       const cx = center[0], cy = center[1], r = Number(geo.radius) > 0 ? Number(geo.radius) : 0.035;
       const ry = r * aspectK();
@@ -2623,9 +2691,7 @@
       if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
     }
     const overlays = renderSemanticTextOverlays(obj, labelPoint, style.hints);
-    const hideLabel = drawingConfig().hideCanvasLabels || obj.type === "functional_zone";
-    const plainLabel = hideLabel || style.hints.label_box && style.hints.label_box.enabled ? "" : style.hints.inline_text && style.hints.inline_text.enabled ? "" : renderSvgLabel(obj.label, labelPoint, style.stroke);
-    return `${shape}${overlays}${plainLabel}`;
+    return `${shape}${overlays}`;
   }
 
   function segmentsToPathD(segments, closed) {
@@ -2912,6 +2978,8 @@
         const radius = Math.hypot(p[0] - center[0], p[1] - center[1]);
         obj.geometry.radius = Number(Math.max(0.004, Math.min(0.25, radius)).toFixed(6));
       }
+    } else if (obj.geometry.kind === "text") {
+      obj.geometry.coords = [p];
     } else if (obj.geometry.kind === "triangle") {
       const center = safePoint(obj.geometry.center) || [0.5, 0.5];
       const modelPoint = aspectUncompensatePoint(p, center);
@@ -2953,13 +3021,6 @@
       })
       .join("");
     return `#${next}`.toUpperCase();
-  }
-
-  function renderSvgLabel(label, point, color) {
-    if (!label || !point) return "";
-    const x = Math.min(Math.max(point[0] + 0.012, 0.01), 0.82);
-    const y = Math.min(Math.max(point[1] - 0.012, 0.035), 0.96);
-    return `<text x="${x}" y="${y}" fill="${color}" font-size="0.025" font-weight="700">${escapeHtml(label)}</text>`;
   }
 
   function renderObjectList() {

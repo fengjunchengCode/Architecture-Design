@@ -22,7 +22,7 @@ from _tools.drawing_workbench.registry import (
 SCHEMA_VERSION = "1.2"
 ACCEPTED_SCHEMA_VERSIONS = {"1.0", "1.1", "1.2"}
 BASE_SOURCES = {"user_upload", "cad_export", "sat_export", "render"}
-GEOMETRY_KINDS = {"path", "circle", "triangle", "point"}
+GEOMETRY_KINDS = {"path", "circle", "triangle", "point", "text"}
 SEGMENT_KINDS = {"line", "quadratic"}
 CONFIDENCE_LEVELS = {"low", "medium", "high"}
 OBJECT_SOURCES = {"user_sketch", "vision_inferred", "cad_extracted"}
@@ -319,6 +319,8 @@ def _normalize_geometry(value: object, object_index: int, *, object_type: str = 
         return _normalize_circle_geometry(value, object_index)
     elif raw_kind == "triangle":
         return _normalize_triangle_geometry(value, object_index)
+    elif raw_kind == "text":
+        return _normalize_text_geometry(value, object_index)
     else:
         raise DrawingValidationError(
             f"objects[{object_index}].geometry.kind must be one of {sorted(GEOMETRY_KINDS | _LEGACY_GEOMETRY_KINDS)}"
@@ -415,6 +417,14 @@ def _normalize_point_geometry(value: dict, object_index: int) -> dict[str, Any]:
         raise DrawingValidationError(f"objects[{object_index}].geometry.coords must have at least 1 point")
     clean_coords = [_normalize_coord(coord, object_index) for coord in coords]
     return {"kind": "point", "coords": clean_coords[:1]}
+
+
+def _normalize_text_geometry(value: dict, object_index: int) -> dict[str, Any]:
+    coords = value.get("coords")
+    if not isinstance(coords, list) or len(coords) < 1:
+        raise DrawingValidationError(f"objects[{object_index}].geometry.coords must have at least 1 point")
+    clean_coords = [_normalize_coord(coord, object_index) for coord in coords]
+    return {"kind": "text", "coords": clean_coords[:1]}
 
 
 def _normalize_coord(value: object, object_index: int) -> list[float]:

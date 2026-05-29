@@ -27,6 +27,8 @@ def tool_points(tool_id: str) -> list[list[float]]:
         return [[0.16, 0.62], [0.72, 0.66]]
     if tool_id in {"circle", "triangle", "elevation_marker"}:
         return [[0.54, 0.38]]
+    if tool_id == "text_label":
+        return [[0.62, 0.22]]
     raise AssertionError(f"no smoke payload for tool {tool_id}")
 
 
@@ -115,7 +117,7 @@ def wait_for_server() -> None:
 def assert_no_bad_kinds(objects: list[dict], drawing_type: str) -> None:
     for obj in objects:
         kind = ((obj.get("geometry") or {}).get("kind"))
-        assert kind in {"path", "circle", "triangle"}, f"{drawing_type}: illegal geometry.kind {kind!r}"
+        assert kind in {"path", "circle", "triangle", "text"}, f"{drawing_type}: illegal geometry.kind {kind!r}"
         assert kind not in {"closed_path", "open_path"}, f"{drawing_type}: leaked tool id {kind!r}"
         if obj.get("type") == "turning_radius":
             assert ((obj.get("style_hints") or {}).get("label_box") or {}).get("enabled"), "turning_radius missing label_box"
@@ -444,6 +446,55 @@ def assert_slope_text_upright(page, drawing_type: str) -> None:
         )
 
 
+def assert_text_tool(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="open_path"]').count() >= 1:
+        page.click('[data-tool-id="open_path"]')
+        page.eval_on_selector(
+            "#objectLabel",
+            """(el) => {
+                el.value = "AUTO-LINE-LABEL-SHOULD-NOT-RENDER";
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+        )
+        page.evaluate(
+            """() => window.DrawingWorkbenchTest.createObject("open_path", [[0.18, 0.78], [0.46, 0.78]])"""
+        )
+        auto_labels = page.locator("#sketchOverlay text").evaluate_all(
+            """(nodes) => nodes
+                .map((node) => node.textContent.trim())
+                .filter((text) => text === "AUTO-LINE-LABEL-SHOULD-NOT-RENDER")"""
+        )
+        assert not auto_labels, f"{drawing_type}: open_path still renders automatic plain label"
+
+    assert page.locator('[data-tool-id="text_label"]').count() == 1, f"{drawing_type}: missing text_label tool"
+    page.click('[data-tool-id="text_label"]')
+    page.eval_on_selector(
+        "#textLabelContent",
+        """(el) => {
+            el.value = "可拖动文字";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    created = page.evaluate(
+        """() => window.DrawingWorkbenchTest.createObject("text_label", [[0.58, 0.58]])"""
+    )
+    assert created.get("type") == "text_label", f"{drawing_type}: text tool created wrong type {created}"
+    geometry = created.get("geometry") or {}
+    assert geometry.get("kind") == "text" and geometry.get("coords"), f"{drawing_type}: text tool geometry invalid {geometry}"
+    obj_id = created["id"]
+    assert page.locator("#sketchOverlay text", has_text="可拖动文字").count() >= 1, f"{drawing_type}: text object did not render"
+    before = geometry["coords"][0]
+    drag_locator(page, page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='text-anchor']").first)
+    after = page.evaluate(
+        """(id) => {
+            const obj = window.DrawingWorkbenchTest.getObjects().find((item) => item.id === id);
+            return obj && obj.geometry && obj.geometry.coords && obj.geometry.coords[0];
+        }""",
+        obj_id,
+    )
+    assert after and after != before, f"{drawing_type}: text anchor drag did not move coords; before={before}, after={after}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -547,6 +598,10 @@ def main() -> int:
                     f"{drawing_type}: object count did not increase by tools; before={before}, after={len(after_objects)}, tools={creatable_tools}"
                 )
                 assert_no_bad_kinds(after_objects, drawing_type)
+                if drawing_type == "planting_design":
+                    assert_text_tool(page, drawing_type)
+                    after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+                    assert_no_bad_kinds(after_objects, drawing_type)
 
                 with page.expect_response(lambda r: "/api/drawing/save" in r.url and r.status == 200, timeout=15000):
                     page.click("#workbenchSave")

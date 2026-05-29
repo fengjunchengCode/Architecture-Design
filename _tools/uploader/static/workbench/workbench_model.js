@@ -158,6 +158,12 @@
     accessible_facility_zone: { fill_mode: "translucent" },
     accessible_point: { fill_mode: "translucent", fill_color: "#DCE8C8" },
     civil_defense_zone: { fill_mode: "translucent" },
+    text_label: {
+      stroke_color: "#333333",
+      text_content: "文字",
+      font_size: 0.024,
+      legend_enabled: false,
+    },
   };
 
   var _LEGACY_ALIASES = { main_entrance: "entrance_marker" };
@@ -412,7 +418,9 @@
     var parts = [obj.type, s.legend_label || ""];
     var kind = (obj.geometry || {}).kind;
 
-    if (kind === "circle") {
+    if (kind === "text") {
+      parts.push(s.stroke_color || "", String(s.font_size || ""), s.text_content || "");
+    } else if (kind === "circle") {
       parts.push(
         s.fill_mode || "",
         s.fill_color || "",
