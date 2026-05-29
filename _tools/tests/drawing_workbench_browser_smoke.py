@@ -732,6 +732,7 @@ def main() -> int:
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")
                     assert sorted(dom_tools) == sorted(tools), f"{drawing_type}: DOM tools {dom_tools} != registry {tools}"
                     assert page.locator("#geometryKind").count() == 0, f"{drawing_type}: generic geometry select still visible"
+                    assert page.locator("#objectSource").count() == 0, f"{drawing_type}: meaningless source dropdown still visible"
                     assert page.locator("[data-style-controls='true']").count() == 1, f"{drawing_type}: missing style controls"
                     assert page.locator("[data-supporting-panel='true']").count() == 0, f"{drawing_type}: supporting panel shown before supporting tool is active"
                     assert_control_rules(page, drawing_type, tools)

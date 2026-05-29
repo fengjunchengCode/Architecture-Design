@@ -13,11 +13,6 @@
     { value: "triangle", label: "三角形" },
     { value: "text_label", label: "文字" },
   ];
-  const SOURCE_OPTIONS = [
-    { value: "user_sketch", label: "用户手绘" },
-    { value: "vision_inferred", label: "视觉识别" },
-    { value: "cad_extracted", label: "CAD 提取" },
-  ];
   const GEOMETRY_LABELS = {
     path: "路径",
     circle: "圆形",
@@ -807,10 +802,6 @@
             <label>
               <span>标签文本</span>
               <input id="objectLabel" placeholder="例如：主入口 / 景观节点 / R=9M">
-            </label>
-            <label>
-              <span>来源</span>
-              <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
             </label>
             ${renderStyleControls(activeTool, draftStyle, {
               toolId: activeTool,
@@ -2235,7 +2226,6 @@
     }
     const objectType = options.objectType || selectedToolObjectType(toolId);
     const objectLabel = $("#objectLabel");
-    const objectSource = $("#objectSource");
     const index = state.objects.length + 1;
     const id = options.id || nextObjectId();
     const isFunctionalZone = isFunctionalZoneObject(objectType);
@@ -2278,7 +2268,7 @@
       geometry,
       label,
       confidence: "medium",
-      source: isFunctionalZone ? "user_sketch" : options.source || (objectSource && objectSource.value) || "user_sketch",
+      source: "user_sketch",
       style_hints: style,
     };
     state.objects.push(object);
