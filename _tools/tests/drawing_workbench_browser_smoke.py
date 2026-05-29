@@ -495,6 +495,15 @@ def assert_text_tool(page, drawing_type: str) -> None:
     assert after and after != before, f"{drawing_type}: text anchor drag did not move coords; before={before}, after={after}"
 
 
+def assert_legend_non_fz(page, drawing_type: str) -> None:
+    legend = page.locator("#zoneLegendPreview")
+    assert legend.count() == 1, f"{drawing_type}: missing legend preview"
+    text = legend.text_content() or ""
+    assert "暂无功能分区" not in text, f"{drawing_type}: non-FZ legend still shows functional-zoning empty copy"
+    entries = legend.locator(".zone-legend-item").count()
+    assert entries >= 2, f"{drawing_type}: expected at least 2 legend entries, got {entries}; text={text!r}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -598,6 +607,8 @@ def main() -> int:
                     f"{drawing_type}: object count did not increase by tools; before={before}, after={len(after_objects)}, tools={creatable_tools}"
                 )
                 assert_no_bad_kinds(after_objects, drawing_type)
+                if drawing_type == "planting_design":
+                    assert_legend_non_fz(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")

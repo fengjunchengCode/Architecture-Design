@@ -1488,10 +1488,107 @@
     return `${items}${invisibleHint}`;
   }
 
+  function normalizedGenericLegendObjects() {
+    return state.objects
+      .filter((obj) => obj.type !== "functional_zone")
+      .map((obj) => ({
+        ...obj,
+        style_hints: Model.normalizeStyleHints(obj.style_hints || {}, obj.type),
+      }))
+      .filter((obj) => {
+        const style = obj.style_hints || {};
+        if (style.legend_enabled === false) return false;
+        const geo = obj.geometry || {};
+        if (geo.kind === "text") return !!(style.text_content || obj.label || "").trim();
+        if (geo.kind === "circle" || geo.kind === "triangle") {
+          const hasFill = style.fill_mode === "solid" || style.fill_mode === "translucent";
+          const hasBorder = style.border_style !== "none";
+          return hasFill || hasBorder;
+        }
+        if (geo.kind === "path" && geo.closed) {
+          return style.fill_mode !== "none" || style.border_style !== "none";
+        }
+        return Number(style.stroke_width) > 0;
+      });
+  }
+
+  function renderGenericLegendSwatch(group) {
+    const style = group.style || {};
+    const meta = REGISTRY_OBJECTS[group.type] || {};
+    const kind = meta.geometry || "path";
+    const closed = meta.closed === true;
+    const stroke = style.stroke_color || style.fill_color || "#333333";
+    const strokeWidth = Math.max(1, Math.min(4, Math.round((Number(style.stroke_width) || 0.003) * 320)));
+    const dashArray = style.stroke_style === "dashed" || style.border_style === "dashed" ? "4 3" : "";
+    if (kind === "circle") {
+      const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent";
+      return `
+        <circle cx="12" cy="8" r="5.5"
+          fill="${fillVisible ? style.fill_color || "none" : "none"}"
+          fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
+          stroke="${style.border_style === "none" ? "transparent" : stroke}"
+          stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
+          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+        />`;
+    }
+    if (kind === "triangle") {
+      const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent";
+      return `
+        <polygon points="12,2 20,14 4,14"
+          fill="${fillVisible ? style.fill_color || "none" : "none"}"
+          fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
+          stroke="${style.border_style === "none" ? "transparent" : stroke}"
+          stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
+          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+        />`;
+    }
+    if (kind === "text") {
+      return `<text x="12" y="11" text-anchor="middle" fill="${stroke}" font-size="11" font-weight="700">T</text>`;
+    }
+    if (closed) {
+      const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent" || style.fill_mode === "hatch";
+      return `
+        <rect x="1" y="1" width="22" height="14" rx="2"
+          fill="${fillVisible ? style.fill_color || "none" : "none"}"
+          fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
+          stroke="${style.border_style === "none" ? "transparent" : stroke}"
+          stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
+          ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+        />`;
+    }
+    return `
+      <path d="M3 11 C8 4, 15 4, 21 9"
+        fill="none"
+        stroke="${stroke}"
+        stroke-width="${strokeWidth}"
+        stroke-linecap="${style.stroke_style === "dashed" ? "butt" : "round"}"
+        ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+      />`;
+  }
+
+  function renderGenericLegendPreview() {
+    const groups = Model.buildLegendGroups(normalizedGenericLegendObjects());
+    if (!groups.length) return '<p class="zone-legend-empty">暂无图例对象</p>';
+    return groups
+      .map((group) => {
+        const label = group.label || objectName(group.type);
+        return `
+          <div class="zone-legend-item">
+            <svg class="zone-legend-swatch" viewBox="0 0 24 16" aria-hidden="true">
+              ${renderGenericLegendSwatch(group)}
+            </svg>
+            <span class="zone-legend-label">${escapeHtml(label)}</span>
+            ${group.count > 1 ? `<span class="zone-legend-count">x ${group.count}</span>` : ""}
+          </div>
+        `;
+      })
+      .join("");
+  }
+
   function refreshLegendPreview() {
     const container = $("#zoneLegendPreview");
     if (!container) return;
-    container.innerHTML = renderFunctionalZoneLegendPreview();
+    container.innerHTML = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
   }
 
   function selectedObject() {
