@@ -327,6 +327,11 @@ def drive_path_interaction(page, drawing_type: str, tool: str) -> None:
         arg=obj_id,
         timeout=10000,
     )
+    expected_vertices = len(points)
+    actual_handles = page.locator(".geometry-vertex-handle").count()
+    assert actual_handles == expected_vertices, (
+        f"{drawing_type}/{tool}: arc created phantom vertex handles; expected {expected_vertices}, got {actual_handles}"
+    )
 
 
 def drive_marker_interaction(page, drawing_type: str, tool: str) -> None:

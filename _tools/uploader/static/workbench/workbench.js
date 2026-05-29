@@ -2312,6 +2312,20 @@
     return Array.isArray(geo.coords) ? geo.coords.map(safePoint).filter(Boolean) : [];
   }
 
+  function objectVertexPoints(obj) {
+    const geo = (obj && obj.geometry) || {};
+    if (Array.isArray(geo.segments) && geo.segments.length) {
+      const points = geo.segments.map((seg) => safePoint(seg.from)).filter(Boolean);
+      if (!geo.closed) {
+        const last = geo.segments[geo.segments.length - 1];
+        const end = last && safePoint(last.to);
+        if (end) points.push(end);
+      }
+      return points;
+    }
+    return Array.isArray(geo.coords) ? geo.coords.map(safePoint).filter(Boolean) : [];
+  }
+
   function selectedStrokeColor(color, selected) {
     return selected && isHexColor(color) ? darkenHex(color, 0.2) : color;
   }
@@ -2542,7 +2556,7 @@
       }
       if (selected) {
         const stroke = selectedStrokeColor(style.stroke, true);
-        shape += renderSharedVertexHandles(closedCoords, "#fff", stroke);
+        shape += renderSharedVertexHandles(objectVertexPoints(obj), "#fff", stroke);
         shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: stroke });
       }
       labelPoint = closedCoords[Math.floor(closedCoords.length / 2)] || closedCoords[0];
@@ -2569,7 +2583,7 @@
       if (shouldRenderArrowHeads(obj)) shape += renderArrowHeads(coords, style.hints, obj.id);
       if (selected && coords.length >= 2) {
         const stroke = selectedStrokeColor(style.stroke, true);
-        shape += renderSharedVertexHandles(coords, "#fff", stroke);
+        shape += renderSharedVertexHandles(objectVertexPoints(obj), "#fff", stroke);
         shape += renderSegmentHandles(obj.id, ensureSegments(obj), { fill_color: stroke });
       }
       if (coords.length) labelPoint = coords[Math.floor(coords.length / 2)] || coords[0];
