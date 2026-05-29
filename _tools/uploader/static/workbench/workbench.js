@@ -322,6 +322,10 @@
     return type === "functional_zoning";
   }
 
+  function isFunctionalZoneObject(type) {
+    return type === "functional_zone";
+  }
+
   function isEnabled(type = drawingType()) {
     return drawingConfig(type).status === "enabled";
   }
@@ -385,9 +389,13 @@
   }
 
   function draftStyleFor(objectType, toolId = normalizeActiveTool()) {
+    if (isFunctionalZoneObject(objectType)) {
+      const selected = selectedObject();
+      return normalizeZoneStyle(selected && selected.type === objectType ? selected.style_hints : state.zoneDraftStyle);
+    }
     const key = draftKey(toolId, objectType);
     const selected = selectedObject();
-    if (!isFunctionalZoning() && selected && selected.type === objectType) {
+    if (selected && selected.type === objectType) {
       return Model.cloneStyle(Model.normalizeStyleHints(selected.style_hints, objectType));
     }
     if (state.styleDrafts[key]) return Model.cloneStyle(state.styleDrafts[key]);
@@ -407,6 +415,10 @@
 
   function captureObjectDefaults(obj, toolId = normalizeActiveTool()) {
     if (!obj || !obj.type) return;
+    if (isFunctionalZoneObject(obj.type)) {
+      state.zoneDraftStyle = normalizeZoneStyle(obj.style_hints);
+      return;
+    }
     state.lastStyles[obj.type] = Model.cloneStyle(Model.normalizeStyleHints(obj.style_hints, obj.type));
     const geo = obj.geometry || {};
     const draft = {};
@@ -709,7 +721,7 @@
       tools.innerHTML = "";
       return;
     }
-    if (isFunctionalZoning()) {
+    if (drawingType() === "functional_zoning") {
       const selected = selectedObject();
       const activeStyle = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
       const label = selected ? selected.label || "" : state.zoneDraftLabel || "";
@@ -804,6 +816,15 @@
 
   function shouldRenderArrowHeads(obj) {
     return obj && (obj.type === "turning_radius" || obj.type === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(obj.type));
+  }
+
+  function currentToolSpec() {
+    return TOOL_GEOMETRY[normalizeActiveTool()] || null;
+  }
+
+  function canFinishDraft() {
+    const spec = currentToolSpec();
+    return !!spec && state.currentPoints.length >= (spec.minPoints || 1);
   }
 
   function styleSpecFor(specKey) {
@@ -1268,7 +1289,7 @@
     state.styleDrafts[key] = Model.cloneStyle(next);
     state.lastStyles[objectType] = Model.cloneStyle(next);
     const selected = selectedObject();
-    if (selected && selected.type === objectType && !isFunctionalZoning()) {
+    if (selected && selected.type === objectType && !isFunctionalZoneObject(objectType)) {
       selected.style_hints = Model.cloneStyle(next);
       markDirty();
       renderCanvasLayers("style-control");
@@ -1282,7 +1303,7 @@
     state.geometryDrafts[key] = { ...draftGeometryFor(objectType, toolId), ...patch };
     state.lastGeometry[objectType] = { ...(state.lastGeometry[objectType] || {}), ...patch };
     const selected = selectedObject();
-    if (!selected || selected.type !== objectType || isFunctionalZoning()) return;
+    if (!selected || selected.type !== objectType || isFunctionalZoneObject(objectType)) return;
     const geo = selected.geometry || {};
     if (geo.kind === "circle" && patch.radius !== undefined) geo.radius = Number(patch.radius);
     if (geo.kind === "triangle") {
@@ -1472,7 +1493,7 @@
   }
 
   function rebuildRecentColorsFromObjects() {
-    if (!isFunctionalZoning()) return;
+    if (drawingType() !== "functional_zoning") return;
     state.objects.forEach((obj) => addRecentColor(obj.style_hints && obj.style_hints.fill_color));
     pruneRecentColors();
   }
@@ -1528,7 +1549,7 @@
     ].forEach((selector) => {
       const el = $(selector);
       if (el) {
-        const supportToolActive = !isFunctionalZoning() && normalizeActiveTool() === "supporting_images";
+        const supportToolActive = drawingType() !== "functional_zoning" && normalizeActiveTool() === "supporting_images";
         el.disabled =
           !enabled ||
           (selector === "#exportDrawing" && !state.svgExists) ||
@@ -1539,10 +1560,12 @@
     if (notes) notes.placeholder = drawingConfig().agentNotesPlaceholder || "";
     const send = $("#sendToAgent");
     if (send) send.textContent = drawingConfig().taskButtonLabel || "发给 agent 出图";
+    const activeTool = normalizeActiveTool();
+    const activeObjectType = selectedToolObjectType(activeTool);
     const finish = $("#finishObject");
-    if (finish) finish.textContent = isFunctionalZoning() ? "完成分区" : "完成" + (TOOL_LABELS[normalizeActiveTool()] || "对象");
+    if (finish) finish.textContent = isFunctionalZoneObject(activeObjectType) ? "完成分区" : "完成" + (TOOL_LABELS[activeTool] || "对象");
     const undo = $("#undoPoint");
-    if (undo) undo.textContent = isFunctionalZoning() ? "撤销" : "撤销最后一点";
+    if (undo) undo.textContent = state.currentPoints.length ? "撤销最后一点" : "撤销";
     updateCanvasZoomUi();
   }
 
@@ -1618,7 +1641,7 @@
     state.styleSpec = data.exists ? data.style_spec : null;
     renderStyleStrip(data);
     renderWorkspaceMeta();
-    if (isFunctionalZoning()) {
+    if (drawingType() === "functional_zoning") {
       state.zoneDraftStyle = normalizeZoneStyle(state.zoneDraftStyle);
       state.objects = state.objects.map((obj) =>
         obj.type === "functional_zone" ? { ...obj, style_hints: normalizeZoneStyle(obj.style_hints) } : obj,
@@ -1710,7 +1733,7 @@
           };
         })
       : [];
-    if (isFunctionalZoning()) {
+    if (drawingType() === "functional_zoning") {
       state.objects = state.objects
         .filter((obj) => obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true)))
         .map((obj) => ({ ...obj, source: "user_sketch", style_hints: normalizeZoneStyle(obj.style_hints) }));
@@ -1788,9 +1811,9 @@
     const naturalHeight =
       (image && image.naturalHeight) || (state.drawing && state.drawing.base_image.natural_height) || 1;
     const objects = state.objects
-      .filter((obj) => !isFunctionalZoning() || (obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true))))
+      .filter((obj) => drawingType() !== "functional_zoning" || (obj.type === "functional_zone" && obj.geometry && (obj.geometry.kind === "polygon" || (obj.geometry.kind === "path" && obj.geometry.closed === true))))
       .map((obj) => {
-        if (isFunctionalZoning()) {
+        if (drawingType() === "functional_zoning") {
           const geometry = { kind: "path", closed: true, coords: obj.geometry.coords };
           // Preserve segments if they contain quadratic arcs
           if (obj.geometry.segments && obj.geometry.segments.some((s) => s.kind === "quadratic")) {
@@ -2042,11 +2065,15 @@
     const objectSource = $("#objectSource");
     const index = state.objects.length + 1;
     const id = options.id || nextObjectId();
-    const label = options.label || (objectLabel && objectLabel.value.trim()) || `${objectName(objectType)} ${index}`;
+    const isFunctionalZone = isFunctionalZoneObject(objectType);
+    const label =
+      options.label ||
+      (objectLabel && objectLabel.value.trim()) ||
+      (isFunctionalZone ? state.zoneDraftLabel.trim() || `功能区 ${index}` : `${objectName(objectType)} ${index}`);
     const geometryPoints = spec.kind === "path" ? points.slice() : points.slice(0, minPoints);
     const geometry = defaultGeometryForTool(toolId, geometryPoints, objectType);
     if (!geometry) return null;
-    const style = draftStyleFor(objectType, toolId);
+    const style = isFunctionalZone ? normalizeZoneStyle(state.zoneDraftStyle) : draftStyleFor(objectType, toolId);
     if (toolId === "turning_radius") {
       style.label_box = {
         ...(style.label_box || {}),
@@ -2074,19 +2101,27 @@
       geometry,
       label,
       confidence: "medium",
-      source: options.source || (objectSource && objectSource.value) || "user_sketch",
+      source: isFunctionalZone ? "user_sketch" : options.source || (objectSource && objectSource.value) || "user_sketch",
       style_hints: style,
     };
     state.objects.push(object);
     captureObjectDefaults(object, toolId);
     state.selectedId = id;
+    if (isFunctionalZone) {
+      state.zoneDraftStyle = style;
+      state.zoneDraftLabel = "";
+    }
     state.currentPoints = [];
     markDirty();
     renderCanvasLayers("create-object-from-tool");
     renderObjectList();
     renderSpecificTools();
     refreshLegendPreview();
-    setStatus(`已添加：${label}`);
+    if (isFunctionalZone && style.fill_mode === "none" && style.border_style === "none") {
+      setStatus("该分区在图中不可见（无边框 + 无填充）。", false);
+    } else {
+      setStatus(isFunctionalZone ? `已添加分区：${label}` : `已添加：${label}`);
+    }
     return object;
   }
 
@@ -2094,25 +2129,14 @@
     if (event.target.closest && event.target.closest(".zone-arc-handle")) return;
     const point = normalizedPoint(event);
     if (!point) return;
-    pushUndoSnapshot();
-    if (!state.currentPoints.length && state.selectedId) {
-      const selected = selectedObject();
-      if (isFunctionalZoning() && selected) {
-        state.zoneDraftStyle = normalizeZoneStyle(selected.style_hints);
-      }
-      state.selectedId = "";
-    }
-    if (isFunctionalZoning()) {
-      state.currentPoints.push(point);
-      markDirty();
-      renderCanvasLayers("add-zone-point");
-      renderObjectList();
-      renderSpecificTools();
-      return;
-    }
     const activeTool = normalizeActiveTool();
     const spec = TOOL_GEOMETRY[activeTool];
     if (!spec) return;
+    pushUndoSnapshot();
+    if (!state.currentPoints.length && state.selectedId) {
+      captureObjectDefaults(selectedObject());
+      state.selectedId = "";
+    }
     state.currentPoints.push(point);
     markDirty();
     if (spec.kind !== "path" && state.currentPoints.length >= (spec.minPoints || 1)) {
@@ -2120,15 +2144,12 @@
     } else {
       renderCanvasLayers("add-draft-point");
       renderObjectList();
+      renderAvailability();
     }
   }
 
   function finishObject() {
     if (!isEnabled()) return;
-    if (isFunctionalZoning()) {
-      finishFunctionalZone();
-      return;
-    }
     const activeTool = normalizeActiveTool();
     const spec = TOOL_GEOMETRY[activeTool];
     if (!spec) return;
@@ -2138,44 +2159,6 @@
     }
     pushUndoSnapshot();
     createObjectFromTool(activeTool, state.currentPoints);
-  }
-
-  function finishFunctionalZone() {
-    const minimum = 3;
-    if (state.currentPoints.length < minimum) {
-      setStatus(`多边形至少需要 ${minimum} 个点。`, false);
-      return;
-    }
-    pushUndoSnapshot();
-    const index = state.objects.length + 1;
-    const id = nextObjectId();
-    const labelInput = $("#objectLabel");
-    const label = (labelInput && labelInput.value.trim()) || state.zoneDraftLabel.trim() || `功能区 ${index}`;
-    const style = normalizeZoneStyle(state.zoneDraftStyle);
-    const object = {
-      id,
-      type: "functional_zone",
-      geometry: { kind: "path", closed: true, coords: state.currentPoints.slice() },
-      label,
-      confidence: "medium",
-      source: "user_sketch",
-      style_hints: style,
-    };
-    state.objects.push(object);
-    state.selectedId = id;
-    state.zoneDraftStyle = style;
-    state.zoneDraftLabel = "";
-    state.currentPoints = [];
-    markDirty();
-    renderCanvasLayers("finish-zone");
-    renderObjectList();
-    renderSpecificTools();
-    refreshLegendPreview();
-    if (style.fill_mode === "none" && style.border_style === "none") {
-      setStatus("该分区在图中不可见（无边框 + 无填充）。", false);
-    } else {
-      setStatus(`已添加分区：${label}`);
-    }
   }
 
   function nextObjectId() {
@@ -2665,18 +2648,20 @@
   function renderDraftSvg() {
     if (!state.currentPoints.length) return "";
     const points = state.currentPoints.map((point) => point.join(",")).join(" ");
-    const strokeWidth = isFunctionalZoning() ? ZONE_EDIT_WIDTH : 0.006;
-    const zoneStyle = normalizeZoneStyle(state.zoneDraftStyle);
+    const activeTool = normalizeActiveTool();
+    const spec = TOOL_GEOMETRY[activeTool] || {};
+    const minPoints = spec.minPoints || 1;
+    const objectType = selectedToolObjectType(activeTool);
+    const draftStyle = draftStyleFor(objectType, activeTool);
+    const handleColor = draftStyle.fill_color || draftStyle.stroke_color || "#111827";
     const circles = state.currentPoints
       .map(([x, y], index) =>
-        isFunctionalZoning()
-          ? index === 0 && state.currentPoints.length >= 3
-            ? renderCloseHandleSvg(x, y, zoneStyle.fill_color)
-            : renderHandleSvg(x, y, "#111827", "none")
-          : `<circle cx="${x}" cy="${y}" r="0.009" fill="#111827"></circle>`,
+        spec.kind === "path" && spec.closed && index === 0 && state.currentPoints.length >= minPoints
+          ? renderCloseHandleSvg(x, y, handleColor)
+          : renderHandleSvg(x, y, "#111827", "none"),
       )
       .join("");
-    return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="${strokeWidth}" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
+    return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="${ZONE_EDIT_WIDTH}" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
   }
 
   function renderHandleSvg(x, y, fill, stroke) {
@@ -2734,7 +2719,7 @@
       shape.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        finishFunctionalZone();
+        finishObject();
       });
     });
     overlay.querySelectorAll("[data-object-id]:not(.zone-arc-handle)").forEach((shape) => {
@@ -2825,7 +2810,7 @@
   function selectObject(id) {
     state.selectedId = id || "";
     state.currentPoints = [];
-    if (!isFunctionalZoning()) captureObjectDefaults(selectedObject());
+    captureObjectDefaults(selectedObject());
     renderCanvasLayers("select-object");
     renderObjectList();
     renderSpecificTools();
@@ -2858,7 +2843,7 @@
       list.innerHTML = '<div class="control-empty">还没有语义对象。</div>';
       return;
     }
-    if (isFunctionalZoning()) {
+    if (drawingType() === "functional_zoning") {
       list.innerHTML = state.objects.map(renderFunctionalZoneRow).join("");
       list.querySelectorAll("[data-object-id]").forEach((button) => {
         button.addEventListener("click", () => selectObject(button.dataset.objectId));
@@ -2948,9 +2933,9 @@
       else undoHistory();
       return;
     }
-    if (!modifier && event.key === "Enter" && !editable && isFunctionalZoning() && state.currentPoints.length >= 3) {
+    if (!modifier && event.key === "Enter" && !editable && canFinishDraft()) {
       event.preventDefault();
-      finishFunctionalZone();
+      finishObject();
       return;
     }
     if (!modifier && (event.key === "Delete" || event.key === "Backspace") && !editable) {
@@ -3005,7 +2990,7 @@
     $("#sketchOverlay").addEventListener("click", addPoint);
     $("#sketchOverlay").addEventListener("dblclick", (event) => {
       event.preventDefault();
-      if (!isFunctionalZoning()) finishObject();
+      if (canFinishDraft()) finishObject();
     });
     $("#workbenchCanvas").addEventListener("wheel", handleCanvasWheel, { passive: false });
     document.addEventListener("keydown", handleShortcuts);
