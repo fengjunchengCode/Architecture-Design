@@ -350,7 +350,7 @@ def drive_marker_interaction(page, drawing_type: str, tool: str) -> None:
     assert page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}']").count() >= 1, (
         f"{drawing_type}/{tool}: missing draggable vertex handles"
     )
-    role = "circle-radius" if tool == "circle" else "triangle-vertex"
+    role = "circle-radius" if tool == "circle" else "triangle-size"
     drag_locator(page, page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='{role}']").first)
     changed = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
     geometry_after = changed.get("geometry") or {}
@@ -358,8 +358,8 @@ def drive_marker_interaction(page, drawing_type: str, tool: str) -> None:
         assert geometry_after.get("radius") != geometry_before.get("radius"), f"{drawing_type}/{tool}: radius did not change"
     else:
         assert geometry_after.get("size") != geometry_before.get("size"), f"{drawing_type}/{tool}: size did not change"
-        assert geometry_after.get("rotation_deg") != geometry_before.get("rotation_deg"), (
-            f"{drawing_type}/{tool}: rotation did not change"
+        assert geometry_after.get("rotation_deg") == geometry_before.get("rotation_deg"), (
+            f"{drawing_type}/{tool}: size handle changed rotation"
         )
     page.eval_on_selector(
         "#styleStrokeWidth",
@@ -371,6 +371,24 @@ def drive_marker_interaction(page, drawing_type: str, tool: str) -> None:
     widths = visible_stroke_widths(page)
     assert any(abs(value - 0.011) < 0.0005 for value in widths), (
         f"{drawing_type}/{tool}: selected style change did not update visible stroke width; got {widths}"
+    )
+
+
+def assert_triangle_rotate_no_scale(page, drawing_type: str) -> None:
+    page.click('[data-tool-id="triangle"]')
+    created = page.evaluate(
+        """() => window.DrawingWorkbenchTest.createObject("triangle", [[0.78, 0.76]])"""
+    )
+    obj_id = created["id"]
+    geometry_before = created.get("geometry") or {}
+    drag_locator(page, page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='triangle-rotate']").first)
+    changed = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
+    geometry_after = changed.get("geometry") or {}
+    assert geometry_after.get("rotation_deg") != geometry_before.get("rotation_deg"), (
+        f"{drawing_type}: triangle rotate handle did not change rotation"
+    )
+    assert abs(float(geometry_after.get("size")) - float(geometry_before.get("size"))) < 1e-4, (
+        f"{drawing_type}: triangle rotate handle changed size; before={geometry_before}, after={geometry_after}"
     )
 
 
@@ -441,6 +459,8 @@ def main() -> int:
                                 drive_path_interaction(page, drawing_type, interaction_tool)
                             else:
                                 drive_marker_interaction(page, drawing_type, interaction_tool)
+                                if interaction_tool == "triangle":
+                                    assert_triangle_rotate_no_scale(page, drawing_type)
                             interaction_checked[interaction_tool] = True
 
                 before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")

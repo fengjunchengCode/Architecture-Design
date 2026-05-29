@@ -2509,9 +2509,9 @@
       }
       shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
       if (selected) {
-        shape += renderSharedVertexHandles(pts, "#fff", stroke, {
+        shape += renderSharedVertexHandles([pts[0], pts[2]], "#fff", stroke, {
           objectId: obj.id,
-          roles: ["triangle-vertex", "triangle-vertex", "triangle-vertex"],
+          roles: ["triangle-rotate", "triangle-size"],
         });
       }
       labelPoint = [cx, cy - size];
@@ -2886,8 +2886,11 @@
       const vy = p[1] - center[1];
       const radius = Math.hypot(vx, vy);
       if (radius <= 0.004) return;
-      obj.geometry.size = Number(Math.max(0.012, Math.min(0.28, radius * 1.5)).toFixed(6));
-      obj.geometry.rotation_deg = Number((((Math.atan2(vy, vx) * 180) / Math.PI + 90 + 360) % 360).toFixed(3));
+      if (state.vertexDrag.role === "triangle-rotate") {
+        obj.geometry.rotation_deg = Number((((Math.atan2(vy, vx) * 180) / Math.PI + 90 + 360) % 360).toFixed(3));
+      } else if (state.vertexDrag.role === "triangle-size") {
+        obj.geometry.size = Number(Math.max(0.012, Math.min(0.28, radius * 1.5)).toFixed(6));
+      }
     }
     captureObjectDefaults(obj);
     markDirty();
