@@ -215,6 +215,7 @@
     imageLoadToken: 0,
     overlayRetryPending: false,
     arcDrag: null,
+    vertexDrag: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -2315,8 +2316,16 @@
     return selected && isHexColor(color) ? darkenHex(color, 0.2) : color;
   }
 
-  function renderSharedVertexHandles(points, fill, stroke) {
-    return (points || []).map(([x, y]) => renderHandleSvg(x, y, fill, stroke)).join("");
+  function renderSharedVertexHandles(points, fill, stroke, options = {}) {
+    const roles = options.roles || [];
+    return (points || [])
+      .map(([x, y], index) => {
+        const attrs = options.objectId
+          ? `data-vertex-object-id="${escapeHtml(options.objectId)}" data-vertex-index="${index}" data-vertex-role="${escapeHtml(roles[index] || "vertex")}"`
+          : "";
+        return renderHandleSvg(x, y, fill, stroke, attrs);
+      })
+      .join("");
   }
 
   function renderSharedPathHitLayer({ objectId, pathD, points, closed, style, fillVisible, borderVisible }) {
@@ -2458,7 +2467,12 @@
         shape += `<circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></circle>`;
       }
       shape += renderSharedCircleHitLayer({ objectId: obj.id, cx, cy, radius: r, style: style.hints });
-      if (selected) shape += renderSharedVertexHandles([[cx, cy], [Math.min(1, cx + r), cy]], "#fff", stroke);
+      if (selected) {
+        shape += renderSharedVertexHandles([[cx, cy], [Math.min(1, cx + r), cy]], "#fff", stroke, {
+          objectId: obj.id,
+          roles: ["circle-center", "circle-radius"],
+        });
+      }
       labelPoint = [cx, cy - r];
     } else if (geo.kind === "triangle") {
       const center = safePoint(geo.center) || safePoint((geo.coords || [])[0]) || [0.5, 0.5];
@@ -2480,7 +2494,12 @@
         shape += `<polygon points="${innerPts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${stroke}" stroke-width="${borderW}" pointer-events="none"></polygon>`;
       }
       shape += renderSharedPolygonHitLayer({ objectId: obj.id, points: pts, style: style.hints });
-      if (selected) shape += renderSharedVertexHandles(pts, "#fff", stroke);
+      if (selected) {
+        shape += renderSharedVertexHandles(pts, "#fff", stroke, {
+          objectId: obj.id,
+          roles: ["triangle-vertex", "triangle-vertex", "triangle-vertex"],
+        });
+      }
       labelPoint = [cx, cy - size];
     } else if ((geo.kind === "path" && geo.closed) || geo.kind === "polygon") {
       // Closed path (polygon)
@@ -2664,9 +2683,9 @@
     return `<polyline points="${points}" fill="none" stroke="#111827" stroke-width="${ZONE_EDIT_WIDTH}" stroke-dasharray="0.014 0.012"></polyline>${circles}`;
   }
 
-  function renderHandleSvg(x, y, fill, stroke) {
+  function renderHandleSvg(x, y, fill, stroke, attrs = "") {
     const strokeAttr = stroke === "none" ? 'stroke="none"' : `stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}"`;
-    return `<ellipse class="geometry-vertex-handle" cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
+    return `<ellipse class="geometry-vertex-handle" ${attrs} cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
   }
 
   function renderCloseHandleSvg(x, y, fill) {
@@ -2726,6 +2745,19 @@
       shape.addEventListener("click", (event) => {
         event.stopPropagation();
         selectObject(shape.dataset.objectId);
+      });
+    });
+    overlay.querySelectorAll(".geometry-vertex-handle[data-vertex-object-id]").forEach((handle) => {
+      handle.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        state.vertexDrag = {
+          objectId: handle.dataset.vertexObjectId,
+          role: handle.dataset.vertexRole || "vertex",
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+        };
       });
     });
     // arc handle: pointerdown 设状态 + click/dblclick 拦截
@@ -2804,6 +2836,48 @@
     markDirty();
     renderCanvasLayers("convert-to-line");
     refreshLegendPreview();
+  }
+
+  function updateVertexDrag(event) {
+    if (!state.vertexDrag) return;
+    const stage = $("#workbenchStage");
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const p = clampUnit(normalizedPoint(event));
+    if (!p) return;
+    const dx = (event.clientX - state.vertexDrag.startX) / rect.width;
+    const dy = (event.clientY - state.vertexDrag.startY) / rect.height;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const shortSide = Math.min(rect.width, rect.height) || 1;
+    if (!state.vertexDrag.moved && dist < 3 / shortSide) return;
+    if (!state.vertexDrag.moved) {
+      state.vertexDrag.moved = true;
+      pushUndoSnapshot();
+    }
+    const obj = state.objects.find((o) => o.id === state.vertexDrag.objectId);
+    if (!obj || !obj.geometry) return;
+    if (obj.geometry.kind === "circle") {
+      if (state.vertexDrag.role === "circle-center") {
+        obj.geometry.center = p;
+      } else {
+        const center = safePoint(obj.geometry.center) || [0.5, 0.5];
+        const radius = Math.hypot(p[0] - center[0], p[1] - center[1]);
+        obj.geometry.radius = Number(Math.max(0.004, Math.min(0.25, radius)).toFixed(6));
+      }
+    } else if (obj.geometry.kind === "triangle") {
+      const center = safePoint(obj.geometry.center) || [0.5, 0.5];
+      const vx = p[0] - center[0];
+      const vy = p[1] - center[1];
+      const radius = Math.hypot(vx, vy);
+      if (radius <= 0.004) return;
+      obj.geometry.size = Number(Math.max(0.012, Math.min(0.28, radius * 1.5)).toFixed(6));
+      obj.geometry.rotation_deg = Number((((Math.atan2(vy, vx) * 180) / Math.PI + 90 + 360) % 360).toFixed(3));
+    }
+    captureObjectDefaults(obj);
+    markDirty();
+    renderCanvasLayers("vertex-drag");
+    renderObjectList();
+    renderSpecificTools();
   }
 
 
@@ -2996,6 +3070,10 @@
     document.addEventListener("keydown", handleShortcuts);
     // arc drag: one-time document-level pointer handlers (survive re-render)
     document.addEventListener("pointermove", (event) => {
+      if (state.vertexDrag) {
+        updateVertexDrag(event);
+        return;
+      }
       if (!state.arcDrag) return;
       const stage = $("#workbenchStage");
       if (!stage) return;
@@ -3026,12 +3104,19 @@
       renderCanvasLayers("arc-drag");
     });
     document.addEventListener("pointerup", () => {
+      if (state.vertexDrag) {
+        state.vertexDrag = null;
+        markDirty();
+        refreshLegendPreview();
+        return;
+      }
       if (!state.arcDrag) return;
       state.arcDrag = null;
       markDirty();
       refreshLegendPreview();
     });
     document.addEventListener("pointercancel", () => {
+      state.vertexDrag = null;
       state.arcDrag = null;
     });
     // Footer toggle (collapsible workflow bar)

@@ -237,6 +237,31 @@ def click_canvas_point(page, point: list[float]) -> None:
     page.wait_for_timeout(80)
 
 
+def drag_locator(page, locator, dx: float = 48, dy: float = -28) -> None:
+    box = locator.bounding_box()
+    assert box, "drag target has no bounding box"
+    x = box["x"] + box["width"] / 2
+    y = box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx, y + dy, steps=8)
+    page.mouse.up()
+    page.wait_for_timeout(120)
+
+
+def visible_stroke_widths(page) -> list[float]:
+    return page.locator(
+        "#sketchOverlay circle:not(.geometry-hit):not(.geometry-vertex-handle), "
+        "#sketchOverlay path:not(.geometry-hit):not(.zone-arc-handle), "
+        "#sketchOverlay polygon:not(.geometry-hit):not(.zone-arc-handle), "
+        "#sketchOverlay polyline:not(.geometry-hit):not(.zone-arc-handle)"
+    ).evaluate_all(
+        """(nodes) => nodes
+            .map((node) => Number(node.getAttribute("stroke-width") || 0))
+            .filter((value) => Number.isFinite(value) && value > 0)"""
+    )
+
+
 def assert_line_multipoint(page, drawing_type: str) -> None:
     page.click('[data-tool-id="open_path"]')
     before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
@@ -259,6 +284,89 @@ def assert_line_multipoint(page, drawing_type: str) -> None:
         f"{drawing_type}: finished line is not an open path: {geometry}"
     )
     assert len(geometry.get("coords") or []) == 4, f"{drawing_type}: finished line did not keep 4 points: {geometry}"
+
+
+def drive_path_interaction(page, drawing_type: str, tool: str) -> None:
+    if drawing_type != "functional_zoning":
+        page.click(f'[data-tool-id="{tool}"]')
+    before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
+    closed = tool == "closed_path"
+    points = (
+        [[0.18, 0.16], [0.42, 0.18], [0.38, 0.42]]
+        if closed
+        else [[0.15, 0.58], [0.32, 0.49], [0.5, 0.6], [0.7, 0.52]]
+    )
+    for point in points:
+        click_canvas_point(page, point)
+    if closed:
+        assert page.locator(".zone-close-hit").count() >= 1, f"{drawing_type}/{tool}: missing close handle"
+        page.locator(".zone-close-ring").first.click()
+    else:
+        assert page.locator(".zone-close-hit").count() == 0, f"{drawing_type}/{tool}: open path shows close handle"
+        page.click("#finishObject")
+    page.wait_for_function(
+        "(count) => window.DrawingWorkbenchTest.getObjects().length === count + 1",
+        arg=before,
+        timeout=10000,
+    )
+    created = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
+    obj_id = created["id"]
+    geometry = created.get("geometry") or {}
+    assert geometry.get("kind") == "path", f"{drawing_type}/{tool}: created geometry is not path: {geometry}"
+    assert geometry.get("closed") is closed, f"{drawing_type}/{tool}: closed mismatch: {geometry}"
+    assert len(geometry.get("coords") or []) == len(points), f"{drawing_type}/{tool}: point count mismatch: {geometry}"
+    assert page.locator(f".geometry-hit[data-object-id='{obj_id}']").count() >= 1, f"{drawing_type}/{tool}: missing hit layer"
+    assert page.locator(".geometry-vertex-handle").count() >= 3, f"{drawing_type}/{tool}: missing vertex handles"
+    assert page.locator(f".zone-arc-handle[data-object-id='{obj_id}']").count() >= 1, f"{drawing_type}/{tool}: missing arc handles"
+    drag_locator(page, page.locator(f".zone-arc-handle[data-object-id='{obj_id}']").first)
+    page.wait_for_function(
+        """(id) => {
+            const obj = window.DrawingWorkbenchTest.getObjects().find((o) => o.id === id);
+            return !!(obj && obj.geometry && (obj.geometry.segments || []).some((seg) => seg.kind === "quadratic"));
+        }""",
+        arg=obj_id,
+        timeout=10000,
+    )
+
+
+def drive_marker_interaction(page, drawing_type: str, tool: str) -> None:
+    page.click(f'[data-tool-id="{tool}"]')
+    before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
+    click_canvas_point(page, [0.56, 0.38])
+    page.wait_for_function(
+        "(count) => window.DrawingWorkbenchTest.getObjects().length === count + 1",
+        arg=before,
+        timeout=10000,
+    )
+    created = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
+    obj_id = created["id"]
+    geometry_before = created.get("geometry") or {}
+    assert page.locator(f".geometry-hit[data-object-id='{obj_id}']").count() >= 1, f"{drawing_type}/{tool}: missing hit layer"
+    assert page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}']").count() >= 1, (
+        f"{drawing_type}/{tool}: missing draggable vertex handles"
+    )
+    role = "circle-radius" if tool == "circle" else "triangle-vertex"
+    drag_locator(page, page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='{role}']").first)
+    changed = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
+    geometry_after = changed.get("geometry") or {}
+    if tool == "circle":
+        assert geometry_after.get("radius") != geometry_before.get("radius"), f"{drawing_type}/{tool}: radius did not change"
+    else:
+        assert geometry_after.get("size") != geometry_before.get("size"), f"{drawing_type}/{tool}: size did not change"
+        assert geometry_after.get("rotation_deg") != geometry_before.get("rotation_deg"), (
+            f"{drawing_type}/{tool}: rotation did not change"
+        )
+    page.eval_on_selector(
+        "#styleStrokeWidth",
+        """(el) => {
+            el.value = "0.011";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    widths = visible_stroke_widths(page)
+    assert any(abs(value - 0.011) < 0.0005 for value in widths), (
+        f"{drawing_type}/{tool}: selected style change did not update visible stroke width; got {widths}"
+    )
 
 
 def main() -> int:
@@ -298,6 +406,7 @@ def main() -> int:
             page.goto(f"{BASE}/?project={TEST_PROJECT}&page=workbench&drawing=functional_zoning", wait_until="networkidle", timeout=30000)
             page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
             line_multipoint_checked = False
+            interaction_checked = {"closed_path": False, "open_path": False, "circle": False, "triangle": False}
 
             for drawing_type, info in enabled.items():
                 page.click(f'[data-drawing-type="{drawing_type}"]')
@@ -310,6 +419,7 @@ def main() -> int:
                 tools = list(info.get("tools") or [])
                 if drawing_type == "functional_zoning":
                     assert_fz_regression(page)
+                    drive_path_interaction(page, drawing_type, "closed_path")
                 if drawing_type != "functional_zoning":
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")
                     assert sorted(dom_tools) == sorted(tools), f"{drawing_type}: DOM tools {dom_tools} != registry {tools}"
@@ -320,6 +430,13 @@ def main() -> int:
                     if not line_multipoint_checked and "open_path" in tools:
                         assert_line_multipoint(page, drawing_type)
                         line_multipoint_checked = True
+                    for interaction_tool in ["closed_path", "open_path", "circle", "triangle"]:
+                        if not interaction_checked[interaction_tool] and interaction_tool in tools:
+                            if interaction_tool in {"closed_path", "open_path"}:
+                                drive_path_interaction(page, drawing_type, interaction_tool)
+                            else:
+                                drive_marker_interaction(page, drawing_type, interaction_tool)
+                            interaction_checked[interaction_tool] = True
 
                 before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
                 creatable_tools = [tool for tool in tools if tool != "supporting_images"]
