@@ -109,6 +109,82 @@
     slope_arrow: "坡度箭头",
     supporting_images: "配图",
   };
+  const PRIMITIVE_STYLE_SPEC = {
+    functional_zone: {
+      color: true,
+      fill: ["none", "translucent", "solid", "hatch"],
+      border: ["none", "solid", "dashed", "double"],
+      strokeWidth: true,
+      legendName: true,
+      maxStrokeWidth: 0.012,
+    },
+    closed_path: {
+      color: true,
+      fill: ["none", "translucent", "solid", "hatch"],
+      border: ["none", "solid", "dashed", "double"],
+      strokeWidth: true,
+      legendName: true,
+    },
+    open_path: {
+      color: true,
+      fill: false,
+      border: false,
+      strokeStyle: ["solid", "dashed"],
+      strokeWidth: true,
+      arrows: "flow-only",
+      legendName: true,
+    },
+    circle: {
+      color: true,
+      fill: ["none", "translucent", "solid"],
+      border: ["none", "solid", "dashed", "double"],
+      strokeWidth: true,
+      radius: true,
+      legendName: true,
+    },
+    triangle: {
+      color: true,
+      fill: ["none", "translucent", "solid"],
+      border: ["none", "solid", "dashed"],
+      strokeWidth: true,
+      size: true,
+      rotation: true,
+      legendName: true,
+    },
+    turning_radius: {
+      color: true,
+      fill: false,
+      border: false,
+      strokeStyle: ["solid", "dashed"],
+      strokeWidth: true,
+      arrows: "flow-only",
+      labelBox: true,
+      legendName: true,
+    },
+    elevation_marker: {
+      color: true,
+      fill: ["none", "translucent", "solid"],
+      border: ["none", "solid", "dashed"],
+      strokeWidth: true,
+      size: true,
+      rotation: true,
+      labelBox: true,
+      legendName: true,
+    },
+    slope_arrow: {
+      color: true,
+      fill: false,
+      border: false,
+      strokeStyle: ["solid", "dashed"],
+      strokeWidth: true,
+      arrows: "flow-only",
+      inlineText: true,
+      legendName: true,
+    },
+  };
+  const FILL_LABELS = { none: "无", translucent: "半透明", solid: "实心", hatch: "斜线" };
+  const BORDER_LABELS = { none: "无边框", solid: "实线", dashed: "虚线", double: "双实线" };
+  const STROKE_STYLE_LABELS = { solid: "实线", dashed: "虚线" };
 
   const state = {
     project: "",
@@ -634,7 +710,24 @@
       return;
     }
     if (isFunctionalZoning()) {
-      renderFunctionalZoningTools(tools);
+      const selected = selectedObject();
+      const activeStyle = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
+      const label = selected ? selected.label || "" : state.zoneDraftLabel || "";
+      tools.innerHTML = `
+        <label class="zone-name-field">
+          <span>分区名称 <small>名称只进图例，不显示在图中</small></span>
+          <input id="objectLabel" placeholder="如：中心广场 / 活动草坪" value="${escapeHtml(label)}">
+        </label>
+        ${renderStyleControls("functional_zone", activeStyle, {
+          toolId: "closed_path",
+          objectType: "functional_zone",
+        })}
+      `;
+      const legendContainer = $("#zoneLegendPreview");
+      if (legendContainer) {
+        legendContainer.innerHTML = renderFunctionalZoneLegendPreview();
+      }
+      bindStyleControls("functional_zone", "functional_zone", { toolId: "closed_path", functional: true });
       return;
     }
     renderRegistryTools(tools, config);
@@ -645,6 +738,8 @@
     const activeTool = normalizeActiveTool();
     const objectTypes = toolObjectTypes(activeTool);
     const selectedObject = selectedToolObjectType(activeTool);
+    const draftStyle = activeTool === "supporting_images" ? null : draftStyleFor(selectedObject, activeTool);
+    const draftGeometry = activeTool === "supporting_images" ? null : draftGeometryFor(selectedObject, activeTool);
     tools.innerHTML = `
       <div class="zone-tool-group drawing-tool-picker" data-workbench-tool-picker="true">
         <span>绘图工具</span>
@@ -678,7 +773,11 @@
               <span>来源</span>
               <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
             </label>
-            ${renderTrimmedRegistryStyleControls(activeTool, selectedObject)}
+            ${renderStyleControls(activeTool, draftStyle, {
+              toolId: activeTool,
+              objectType: selectedObject,
+              geometry: draftGeometry,
+            })}
           `
       }
       ${activeTool === "supporting_images" ? renderSupportingPanel() : ""}
@@ -693,12 +792,83 @@
         renderSpecificTools();
       });
     }
-    bindRegistryStyleControls(activeTool, selectedObject);
+    if (activeTool !== "supporting_images") {
+      bindStyleControls(activeTool, selectedObject, { toolId: activeTool });
+    }
     bindSupportingPanel();
   }
 
   function shouldShowArrowControls(toolId, objectType) {
     return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+  }
+
+  function styleSpecFor(specKey) {
+    return PRIMITIVE_STYLE_SPEC[specKey] || PRIMITIVE_STYLE_SPEC.closed_path;
+  }
+
+  function colorInputId(field) {
+    return field === "fill_color" ? "styleFillColor" : "styleStrokeColor";
+  }
+
+  function renderColorControl(field, label, value) {
+    const palette = zonePaletteItems();
+    const recentColors = state.zoneRecentColors.filter(isHexColor);
+    const active = normalizeHexColor(value) || "#333333";
+    return `
+      <div class="zone-tool-group">
+        <span>${escapeHtml(label)}</span>
+        <div class="zone-palette">
+          ${palette
+            .map(
+              (item, index) => `
+                <button
+                  type="button"
+                  class="zone-swatch ${item.color.toUpperCase() === active ? "active" : ""} ${
+                    item.fallback ? "fallback" : ""
+                  }"
+                  style="--swatch:${escapeHtml(item.color)}"
+                  title="${item.fallback ? "补足色，后续风格协商会替换" : "风格色"}"
+                  aria-label="选择颜色 ${index + 1}"
+                  data-style-color="${escapeHtml(field)}"
+                  data-style-value="${escapeHtml(item.color)}"
+                ></button>
+              `,
+            )
+            .join("")}
+        </div>
+        ${
+          recentColors.length
+            ? `
+              <div class="zone-recent-colors" aria-label="最近使用颜色">
+                <span class="zone-recent-label">最近使用</span>
+                ${recentColors
+                  .map(
+                    (color) => `
+                      <button
+                        type="button"
+                        class="zone-swatch zone-swatch-recent ${color === active ? "active" : ""}"
+                        style="--swatch:${escapeHtml(color)}"
+                        title="最近使用颜色"
+                        aria-label="选择最近使用颜色 ${escapeHtml(color)}"
+                        data-style-color="${escapeHtml(field)}"
+                        data-style-value="${escapeHtml(color)}"
+                      ></button>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
+        <input
+          id="${colorInputId(field)}"
+          type="color"
+          value="${escapeHtml(active)}"
+          aria-label="${escapeHtml(label)}"
+          data-style-color-input="${escapeHtml(field)}"
+        >
+      </div>
+    `;
   }
 
   function segmentedStyleControl(label, field, options, selected) {
@@ -723,68 +893,88 @@
     `;
   }
 
-  function rangeControl(id, label, value, min, max, step) {
+  function rangeControl(id, label, value, min, max, step, dataAttrs = "") {
     return `
       <div class="zone-tool-group">
         <span>${escapeHtml(label)}</span>
-        <input id="${escapeHtml(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}">
+        <input id="${escapeHtml(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}" ${dataAttrs}>
       </div>
     `;
   }
 
-  function colorControl(id, label, value) {
+  function numberControl(id, label, value, min, max, step, dataAttrs = "") {
     return `
       <div class="zone-tool-group">
         <span>${escapeHtml(label)}</span>
-        <input id="${escapeHtml(id)}" type="color" value="${escapeHtml(value || "#333333")}">
+        <input id="${escapeHtml(id)}" type="number" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(value))}" ${dataAttrs}>
       </div>
     `;
   }
 
-  function renderTrimmedRegistryStyleControls(toolId, objectType) {
-    const style = draftStyleFor(objectType, toolId);
-    const geo = draftGeometryFor(objectType, toolId);
-    const isClosed = toolId === "closed_path";
-    const isOpenPath = toolId === "open_path";
-    const isCircle = toolId === "circle";
-    const isTriangle = toolId === "triangle" || toolId === "elevation_marker";
-    const hasFill = isClosed || isCircle || isTriangle;
-    const hasLabelBox = toolId === "turning_radius" || toolId === "elevation_marker";
-    const hasInline = toolId === "slope_arrow";
-    const showArrows = shouldShowArrowControls(toolId, objectType);
-    const fillModes = isClosed
-      ? [
-          { value: "none", label: "无" },
-          { value: "translucent", label: "半透明" },
-          { value: "solid", label: "实心" },
-          { value: "hatch", label: "斜线" },
-        ]
-      : [
-          { value: "none", label: "无" },
-          { value: "translucent", label: "半透明" },
-          { value: "solid", label: "实心" },
-        ];
-    const borderModes = [
-      { value: "none", label: "无" },
-      { value: "solid", label: "实线" },
-      { value: "dashed", label: "虚线" },
-      { value: "double", label: "双实线" },
-    ];
+  function renderStyleControls(specKey, rawStyle = {}, context = {}) {
+    const spec = styleSpecFor(specKey);
+    const style =
+      specKey === "functional_zone"
+        ? normalizeZoneStyle(rawStyle)
+        : Model.normalizeStyleHints(rawStyle || {}, context.objectType || specKey);
+    const geo = context.geometry || {};
+    const showArrows = spec.arrows === "flow-only" && shouldShowArrowControls(context.toolId || specKey, context.objectType);
+    const strokeLabel = spec.fill ? "边框宽" : "线宽";
+    const strokeMax = spec.maxStrokeWidth || 0.018;
     return `
-      <div class="style-controls compact-style-controls" data-style-controls="true">
+      <div class="style-controls" data-style-controls="true">
         ${
-          hasFill
+          spec.fill
             ? `
               <div class="style-section-title">填充</div>
-              ${segmentedStyleControl("填充模式", "fill_mode", fillModes, style.fill_mode || "none")}
-              ${colorControl("styleFillColor", "填充色", style.fill_color || "#DCE8C8")}
+              ${segmentedStyleControl(
+                "填充模式",
+                "fill_mode",
+                spec.fill.map((value) => ({ value, label: FILL_LABELS[value] || value })),
+                style.fill_mode || "none",
+              )}
+              ${renderColorControl("fill_color", "填充色", style.fill_color || "#DCE8C8")}
+              ${
+                style.fill_mode === "translucent"
+                  ? `
+                    <details class="style-advanced">
+                      <summary>透明度</summary>
+                      ${rangeControl(
+                        "styleFillOpacity",
+                        "不透明度",
+                        style.fill_opacity ?? 0.42,
+                        "0.12",
+                        "1",
+                        "0.02",
+                        'data-style-input="fill_opacity" data-style-kind="number"',
+                      )}
+                    </details>
+                  `
+                  : ""
+              }
               ${
                 style.fill_mode === "hatch"
                   ? `
                     <details class="style-advanced" open>
                       <summary>斜线参数</summary>
-                      <label><span>角度</span><input id="styleHatchAngle" type="number" min="0" max="180" step="5" value="${escapeHtml(String(style.hatch_angle_deg || 45))}"></label>
-                      <label><span>间距</span><input id="styleHatchSpacing" type="number" min="0.006" max="0.06" step="0.002" value="${escapeHtml(String(style.hatch_spacing || 0.018))}"></label>
+                      ${numberControl(
+                        "styleHatchAngle",
+                        "角度",
+                        style.hatch_angle_deg || 45,
+                        "0",
+                        "180",
+                        "5",
+                        'data-style-input="hatch_angle_deg" data-style-kind="number"',
+                      )}
+                      ${numberControl(
+                        "styleHatchSpacing",
+                        "间距",
+                        style.hatch_spacing || 0.018,
+                        "0.006",
+                        "0.06",
+                        "0.002",
+                        'data-style-input="hatch_spacing" data-style-kind="number"',
+                      )}
                     </details>
                   `
                   : ""
@@ -793,27 +983,50 @@
             : ""
         }
         <div class="style-section-title">描边</div>
-        ${colorControl("styleStrokeColor", isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow" ? "线色" : "边框色", style.stroke_color || "#333333")}
-        ${rangeControl("styleStrokeWidth", isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow" ? "线宽" : "边框宽", style.stroke_width || 0.003, "0.001", "0.018", "0.001")}
+        ${renderColorControl("stroke_color", spec.fill ? "边框色" : "线色", style.stroke_color || style.fill_color || "#333333")}
+        ${rangeControl(
+          "styleStrokeWidth",
+          strokeLabel,
+          style.stroke_width || 0.003,
+          "0.001",
+          String(strokeMax),
+          "0.0005",
+          'data-style-input="stroke_width" data-style-kind="number"',
+        )}
         ${
-          isOpenPath || toolId === "turning_radius" || toolId === "slope_arrow"
+          spec.strokeStyle
             ? segmentedStyleControl(
                 "线型",
                 "stroke_style",
-                [
-                  { value: "solid", label: "实线" },
-                  { value: "dashed", label: "虚线" },
-                ],
+                spec.strokeStyle.map((value) => ({ value, label: STROKE_STYLE_LABELS[value] || value })),
                 style.stroke_style || "solid",
               )
-            : segmentedStyleControl("边框", "border_style", borderModes, style.border_style || "solid")
+            : ""
         }
         ${
-          isCircle && style.border_style === "double"
+          spec.border
+            ? segmentedStyleControl(
+                "边框",
+                "border_style",
+                spec.border.map((value) => ({ value, label: BORDER_LABELS[value] || value })),
+                style.border_style || "solid",
+              )
+            : ""
+        }
+        ${
+          spec.border && style.border_style === "double"
             ? `
               <details class="style-advanced" open>
                 <summary>双线参数</summary>
-                <label><span>间距</span><input id="styleDoubleGap" type="number" min="0.002" max="0.03" step="0.001" value="${escapeHtml(String(style.double_border_gap || 0.006))}"></label>
+                ${numberControl(
+                  "styleDoubleGap",
+                  "间距",
+                  style.double_border_gap || 0.006,
+                  "0.002",
+                  "0.03",
+                  "0.001",
+                  'data-style-input="double_border_gap" data-style-kind="number"',
+                )}
               </details>
             `
             : ""
@@ -823,57 +1036,97 @@
             ? `
               <div class="zone-tool-group arrow-controls">
                 <span>箭头</span>
-                <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" ${style.start_arrow ? "checked" : ""}> 起点</label>
-                <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" ${style.end_arrow ? "checked" : ""}> 终点</label>
+                <label class="checkbox-line"><input id="styleStartArrow" type="checkbox" data-style-input="start_arrow" data-style-kind="boolean" ${style.start_arrow ? "checked" : ""}> 起点</label>
+                <label class="checkbox-line"><input id="styleEndArrow" type="checkbox" data-style-input="end_arrow" data-style-kind="boolean" ${style.end_arrow ? "checked" : ""}> 终点</label>
                 <details class="style-advanced">
                   <summary>箭头尺寸</summary>
-                  ${rangeControl("styleArrowSize", "尺寸", style.arrow_size || 0.028, "0.012", "0.07", "0.002")}
+                  ${rangeControl(
+                    "styleArrowSize",
+                    "尺寸",
+                    style.arrow_size || 0.028,
+                    "0.012",
+                    "0.07",
+                    "0.002",
+                    'data-style-input="arrow_size" data-style-kind="number"',
+                  )}
                 </details>
               </div>
             `
             : ""
         }
         ${
-          isCircle
+          spec.radius
             ? `
               <div class="style-section-title">标记</div>
-              ${rangeControl("geometryRadius", "圆半径", geo.radius, "0.012", "0.12", "0.002")}
+              ${rangeControl(
+                "geometryRadius",
+                "圆半径",
+                geo.radius || 0.035,
+                "0.012",
+                "0.12",
+                "0.002",
+                'data-geometry-input="radius" data-style-kind="number"',
+              )}
             `
             : ""
         }
         ${
-          isTriangle
+          spec.size || spec.rotation
             ? `
               <div class="style-section-title">标记</div>
-              ${rangeControl("geometrySize", "三角尺寸", geo.size, "0.025", "0.13", "0.002")}
-              ${rangeControl("geometryRotation", "旋转角度", geo.rotation_deg, "0", "360", "5")}
+              ${
+                spec.size
+                  ? rangeControl(
+                      "geometrySize",
+                      "三角尺寸",
+                      geo.size || 0.055,
+                      "0.025",
+                      "0.13",
+                      "0.002",
+                      'data-geometry-input="size" data-style-kind="number"',
+                    )
+                  : ""
+              }
+              ${
+                spec.rotation
+                  ? rangeControl(
+                      "geometryRotation",
+                      "旋转角度",
+                      geo.rotation_deg || 0,
+                      "0",
+                      "360",
+                      "5",
+                      'data-geometry-input="rotation_deg" data-style-kind="number"',
+                    )
+                  : ""
+              }
             `
             : ""
         }
         ${
-          hasLabelBox
+          spec.labelBox
             ? `
               <div class="style-section-title">标注</div>
-              <label><span>标注文本</span><input id="labelBoxText" value="${escapeHtml((style.label_box && style.label_box.text) || (toolId === "turning_radius" ? "R=9M" : ""))}"></label>
+              <label><span>标注文本</span><input id="labelBoxText" value="${escapeHtml((style.label_box && style.label_box.text) || (specKey === "turning_radius" ? "R=9M" : ""))}" data-style-nested="label_box.text" data-style-kind="string"></label>
               <details class="style-advanced">
                 <summary>标注框参数</summary>
-                <label><span>宽</span><input id="labelBoxWidth" type="range" min="0.05" max="0.22" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.width) || 0.09))}"></label>
-                <label><span>高</span><input id="labelBoxHeight" type="range" min="0.025" max="0.09" step="0.005" value="${escapeHtml(String((style.label_box && style.label_box.height) || 0.035))}"></label>
-                <label><span>字号</span><input id="labelBoxFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.label_box && style.label_box.font_size) || 0.018))}"></label>
-                <label><span>透明度</span><input id="labelBoxOpacity" type="range" min="0.08" max="0.45" step="0.02" value="${escapeHtml(String((style.label_box && style.label_box.opacity) || 0.18))}"></label>
+                ${rangeControl("labelBoxWidth", "宽", (style.label_box && style.label_box.width) || 0.09, "0.05", "0.22", "0.005", 'data-style-nested="label_box.width" data-style-kind="number"')}
+                ${rangeControl("labelBoxHeight", "高", (style.label_box && style.label_box.height) || 0.035, "0.025", "0.09", "0.005", 'data-style-nested="label_box.height" data-style-kind="number"')}
+                ${rangeControl("labelBoxFontSize", "字号", (style.label_box && style.label_box.font_size) || 0.018, "0.012", "0.04", "0.002", 'data-style-nested="label_box.font_size" data-style-kind="number"')}
+                ${rangeControl("labelBoxOpacity", "透明度", (style.label_box && style.label_box.opacity) || 0.18, "0.08", "0.45", "0.02", 'data-style-nested="label_box.opacity" data-style-kind="number"')}
               </details>
             `
             : ""
         }
         ${
-          hasInline
+          spec.inlineText
             ? `
               <div class="style-section-title">标注</div>
-              <label><span>坡度文本</span><input id="inlineText" value="${escapeHtml((style.inline_text && style.inline_text.text) || "0.3%")}"></label>
+              <label><span>坡度文本</span><input id="inlineText" value="${escapeHtml((style.inline_text && style.inline_text.text) || "0.3%")}" data-style-nested="inline_text.text" data-style-kind="string"></label>
               <details class="style-advanced">
                 <summary>文字参数</summary>
-                <label><span>字号</span><input id="inlineTextFontSize" type="range" min="0.012" max="0.04" step="0.002" value="${escapeHtml(String((style.inline_text && style.inline_text.font_size) || 0.018))}"></label>
-                <label><span>位置</span><input id="inlineTextPosition" type="range" min="0.15" max="0.85" step="0.05" value="${escapeHtml(String((style.inline_text && style.inline_text.position) || 0.5))}"></label>
+                ${rangeControl("inlineTextFontSize", "字号", (style.inline_text && style.inline_text.font_size) || 0.018, "0.012", "0.04", "0.002", 'data-style-nested="inline_text.font_size" data-style-kind="number"')}
+                ${rangeControl("inlineTextPosition", "位置", (style.inline_text && style.inline_text.position) || 0.5, "0.15", "0.85", "0.05", 'data-style-nested="inline_text.position" data-style-kind="number"')}
               </details>
             `
             : ""
@@ -882,72 +1135,126 @@
     `;
   }
 
-  function renderRegistryStyleControls(toolId, objectType) {
-    return renderTrimmedRegistryStyleControls(toolId, objectType);
-  }
-
-  function bindRegistryStyleControls(toolId, objectType) {
+  function bindStyleControls(specKey, objectType, context = {}) {
+    const toolId = context.toolId || specKey;
+    const isFunctional = specKey === "functional_zone" || context.functional;
+    const labelInput = $("#objectLabel");
+    if (isFunctional && labelInput) {
+      labelInput.addEventListener("input", () => {
+        if (!selectedObject()) state.zoneDraftLabel = labelInput.value;
+      });
+      labelInput.addEventListener("change", () => {
+        const selected = selectedObject();
+        if (!selected) {
+          state.zoneDraftLabel = labelInput.value.trim();
+          return;
+        }
+        const next = labelInput.value.trim();
+        if ((selected.label || "") === next) return;
+        pushUndoSnapshot();
+        selected.label = next;
+        markDirty();
+        renderObjectList();
+        refreshLegendPreview();
+        setStatus("已更新分区名称。");
+      });
+    }
     document.querySelectorAll("[data-style-segment]").forEach((button) => {
       button.addEventListener("click", () => {
         const key = button.dataset.styleSegment;
         const value = button.dataset.styleValue;
         if (!key) return;
-        updateActiveStyle(toolId, objectType, { [key]: value });
+        updateStyle(specKey, { [key]: value }, { toolId, objectType, functional: isFunctional });
         renderSpecificTools();
       });
     });
-    const styleMap = {
-      styleFillMode: ["fill_mode", "string"],
-      styleFillColor: ["fill_color", "string"],
-      styleFillOpacity: ["fill_opacity", "number"],
-      styleHatchAngle: ["hatch_angle_deg", "number"],
-      styleHatchSpacing: ["hatch_spacing", "number"],
-      styleStrokeColor: ["stroke_color", "string"],
-      styleStrokeWidth: ["stroke_width", "number"],
-      styleStrokeStyle: ["stroke_style", "string"],
-      styleBorderStyle: ["border_style", "string"],
-      styleDoubleGap: ["double_border_gap", "number"],
-      styleStartArrow: ["start_arrow", "boolean"],
-      styleEndArrow: ["end_arrow", "boolean"],
-      styleArrowSize: ["arrow_size", "number"],
-    };
-    Object.entries(styleMap).forEach(([id, [key, kind]]) => {
-      const el = $(`#${id}`);
-      if (!el) return;
-      el.addEventListener("input", () => {
-        const value = kind === "boolean" ? el.checked : kind === "number" ? Number(el.value) : el.value;
-        updateActiveStyle(toolId, objectType, { [key]: value });
+    document.querySelectorAll("[data-style-color]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.styleColor;
+        const value = button.dataset.styleValue;
+        if (!key || !value) return;
+        updateStyle(specKey, { [key]: value }, { toolId, objectType, functional: isFunctional });
+        renderSpecificTools();
       });
     });
-    const nestedMap = {
-      labelBoxText: ["label_box", "text", "string"],
-      labelBoxWidth: ["label_box", "width", "number"],
-      labelBoxHeight: ["label_box", "height", "number"],
-      labelBoxFontSize: ["label_box", "font_size", "number"],
-      labelBoxOpacity: ["label_box", "opacity", "number"],
-      inlineText: ["inline_text", "text", "string"],
-      inlineTextFontSize: ["inline_text", "font_size", "number"],
-      inlineTextPosition: ["inline_text", "position", "number"],
-    };
-    Object.entries(nestedMap).forEach(([id, [group, key, kind]]) => {
-      const el = $(`#${id}`);
-      if (!el) return;
-      el.addEventListener("input", () => {
-        const value = kind === "number" ? Number(el.value) : el.value;
-        const current = draftStyleFor(objectType, toolId);
-        updateActiveStyle(toolId, objectType, { [group]: { ...(current[group] || {}), enabled: true, [key]: value } });
+    document.querySelectorAll("[data-style-color-input]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const key = input.dataset.styleColorInput;
+        if (!key) return;
+        updateStyle(specKey, { [key]: input.value }, { toolId, objectType, functional: isFunctional });
+        renderSpecificTools();
       });
     });
-    const geometryMap = {
-      geometryRadius: ["radius", "number"],
-      geometrySize: ["size", "number"],
-      geometryRotation: ["rotation_deg", "number"],
-    };
-    Object.entries(geometryMap).forEach(([id, [key]]) => {
-      const el = $(`#${id}`);
-      if (!el) return;
-      el.addEventListener("input", () => updateActiveGeometry(toolId, objectType, { [key]: Number(el.value) }));
+    document.querySelectorAll("[data-style-input]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.dataset.styleInput;
+        if (!key) return;
+        const kind = input.dataset.styleKind || "string";
+        const value = kind === "boolean" ? input.checked : kind === "number" ? Number(input.value) : input.value;
+        updateStyle(specKey, { [key]: value }, { toolId, objectType, functional: isFunctional }, { renderTools: false });
+      });
     });
+    document.querySelectorAll("[data-style-nested]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const path = input.dataset.styleNested || "";
+        const [group, key] = path.split(".");
+        if (!group || !key) return;
+        const kind = input.dataset.styleKind || "string";
+        const value = kind === "number" ? Number(input.value) : input.value;
+        const current = currentStyleFor(specKey, { toolId, objectType, functional: isFunctional });
+        updateStyle(
+          specKey,
+          { [group]: { ...(current[group] || {}), enabled: true, [key]: value } },
+          { toolId, objectType, functional: isFunctional },
+          { renderTools: false },
+        );
+      });
+    });
+    document.querySelectorAll("[data-geometry-input]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.dataset.geometryInput;
+        if (!key) return;
+        updateActiveGeometry(toolId, objectType, { [key]: Number(input.value) });
+      });
+    });
+  }
+
+  function currentStyleFor(specKey, context = {}) {
+    if (specKey === "functional_zone" || context.functional) {
+      const selected = selectedObject();
+      return selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
+    }
+    return draftStyleFor(context.objectType, context.toolId || specKey);
+  }
+
+  function updateStyle(specKey, patch, context = {}, options = {}) {
+    if (specKey === "functional_zone" || context.functional) {
+      const selected = selectedObject();
+      const current = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
+      const next = normalizeZoneStyle({ ...current, ...patch });
+      if (JSON.stringify(current) === JSON.stringify(next)) return;
+      pushUndoSnapshot();
+      if (selected) {
+        selected.style_hints = next;
+        state.zoneDraftStyle = next;
+        setStatus("已更新选中分区样式。");
+      } else {
+        state.zoneDraftStyle = next;
+        setStatus("已更新新分区默认样式。");
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "fill_color")) addRecentColor(next.fill_color);
+      if (Object.prototype.hasOwnProperty.call(patch, "stroke_color")) addRecentColor(next.stroke_color);
+      markDirty();
+      renderCanvasLayers("style-control");
+      renderObjectList();
+      if (options.renderTools !== false) renderSpecificTools();
+      refreshLegendPreview();
+      return;
+    }
+    updateActiveStyle(context.toolId || specKey, context.objectType || selectedToolObjectType(context.toolId || specKey), patch);
+    if (Object.prototype.hasOwnProperty.call(patch, "fill_color")) addRecentColor(patch.fill_color);
+    if (Object.prototype.hasOwnProperty.call(patch, "stroke_color")) addRecentColor(patch.stroke_color);
+    if (options.renderTools !== false) renderSpecificTools();
   }
 
   function updateActiveStyle(toolId, objectType, patch) {
@@ -1037,98 +1344,6 @@
         deleteSupportingImage(button.dataset.deleteSupporting).catch((err) => setStatus(err.message, false)),
       );
     });
-  }
-
-  function renderFunctionalZoningTools(tools) {
-    const selected = selectedObject();
-    const activeStyle = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
-    const palette = zonePaletteItems();
-    const recentColors = state.zoneRecentColors.filter(isHexColor);
-    const label = selected ? selected.label || "" : state.zoneDraftLabel || "";
-    tools.innerHTML = `
-      <label class="zone-name-field">
-        <span>分区名称 <small>名称只进图例，不显示在图中</small></span>
-        <input id="objectLabel" placeholder="如：中心广场 / 活动草坪" value="${escapeHtml(label)}">
-      </label>
-      <div class="zone-tool-group">
-        <span>填充颜色</span>
-        <div class="zone-palette" id="zonePalette">
-          ${palette
-            .map(
-              (item, index) => `
-                <button
-                  type="button"
-                  class="zone-swatch ${item.color.toUpperCase() === activeStyle.fill_color ? "active" : ""} ${
-                    item.fallback ? "fallback" : ""
-                  }"
-                  style="--swatch:${escapeHtml(item.color)}"
-                  title="${item.fallback ? "补足色，后续风格协商会替换" : "风格色"}"
-                  aria-label="选择颜色 ${index + 1}"
-                  data-zone-color="${escapeHtml(item.color)}"
-                ></button>
-              `,
-            )
-            .join("")}
-        </div>
-        ${
-          recentColors.length
-            ? `
-              <div class="zone-recent-colors" aria-label="最近使用颜色">
-                <span class="zone-recent-label">最近使用</span>
-                ${recentColors
-                  .map(
-                    (color) => `
-                      <button
-                        type="button"
-                        class="zone-swatch zone-swatch-recent ${color === activeStyle.fill_color ? "active" : ""}"
-                        style="--swatch:${escapeHtml(color)}"
-                        title="最近使用颜色"
-                        aria-label="选择最近使用颜色 ${escapeHtml(color)}"
-                        data-zone-color="${escapeHtml(color)}"
-                      ></button>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            `
-            : ""
-        }
-        <input id="zoneCustomColor" type="color" value="${escapeHtml(activeStyle.fill_color)}" aria-label="自定义填充颜色">
-      </div>
-      <div class="zone-tool-group">
-        <span>填充</span>
-        <div class="segmented-control" id="zoneFillMode">
-          <button type="button" class="${activeStyle.fill_mode !== "none" ? "active" : ""}" data-fill-enabled="true">有填充</button>
-          <button type="button" class="${activeStyle.fill_mode === "none" ? "active" : ""}" data-fill-enabled="false">无填充</button>
-        </div>
-      </div>
-      <div class="zone-tool-group">
-        <span>边框</span>
-        <div class="segmented-control" id="zoneBorderStyle">
-          <button type="button" class="${activeStyle.border_style === "solid" ? "active" : ""}" data-border-style="solid">实线</button>
-          <button type="button" class="${activeStyle.border_style === "dashed" ? "active" : ""}" data-border-style="dashed">虚线</button>
-          <button type="button" class="${activeStyle.border_style === "none" ? "active" : ""}" data-border-style="none">无边框</button>
-        </div>
-      </div>
-      <div class="zone-tool-group">
-        <span>线宽 <small id="zoneStrokeWidthValue">${formatStrokeWidth(activeStyle.stroke_width)}</small></span>
-        <input
-          id="zoneStrokeWidth"
-          type="range"
-          min="0.001"
-          max="0.012"
-          step="0.0005"
-          value="${escapeHtml(String(activeStyle.stroke_width))}"
-          aria-label="分区边框线宽"
-        >
-      </div>
-    `;
-    // Move legend preview to right rail if container exists
-    const legendContainer = $("#zoneLegendPreview");
-    if (legendContainer) {
-      legendContainer.innerHTML = renderFunctionalZoneLegendPreview();
-    }
-    bindFunctionalZoningTools();
   }
 
   function buildFunctionalZoneLegendGroups(objects) {
@@ -1288,70 +1503,6 @@
 
   function isHexColor(value) {
     return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value.trim());
-  }
-
-  function bindFunctionalZoningTools() {
-    const labelInput = $("#objectLabel");
-    if (labelInput) {
-      labelInput.addEventListener("input", () => {
-        if (!selectedObject()) state.zoneDraftLabel = labelInput.value;
-      });
-      labelInput.addEventListener("change", () => {
-        const selected = selectedObject();
-        if (!selected) {
-          state.zoneDraftLabel = labelInput.value.trim();
-          return;
-        }
-        const next = labelInput.value.trim();
-        if ((selected.label || "") === next) return;
-        pushUndoSnapshot();
-        selected.label = next;
-        markDirty();
-        renderObjectList();
-        refreshLegendPreview();
-        setStatus("已更新分区名称。");
-      });
-    }
-
-    document.querySelectorAll("#zonePalette [data-zone-color], .zone-recent-colors [data-zone-color]").forEach((button) => {
-      button.addEventListener("click", () => updateZoneStyle({ fill_color: button.dataset.zoneColor }));
-    });
-    $("#zoneCustomColor")?.addEventListener("change", (event) => updateZoneStyle({ fill_color: event.target.value }));
-    $("#zoneFillMode")?.querySelectorAll("[data-fill-enabled]").forEach((button) => {
-      button.addEventListener("click", () =>
-        updateZoneStyle({ fill_mode: button.dataset.fillEnabled === "true" ? "translucent" : "none" }),
-      );
-    });
-    $("#zoneBorderStyle")?.querySelectorAll("[data-border-style]").forEach((button) => {
-      button.addEventListener("click", () => updateZoneStyle({ border_style: button.dataset.borderStyle }));
-    });
-    $("#zoneStrokeWidth")?.addEventListener("input", (event) => {
-      updateZoneStyle({ stroke_width: event.target.value }, { renderTools: false });
-      const value = $("#zoneStrokeWidthValue");
-      if (value) value.textContent = formatStrokeWidth(event.target.value);
-    });
-  }
-
-  function updateZoneStyle(patch, options = {}) {
-    const selected = selectedObject();
-    const current = selected ? normalizeZoneStyle(selected.style_hints) : normalizeZoneStyle(state.zoneDraftStyle);
-    const next = normalizeZoneStyle({ ...current, ...patch });
-    if (JSON.stringify(current) === JSON.stringify(next)) return;
-    pushUndoSnapshot();
-    if (selected) {
-      selected.style_hints = next;
-      state.zoneDraftStyle = next;
-      setStatus("已更新选中分区样式。");
-    } else {
-      state.zoneDraftStyle = next;
-      setStatus("已更新新分区默认样式。");
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, "fill_color")) addRecentColor(next.fill_color);
-    markDirty();
-    renderCanvasLayers("zone-style-update");
-    renderObjectList();
-    if (options.renderTools !== false) renderSpecificTools();
-    refreshLegendPreview();
   }
 
   function renderAvailability() {
