@@ -13,6 +13,24 @@
     { value: "vision_inferred", label: "视觉识别" },
     { value: "cad_extracted", label: "CAD 提取" },
   ];
+  const GEOMETRY_LABELS = {
+    path: "路径",
+    circle: "圆形",
+    triangle: "三角形",
+    point: "点位",
+    closed_path: "多边形",
+    open_path: "线段",
+  };
+  const TOOL_GEOMETRY = {
+    closed_path: { kind: "path", closed: true, minPoints: 3 },
+    open_path: { kind: "path", closed: false, minPoints: 2 },
+    turning_radius: { kind: "path", closed: false, minPoints: 2 },
+    slope_arrow: { kind: "path", closed: false, minPoints: 2 },
+    circle: { kind: "circle", minPoints: 1 },
+    triangle: { kind: "triangle", minPoints: 1 },
+    elevation_marker: { kind: "triangle", minPoints: 1 },
+  };
+  const SPECIAL_TOOL_TYPES = new Set(["turning_radius", "elevation_marker", "slope_arrow"]);
   const UNDO_LIMIT = 50;
   const PALETTE_FALLBACK = [
     "#D6CBB8",
@@ -85,6 +103,8 @@
     currentDrawingType: DEFAULT_DRAWING_TYPE,
     objects: [],
     currentPoints: [],
+    activeTool: "",
+    activeObjectTypes: {},
     selectedId: "",
     loadedBaseUrl: "",
     svgExists: false,
@@ -126,12 +146,14 @@
       for (const [dtId, dtInfo] of Object.entries(data.drawings)) {
         const objectTypes = (dtInfo.object_types || []).map(otId => {
           const otInfo = (data.objects || {})[otId] || {};
+          const defaultGeometry = otInfo.geometry === "circle" ? "circle" :
+                                  otInfo.geometry === "triangle" ? "triangle" :
+                                  otInfo.closed === true ? "closed_path" : "open_path";
           return {
             value: otId,
             label: otInfo.label || otId,
-            defaultGeometry: otInfo.geometry === "circle" ? "circle" :
-                             otInfo.geometry === "triangle" ? "triangle" :
-                             otInfo.closed === true ? "closed_path" : "open_path",
+            defaultGeometry,
+            defaultTool: (dtInfo.tools || []).includes(otId) ? otId : defaultGeometry,
           };
         });
         benches[dtId] = {
@@ -207,6 +229,59 @@
 
   function isEnabled(type = drawingType()) {
     return drawingConfig(type).status === "enabled";
+  }
+
+  function drawingTools(type = drawingType()) {
+    return (drawingConfig(type).tools || []).filter((toolId) => toolId !== "supporting_images");
+  }
+
+  function supportsTool(toolId, type = drawingType()) {
+    return (drawingConfig(type).tools || []).includes(toolId);
+  }
+
+  function normalizeActiveTool(type = drawingType()) {
+    if (isFunctionalZoning(type)) return "closed_path";
+    const tools = drawingTools(type);
+    if (tools.includes(state.activeTool)) return state.activeTool;
+    state.activeTool = tools[0] || "";
+    return state.activeTool;
+  }
+
+  function toolObjectTypes(toolId = normalizeActiveTool()) {
+    const objectTypes = drawingConfig().objectTypes || [];
+    if (!toolId) return objectTypes;
+    if (SPECIAL_TOOL_TYPES.has(toolId)) return objectTypes.filter((item) => item.value === toolId);
+    return objectTypes.filter((item) => (item.defaultTool || item.defaultGeometry) === toolId);
+  }
+
+  function selectedToolObjectType(toolId = normalizeActiveTool()) {
+    const types = toolObjectTypes(toolId);
+    const saved = state.activeObjectTypes[drawingType()];
+    if (types.some((item) => item.value === saved)) return saved;
+    const current = $("#objectType") && $("#objectType").value;
+    if (types.some((item) => item.value === current)) return current;
+    return (types[0] && types[0].value) || "label";
+  }
+
+  function setActiveTool(toolId) {
+    if (!supportsTool(toolId) || toolId === "supporting_images") return;
+    state.activeTool = toolId;
+    state.currentPoints = [];
+    renderSpecificTools();
+    renderCanvasLayers("set-active-tool");
+  }
+
+  function defaultObjectStyle(type) {
+    const info = REGISTRY_OBJECTS[type] || {};
+    return JSON.parse(JSON.stringify(info.default_style || {}));
+  }
+
+  function objectStyleHints(type, overrides = {}) {
+    return { ...defaultObjectStyle(type), ...overrides };
+  }
+
+  function objectStyleValue(style, key, fallback) {
+    return style && style[key] !== undefined && style[key] !== null ? style[key] : fallback;
   }
 
   function basePath() {
@@ -501,6 +576,8 @@
       renderFunctionalZoningTools(tools);
       return;
     }
+    renderRegistryTools(tools, config);
+    return;
     const currentObject = $("#objectType") && $("#objectType").value;
     const objectTypes = config.objectTypes || [];
     const selectedObject = objectTypes.some((item) => item.value === currentObject)
@@ -529,6 +606,58 @@
     const objectType = $("#objectType");
     if (objectType) objectType.addEventListener("change", setDefaultGeometry);
     setDefaultGeometry();
+  }
+
+  function renderRegistryTools(tools, config) {
+    const rawTools = config.tools || [];
+    const activeTool = normalizeActiveTool();
+    const objectTypes = toolObjectTypes(activeTool);
+    const selectedObject = selectedToolObjectType(activeTool);
+    tools.innerHTML = `
+      <div class="zone-tool-group drawing-tool-picker" data-workbench-tool-picker="true">
+        <span>绘图工具</span>
+        <div class="segmented-control tool-grid">
+          ${rawTools
+            .map(
+              (toolId) => `
+                <button
+                  type="button"
+                  class="tool-button ${activeTool === toolId ? "active" : ""}"
+                  data-tool-id="${escapeHtml(toolId)}"
+                >${escapeHtml(TOOL_LABELS[toolId] || toolId)}</button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+      ${
+        activeTool === "supporting_images"
+          ? '<div class="control-empty">配图工具仅管理参考图片，不在画布生成语义对象。</div>'
+          : `
+            <label>
+              <span>对象类型</span>
+              <select id="objectType">${optionHtml(objectTypes, selectedObject)}</select>
+            </label>
+            <label>
+              <span>标签文本</span>
+              <input id="objectLabel" placeholder="例如：主入口 / 景观节点 / R=9M">
+            </label>
+            <label>
+              <span>来源</span>
+              <select id="objectSource">${optionHtml(SOURCE_OPTIONS, "user_sketch")}</select>
+            </label>
+          `
+      }
+    `;
+    tools.querySelectorAll("[data-tool-id]").forEach((button) => {
+      button.addEventListener("click", () => setActiveTool(button.dataset.toolId));
+    });
+    const objectType = $("#objectType");
+    if (objectType) {
+      objectType.addEventListener("change", () => {
+        state.activeObjectTypes[drawingType()] = objectType.value;
+      });
+    }
   }
 
   function renderFunctionalZoningTools(tools) {
@@ -995,6 +1124,7 @@
   }
 
   function geometryName(kind) {
+    if (GEOMETRY_LABELS[kind]) return GEOMETRY_LABELS[kind];
     const item = GEOMETRY_OPTIONS.find((entry) => entry.value === kind);
     return item ? item.label : kind;
   }
@@ -1284,6 +1414,85 @@
     return [Number(x.toFixed(6)), Number(y.toFixed(6))];
   }
 
+  function defaultGeometryForTool(toolId, points) {
+    const cleanPoints = (points || []).map((point) => [Number(point[0]), Number(point[1])]);
+    if (toolId === "closed_path") {
+      return { kind: "path", closed: true, coords: cleanPoints };
+    }
+    if (toolId === "open_path" || toolId === "turning_radius" || toolId === "slope_arrow") {
+      return { kind: "path", closed: false, coords: cleanPoints };
+    }
+    if (toolId === "circle") {
+      return { kind: "circle", center: cleanPoints[0], radius: 0.045 };
+    }
+    if (toolId === "triangle" || toolId === "elevation_marker") {
+      return { kind: "triangle", center: cleanPoints[0], size: 0.06, rotation_deg: 0 };
+    }
+    return null;
+  }
+
+  function createObjectFromTool(toolId, points, options = {}) {
+    const spec = TOOL_GEOMETRY[toolId];
+    if (!spec) {
+      setStatus(`工具 ${toolId} 不能在画布上生成对象。`, false);
+      return null;
+    }
+    const minPoints = spec.minPoints || 1;
+    if (!Array.isArray(points) || points.length < minPoints) {
+      setStatus(`${TOOL_LABELS[toolId] || toolId} 至少需要 ${minPoints} 个点。`, false);
+      return null;
+    }
+    const objectType = options.objectType || selectedToolObjectType(toolId);
+    const objectLabel = $("#objectLabel");
+    const objectSource = $("#objectSource");
+    const index = state.objects.length + 1;
+    const id = options.id || nextObjectId();
+    const label = options.label || (objectLabel && objectLabel.value.trim()) || `${objectName(objectType)} ${index}`;
+    const geometry = defaultGeometryForTool(toolId, points.slice(0, minPoints));
+    if (!geometry) return null;
+    const style = objectStyleHints(objectType);
+    if (toolId === "turning_radius") {
+      style.label_box = {
+        ...(style.label_box || {}),
+        enabled: true,
+        text: (objectLabel && objectLabel.value.trim()) || (style.label_box && style.label_box.text) || "R=9M",
+      };
+    }
+    if (toolId === "elevation_marker") {
+      style.label_box = {
+        ...(style.label_box || {}),
+        enabled: true,
+        text: (objectLabel && objectLabel.value.trim()) || (style.label_box && style.label_box.text) || "",
+      };
+    }
+    if (toolId === "slope_arrow") {
+      style.inline_text = {
+        ...(style.inline_text || {}),
+        enabled: true,
+        text: (objectLabel && objectLabel.value.trim()) || (style.inline_text && style.inline_text.text) || "0.3%",
+      };
+    }
+    const object = {
+      id,
+      type: objectType,
+      geometry,
+      label,
+      confidence: "medium",
+      source: options.source || (objectSource && objectSource.value) || "user_sketch",
+      style_hints: style,
+    };
+    state.objects.push(object);
+    state.selectedId = id;
+    state.currentPoints = [];
+    markDirty();
+    renderCanvasLayers("create-object-from-tool");
+    renderObjectList();
+    renderSpecificTools();
+    refreshLegendPreview();
+    setStatus(`已添加：${label}`);
+    return object;
+  }
+
   function addPoint(event) {
     if (event.target.closest && event.target.closest(".zone-arc-handle")) return;
     const point = normalizedPoint(event);
@@ -1304,12 +1513,16 @@
       renderSpecificTools();
       return;
     }
-    const geometryKind = $("#geometryKind");
-    if (!geometryKind) return;
+    const activeTool = normalizeActiveTool();
+    const spec = TOOL_GEOMETRY[activeTool];
+    if (!spec) return;
     state.currentPoints.push(point);
     markDirty();
-    if (geometryKind.value === "point") finishObject();
-    else renderObjects();
+    if (state.currentPoints.length >= (spec.minPoints || 1) && (spec.minPoints || 1) <= 2) {
+      createObjectFromTool(activeTool, state.currentPoints);
+    } else {
+      renderObjects();
+    }
   }
 
   function finishObject() {
@@ -1318,6 +1531,16 @@
       finishFunctionalZone();
       return;
     }
+    const activeTool = normalizeActiveTool();
+    const spec = TOOL_GEOMETRY[activeTool];
+    if (!spec) return;
+    if (state.currentPoints.length < (spec.minPoints || 1)) {
+      setStatus(`${TOOL_LABELS[activeTool] || activeTool} 至少需要 ${spec.minPoints || 1} 个点。`, false);
+      return;
+    }
+    pushUndoSnapshot();
+    createObjectFromTool(activeTool, state.currentPoints);
+    return;
     const geometryKind = $("#geometryKind");
     const objectType = $("#objectType");
     const objectLabel = $("#objectLabel");
