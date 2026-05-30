@@ -898,6 +898,53 @@ def assert_move_and_paste(page, drawing_type: str) -> None:
     )
 
 
+def assert_style_presets(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="open_path"]').count() == 0:
+        return
+    page.evaluate("() => Object.keys(localStorage).filter((key) => key.includes('drawing-style-presets')).forEach((key) => localStorage.removeItem(key))")
+    page.click('[data-tool-id="open_path"]')
+    assert page.locator("[data-style-presets='true']").count() == 1, f"{drawing_type}: style presets panel missing"
+    assert page.locator("[data-style-preset-apply][data-preset-source='builtin']").count() >= 1, (
+        f"{drawing_type}: built-in presets missing"
+    )
+    assert page.locator("[data-style-preset-swatch]").count() >= 1, f"{drawing_type}: preset swatches missing"
+    page.eval_on_selector(
+        "#styleStrokeColor",
+        """(el) => {
+            el.value = "#123456";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    page.fill("#stylePresetName", "Smoke preset")
+    page.click("#saveStylePreset")
+    page.wait_for_timeout(100)
+    stored = page.evaluate(
+        "() => Object.entries(localStorage).find(([key]) => key.includes('drawing-style-presets'))?.[1] || ''"
+    )
+    assert "Smoke preset" in stored and "#123456" in stored, f"{drawing_type}: user preset not saved to localStorage: {stored}"
+    page.eval_on_selector(
+        "#styleStrokeColor",
+        """(el) => {
+            el.value = "#654321";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    page.click("[data-style-preset-apply][data-preset-name='Smoke preset']")
+    value = page.eval_on_selector("#styleStrokeColor", "(el) => el.value.toUpperCase()")
+    assert value == "#123456", f"{drawing_type}: applying saved preset did not restore color, got {value}"
+    page.reload(wait_until="networkidle")
+    page.wait_for_function("window.DrawingWorkbenchTest", timeout=15000)
+    page.click(f'[data-drawing-type="{drawing_type}"]')
+    page.click('[data-tool-id="open_path"]')
+    assert page.locator("[data-style-preset-apply][data-preset-name='Smoke preset']").count() == 1, (
+        f"{drawing_type}: user preset did not reload from localStorage"
+    )
+    page.evaluate(
+        "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+        {"tool": "open_path", "pts": [[0.2, 0.28], [0.5, 0.3]]},
+    )
+
+
 def assert_elevation_inverted(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="elevation_marker"]').count() == 0:
         return
@@ -1052,6 +1099,7 @@ def main() -> int:
                     assert_legend_by_label(page, drawing_type)
                     assert_arrow_scales(page, drawing_type)
                     assert_move_and_paste(page, drawing_type)
+                    assert_style_presets(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":

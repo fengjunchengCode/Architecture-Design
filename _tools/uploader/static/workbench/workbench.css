@@ -650,6 +650,71 @@
   accent-color: var(--accent);
 }
 
+.style-presets {
+  gap: 8px;
+}
+
+.style-preset-list {
+  display: grid;
+  gap: 5px;
+}
+
+.style-preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+}
+
+.style-preset-apply {
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 253, 247, 0.72);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.style-preset-apply span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-preset-apply:hover,
+.style-preset-delete:hover,
+#saveStylePreset:hover {
+  border-color: var(--accent);
+}
+
+.style-preset-apply svg {
+  width: 24px;
+  height: 16px;
+}
+
+.style-preset-delete,
+#saveStylePreset {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(255, 253, 247, 0.72);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.style-preset-save {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
