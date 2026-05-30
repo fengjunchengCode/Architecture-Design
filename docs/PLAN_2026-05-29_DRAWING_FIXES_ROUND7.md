@@ -3,7 +3,7 @@
 > **执行者：codex（有视觉）。单线程顺序执行,每条一个提交。不要开并行子 agent。**
 > 针对 `origin/main @ 68e27d4`。开工前 `git pull --ff-only`。
 > 红线:**FZ 行为逐像素不变**;不得新增平行路径;改完跑全门禁 + 截图自检。**不要改 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`**。
-> **两处产品决策(用户已定)**:① 样式预设存 **localStorage**(跨会话保留,无需后端);② **保留**"对象类型"内部模型,但**图例与类型脱钩**(按样式+标签合并)。
+> **两处产品决策(用户已定,第二版)**:① 样式预设 = **内置一批写死的预设(参照 PDF 图例风格)** + **用户另存的预设按项目存(后端,`projects/<code>/05_output/drawings/presets.json`)**,不用 localStorage;② **删除"对象类型"**——每个工具直接生成一个通用几何类型,去掉检查器里的对象类型下拉(图例已与类型脱钩)。
 
 ---
 
@@ -80,23 +80,34 @@
 - [ ] 冒烟 `assert_move_and_paste`:① 选中对象 → 模拟在命中层拖动 → 断言坐标整体平移;② 触发复制粘贴 API → 断言对象数 +1 且新对象坐标有偏移。全门禁 PASS。codex 截图——拖动平移、粘贴出副本。
 - [ ] `git commit -m "feat(workbench): drag-to-move and copy/paste for objects"`
 
-## H8：整套样式预设——保存 / 预览 / 应用（新功能,localStorage）
+## H8：整套样式预设——内置批次（写死,参照 PDF 图例）+ 用户另存（按项目,后端）
 
-**Files:** `workbench.js`(样式控件区加"预设"块;localStorage 读写)
+**Files:** `workbench.js`(样式控件加"预设"块 + 内置常量 + 调后端);`_tools/drawing_workbench/`(预设存取 + API);`_tools/uploader/*`(路由)
 
-- [ ] 数据:`localStorage["wb_style_presets"]` = `[{ id, name, hints }]`,`hints` 为一整套样式(fill_mode/fill_color/fill_opacity/hatch/border_style/stroke_color/stroke_width/stroke_style/dash_scale/double_border_gap/箭头… 当前 `draftStyleFor` 的完整快照)。
-- [ ] UI(样式控件顶部一节"预设"):① **保存当前为预设**(输入名→存当前 draft 整套 hints);② 预设列表,每项一个**小预览 swatch**(复用 `renderGenericLegendSwatch` 思路画该套样式)+ 名称 + 应用按钮 + 删除;③ 点"应用"→ `updateStyle` 用该 preset 的 hints 覆盖当前工具/选中对象样式。
-- [ ] 跨会话:刷新后预设仍在(localStorage)。
-- [ ] 冒烟 `assert_style_presets`:保存一个预设 → 列表出现且 swatch 渲染;改当前样式后点应用 → 当前 draft hints == 预设 hints。全门禁 PASS。codex 截图——保存、预览缩略、一键套用。
-- [ ] `git commit -m "feat(workbench): save/preview/apply full style presets (localStorage)"`
+- [ ] **Step 1 内置预设(写死)**：`workbench.js` 加 `BUILTIN_STYLE_PRESETS`,一批参照 `docs/reference_pdfs/report_examples/` 图例风格的整套样式(每条 = `{ id, name, kind, hints }`)。至少覆盖:车行-橙红实线(end_arrow)、人行-钴蓝实线(end_arrow)、地下-蓝虚线、消防-正红线、转弯半径-深青+白底框、景观节点-暖橙描边半透圆、主轴-红虚线、次轴-紫虚线、出入口-朱红实心三角、标高-紫倒三角、坡度-深青箭头、种植区-饱和绿半透+深绿边、径流-深蓝、生态沟-青虚线。`hints` 用完整样式字段。
+- [ ] **Step 2 后端按项目存**：新增预设存储 `presets.json`(项目目录 `05_output/drawings/presets.json`),复用 `task_pack.safe_project/project_dir` 防越界;字段 `[{ id, name, kind, hints, created_at }]`。加 API:`GET /api/drawing/presets?project=` 列出;`POST` 保存(校验 hints 走 `Model.normalizeStyleHints` 同源/或 style_schema);`DELETE` 删。
+- [ ] **Step 3 UI**：样式控件顶部"预设"一节:① 内置 + 该项目用户预设合并列出,每项一个**预览 swatch**(复用 `renderGenericLegendSwatch`)+ 名称 + 应用 +(用户预设可删);② "保存当前为预设"输入名 → `POST` 存当前 draft 整套 hints;③ 应用 → `updateStyle` 用该 preset hints 覆盖当前工具/选中对象。
+- [ ] **Step 4**：冒烟 `assert_style_presets`:① 内置预设渲染出列表+swatch;② 保存一个用户预设 → 重新 `GET` 仍在(写进项目文件);③ 应用某预设 → 当前 draft hints == 预设 hints。`py_compile` + `node --check` + 全门禁 PASS。codex 截图——内置批次预览、保存、套用。
+- [ ] **Step 5**：`git commit -m "feat(workbench): built-in style presets + per-project saved presets"`
+
+## H9：删除"对象类型"——工具直出通用几何类型
+
+**根因/范围**：用户「对象类型没有意义了，直接删除」。当前检查器有"对象类型"`<select>`(789),每个工具下挂多个语义子类型(vehicle_flow/pedestrian_flow…);schema 按 `OBJECT_TYPE_REGISTRY` 校验 `type`。改为:**工具 = 几何,直接生成一个通用类型,无子类型选择**。
+
+**Files:** `workbench.js`(对象类型下拉 789 及其绑定 811-816、`toolObjectTypes`/`selectedToolObjectType`、创建 `type` 赋值)；`_tools/drawing_workbench/registry.py`(object_types、通用类型)；`schema.py`(校验/兼容)；`registry.py` 各图纸 `object_types`
+
+- [ ] **Step 1(后端通用类型 + 兼容)**：`OBJECT_TYPE_REGISTRY` 增加通用几何类型 `polygon / line / circle / triangle`(+保留 turning_radius/elevation_marker/slope_arrow/text_label 这些**行为型**工具类型);**旧语义类型(vehicle_flow 等)保留在 registry/别名里**,确保**旧存档仍能加载**(`normalize_object_type` 命中即放行)。各图纸 registry 的 `object_types` 收敛为该图纸用到的通用/行为类型(不再罗列语义子类型)。
+- [ ] **Step 2(前端删下拉)**：删除"对象类型"label+`<select id="objectType">`(789)及其 change 绑定;`createObjectFromTool` 的 `type` 由**工具直接映射**:closed_path→`polygon`、open_path→`line`、circle→`circle`、triangle→`triangle`、turning_radius/elevation_marker/slope_arrow/text_label→同名。`PRIMITIVE_STYLE_SPEC`/预设/默认样式改为**按几何类型**键,不再按语义子类型。
+- [ ] **Step 3(测试/兼容)**：冒烟 `assert_no_object_type_select`:检查器内 `#objectType` count==0;各工具建对象 `type` ∈ 通用集;旧存档(含 vehicle_flow 等)加载不报错(`assert_no_bad_kinds` 仍过)。后端 `test_drawing_workbench_schema.py` 增「通用类型校验通过 + 旧类型兼容」用例。`py_compile` + `node --check` + 全门禁 PASS。
+- [ ] **Step 4**：codex 截图——检查器无"对象类型",选几何工具直接画+样式+标签。
+- [ ] **Step 5**：`git commit -m "refactor(workbench): drop semantic object-type selector; tools emit generic geometry types"`
 
 ---
 
 ## 验收红线（mac claude 终审 + 截图）
 
-1. H1 标签改样式不丢、非 FZ 可编辑;2. H2 图例按样式+标签合并、不跟类型;3. H3 标注框白·半透·无框·直角;4. H4 标高默认倒三角+文字上方+图例含框;5. H5 旋转手柄=圆形小箭头;6. H6 箭头随线宽;7. H7 可拖动移动+复制粘贴;8. H8 预设可存/预览/套用且跨会话。
-9. **FZ 回归(红线)** + 既有门禁全过。
+1. H1 标签改样式不丢、非 FZ 可编辑;2. H2 图例按样式+标签合并、不跟类型;3. H3 标注框白·半透·无框·直角;4. H4 标高默认倒三角+文字上方+图例含框;5. H5 旋转手柄=圆形小箭头;6. H6 箭头随线宽;7. H7 可拖动移动+复制粘贴;8. H8 内置预设批次(参照 PDF)+ 用户预设按项目存、可预览/套用;9. H9 检查器无对象类型、工具直出通用几何、旧存档兼容。
+10. **FZ 回归(红线)** + 既有门禁全过。
 
 ## 交付
-- H1→H8 各一次提交,顺序执行(H1 先,其余依赖标签修复)。回推后通知 mac claude 终审。
-- 待确认项:若用户要"去掉对象类型下拉"或"预设改后端存储",再追加任务。
+- H1→H9 各一次提交,顺序执行(H1 先;H9 因改后端 schema/registry,建议放最后,改完重点验旧存档加载)。回推后通知 mac claude 终审。
