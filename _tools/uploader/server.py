@@ -32,6 +32,14 @@ from _tools.drawing_workbench.registry import (
     default_base_path_for,
     default_object_style,
 )
+from _tools.drawing_workbench.deck_layout import (
+    layout_rel_path,
+    load_deck_layout,
+    reflow_deck,
+    save_deck_layout,
+    set_drawing_frame,
+    set_template_side,
+)
 from _tools.drawing_workbench.schema import (
     drawing_output_paths,
     empty_drawing,
@@ -366,6 +374,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_drawing_registry()
             elif parsed.path == "/api/drawing/style-presets":
                 self.handle_style_presets_load()
+            elif parsed.path == "/api/drawing/deck-layout":
+                self.handle_deck_layout_load(parsed.query)
             elif parsed.path == "/api/drawing/load":
                 self.handle_drawing_load(parsed.query)
             elif parsed.path == "/api/drawing/supporting/list":
@@ -420,6 +430,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_style_presets_delete()
             elif parsed.path == "/api/drawing/style-presets/import":
                 self.handle_style_presets_import()
+            elif parsed.path == "/api/drawing/deck-layout/save":
+                self.handle_deck_layout_save()
+            elif parsed.path == "/api/drawing/deck-layout/reflow":
+                self.handle_deck_layout_reflow()
             elif parsed.path == "/api/style/save":
                 self.handle_style_save()
             else:
@@ -586,6 +600,61 @@ class UploaderHandler(BaseHTTPRequestHandler):
         next_library = write_style_preset_library(list(merged.values()))
         rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
         self.send_json({"ok": True, "path": rel, "imported": len(imported), **next_library})
+
+    def handle_deck_layout_load(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        self.send_json({
+            "ok": True,
+            "project": code,
+            "path": layout_rel_path(),
+            "exists": (proj / layout_rel_path()).exists(),
+            "layout": layout,
+        })
+
+    def handle_deck_layout_save(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        if isinstance(payload.get("layout"), dict):
+            layout = payload["layout"]
+        drawing_type = str(payload.get("drawing_type") or "").strip()
+        if drawing_type:
+            if drawing_type not in DRAWING_TYPES:
+                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+            slide_patch = payload.get("slide") if isinstance(payload.get("slide"), dict) else {}
+            slide = (layout.get("slides") or {}).get(drawing_type) or {}
+            if "text" in slide_patch:
+                slide["text"] = str(slide_patch.get("text") or "")
+            if "title" in slide_patch:
+                slide["title"] = str(slide_patch.get("title") or "")
+            layout.setdefault("slides", {})[drawing_type] = slide
+        if "template_side" in payload:
+            layout = set_template_side(layout, str(payload.get("template_side") or ""))
+        if isinstance(payload.get("drawing_frame"), dict):
+            layout = set_drawing_frame(layout, payload["drawing_frame"])
+        saved = save_deck_layout(proj, layout, code)
+        self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
+
+    def handle_deck_layout_reflow(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        scope = str(payload.get("scope") or "current")
+        drawing_type = str(payload.get("drawing_type") or "").strip()
+        if scope == "all":
+            drawing_type_arg = None
+        else:
+            if drawing_type not in DRAWING_TYPES:
+                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+            drawing_type_arg = drawing_type
+        layout = reflow_deck(proj, layout, drawing_type=drawing_type_arg)
+        saved = save_deck_layout(proj, layout, code)
+        self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
 
     def handle_supporting_list(self, query: str) -> None:
         params = parse_qs(query)

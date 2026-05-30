@@ -91,6 +91,55 @@ def main() -> int:
             assert result.get("drawing"), f"no drawing for {dt}"
         print(f"OK: load works for all {len(expected_types)} drawing types")
 
+        # Test PPT deck layout load/save/reflow
+        deck = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")
+        assert deck.get("ok"), f"deck layout load failed: {deck}"
+        layout = deck.get("layout") or {}
+        assert layout.get("slide", {}).get("aspect") == "16:9", f"deck layout should be 16:9: {layout}"
+        assert layout.get("drawing_frame") and len(layout.get("slides", {})) == len(expected_types), (
+            f"deck layout missing global frame or slides: {layout}"
+        )
+        saved_deck = api_post(
+            "/api/drawing/deck-layout/save",
+            {
+                "project": TEST_PROJECT,
+                "drawing_type": "functional_zoning",
+                "slide": {"text": "PPT smoke text"},
+            },
+        )
+        assert (
+            saved_deck.get("layout", {})
+            .get("slides", {})
+            .get("functional_zoning", {})
+            .get("text")
+            == "PPT smoke text"
+        ), f"deck slide text did not save: {saved_deck}"
+        version_before = int(saved_deck.get("layout", {}).get("drawing_frame_version") or 0)
+        switched = api_post(
+            "/api/drawing/deck-layout/save",
+            {"project": TEST_PROJECT, "template_side": "drawing_right"},
+        )
+        switched_layout = switched.get("layout", {})
+        assert switched_layout.get("template_side") == "drawing_right", f"template side did not switch: {switched}"
+        assert int(switched_layout.get("drawing_frame_version") or 0) == version_before + 1, (
+            f"template switch should bump frame version: before={version_before}, after={switched_layout}"
+        )
+        assert all(slide.get("needs_reflow") for slide in switched_layout.get("slides", {}).values()), (
+            f"template switch should mark all slides for reflow: {switched_layout}"
+        )
+        reflowed = api_post(
+            "/api/drawing/deck-layout/reflow",
+            {"project": TEST_PROJECT, "drawing_type": "functional_zoning", "scope": "current"},
+        )
+        reflowed_slides = reflowed.get("layout", {}).get("slides", {})
+        assert reflowed_slides.get("functional_zoning", {}).get("needs_reflow") is False, (
+            f"current reflow should clear current slide: {reflowed}"
+        )
+        assert reflowed_slides.get("traffic_analysis", {}).get("needs_reflow") is True, (
+            f"current reflow should not clear other slides: {reflowed}"
+        )
+        print("OK: PPT deck layout load/save/template/reflow works")
+
         # Test save for each drawing type
         payloads = {
             "functional_zoning": {

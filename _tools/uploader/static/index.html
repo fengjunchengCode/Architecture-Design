@@ -296,6 +296,7 @@
                   <span class="wb3-spacer"></span>
                   <button class="wb3-btn" id="workbenchLoad" type="button">加载图纸</button>
                   <button class="wb3-btn primary" id="workbenchSave" type="button">保存草图</button>
+                  <button class="wb3-btn" id="togglePptPreview" type="button" aria-pressed="false">PPT预览</button>
                   <span class="wb3-topdiv"></span>
                   <button class="wb3-btn wb3-iconbtn on" id="toggleInspector" type="button" title="检查器面板">▭</button>
                 </header>
@@ -309,6 +310,11 @@
                         <img id="baseImage" alt="底图">
                         <svg id="sketchOverlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
                         <div class="workbench-empty" id="workbenchEmpty">请先选择项目，再加载底图。</div>
+                      </div>
+                    </div>
+                    <div class="ppt-preview-panel" id="pptPreviewPanel" hidden>
+                      <div class="ppt-slide-shell">
+                        <div class="ppt-slide" id="pptSlidePreview" aria-label="PPT页面预览"></div>
                       </div>
                     </div>
                     <div class="wb3-zoom">
@@ -347,6 +353,26 @@
                       <section class="wb3-sect open" data-sect="objects">
                         <button class="wb3-sect-h" type="button"><b>对象明细</b><span class="chev">▸</span></button>
                         <div class="wb3-sect-c"><div id="objectList" class="object-list"></div></div>
+                      </section>
+
+                      <section class="wb3-sect open" data-sect="ppt">
+                        <button class="wb3-sect-h" type="button"><b>PPT出图 <span class="tag">说明与预览</span></b><span class="chev">▸</span></button>
+                        <div class="wb3-sect-c">
+                          <label class="ppt-text-field">
+                            <span>图纸说明</span>
+                            <textarea id="pptSlideText" rows="4" placeholder="写入这张图纸在PPT中展示的说明文字"></textarea>
+                          </label>
+                          <div class="ppt-template-picker" role="group" aria-label="PPT全局版式">
+                            <button type="button" data-ppt-template="drawing_left">图纸左</button>
+                            <button type="button" data-ppt-template="drawing_right">图纸右</button>
+                          </div>
+                          <div class="ppt-actions">
+                            <button id="savePptSlideText" class="wb3-btn" type="button">保存说明</button>
+                            <button id="pptReflowCurrent" class="wb3-btn" type="button">重排本页</button>
+                            <button id="pptReflowAll" class="wb3-btn" type="button">全部重排</button>
+                          </div>
+                          <div class="ppt-layout-status" id="pptLayoutStatus">尚未加载PPT预览。</div>
+                        </div>
                       </section>
 
                       <section class="wb3-sect" data-sect="export">

@@ -1010,6 +1010,39 @@ def assert_functional_zone_style_presets(page) -> None:
     assert value == "#ABCDEF", f"functional_zoning: applying saved preset did not restore fill color, got {value}"
 
 
+def assert_ppt_preview_basics(page) -> None:
+    text = "PPT smoke text"
+    page.fill("#pptSlideText", text)
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project, expected}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": text},
+        timeout=10000,
+    )
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should become visible"
+    box = page.locator("#pptSlidePreview").bounding_box()
+    assert box and abs((box["width"] / box["height"]) - (16 / 9)) < 0.03, f"PPT slide ratio should be 16:9, got {box}"
+    assert page.locator("[data-ppt-drawing-frame='true']").count() == 1, "PPT preview should render one global drawing frame"
+    assert page.locator("[data-ppt-element='text']", has_text=text).count() == 1, "PPT preview should render saved slide text"
+    dialogs: list[str] = []
+
+    def handle_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", handle_dialog)
+    page.click('[data-ppt-template="drawing_right"]')
+    page.wait_for_timeout(100)
+    assert dialogs and "全部图纸页" in dialogs[-1], f"global frame warning missing expected copy: {dialogs!r}"
+    page.click("#togglePptPreview")
+    assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
+
+
 def assert_elevation_inverted(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="elevation_marker"]').count() == 0:
         return
@@ -1098,6 +1131,7 @@ def main() -> int:
                 if drawing_type == "functional_zoning":
                     assert_fz_regression(page)
                     assert_functional_zone_style_presets(page)
+                    assert_ppt_preview_basics(page)
                     drive_path_interaction(page, drawing_type, "closed_path")
                 if drawing_type != "functional_zoning":
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")

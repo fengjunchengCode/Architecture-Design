@@ -226,6 +226,9 @@
     stylePresets: [],
     stylePresetPath: "",
     stylePresetLoadError: "",
+    deckLayout: null,
+    deckLayoutPath: "",
+    pptPreviewMode: false,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -726,6 +729,8 @@
     renderWorkspaceMeta();
     renderSpecificTools();
     renderAvailability();
+    renderPptControls();
+    renderPptPreview();
   }
 
   function renderWorkspaceMeta() {
@@ -1042,6 +1047,185 @@
     state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
     state.stylePresetPath = data.path || state.stylePresetPath;
     state.stylePresetLoadError = "";
+  }
+
+  async function loadDeckLayout() {
+    const project = projectCode();
+    if (!project) {
+      state.deckLayout = null;
+      state.deckLayoutPath = "";
+      renderPptControls();
+      renderPptPreview();
+      return null;
+    }
+    const params = new URLSearchParams({ project });
+    const data = await api(`/api/drawing/deck-layout?${params}`);
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  async function saveDeckLayout(payload = {}) {
+    const project = projectCode();
+    if (!project) throw new Error("请先打开或创建项目。");
+    const data = await api("/api/drawing/deck-layout/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project, ...payload }),
+    });
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  async function reflowDeckLayout(scope = "current") {
+    const project = projectCode();
+    if (!project) throw new Error("请先打开或创建项目。");
+    const data = await api("/api/drawing/deck-layout/reflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project,
+        scope,
+        drawing_type: drawingType(),
+      }),
+    });
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  function currentPptSlide() {
+    const slides = (state.deckLayout && state.deckLayout.slides) || {};
+    return slides[drawingType()] || null;
+  }
+
+  function boxStyle(box) {
+    const data = box || { x: 0, y: 0, w: 0, h: 0 };
+    return `left:${Number(data.x || 0) * 100}%;top:${Number(data.y || 0) * 100}%;width:${Number(data.w || 0) * 100}%;height:${Number(data.h || 0) * 100}%;`;
+  }
+
+  function supportingImageById(id) {
+    const images = state.supportingImages[drawingType()] || [];
+    return images.find((image) => image.id === id) || null;
+  }
+
+  function setPptStatus(message, ok = true) {
+    const el = $("#pptLayoutStatus");
+    if (!el) return;
+    el.textContent = message;
+    el.style.color = ok ? "var(--muted3)" : "var(--accent-2)";
+  }
+
+  function renderPptControls() {
+    const textarea = $("#pptSlideText");
+    const slide = currentPptSlide();
+    if (textarea && document.activeElement !== textarea) {
+      textarea.value = slide ? slide.text || "" : "";
+    }
+    document.querySelectorAll("[data-ppt-template]").forEach((button) => {
+      button.classList.toggle("active", !!state.deckLayout && button.dataset.pptTemplate === state.deckLayout.template_side);
+    });
+    const toggle = $("#togglePptPreview");
+    if (toggle) {
+      toggle.classList.toggle("primary", state.pptPreviewMode);
+      toggle.setAttribute("aria-pressed", state.pptPreviewMode ? "true" : "false");
+      toggle.textContent = state.pptPreviewMode ? "返回制图" : "PPT预览";
+    }
+    if (!state.deckLayout) {
+      setPptStatus("尚未加载PPT预览。", false);
+      return;
+    }
+    const frame = state.deckLayout.drawing_frame || {};
+    const needs = slide && slide.needs_reflow;
+    const side = state.deckLayout.template_side === "drawing_right" ? "信息左 / 图纸右" : "图纸左 / 信息右";
+    setPptStatus(
+      `${side}；图纸框 x=${Number(frame.x || 0).toFixed(2)} y=${Number(frame.y || 0).toFixed(2)} w=${Number(frame.w || 0).toFixed(2)} h=${Number(frame.h || 0).toFixed(2)}${needs ? "；本页需重新排版" : ""}`,
+      !needs,
+    );
+  }
+
+  function renderPptPreview() {
+    const panel = $("#pptPreviewPanel");
+    const canvas = $("#workbenchCanvas");
+    const zoom = $(".wb3-zoom");
+    const dock = $(".wb3-dock");
+    const slideEl = $("#pptSlidePreview");
+    if (!panel || !canvas || !slideEl) return;
+    panel.hidden = !state.pptPreviewMode;
+    canvas.hidden = state.pptPreviewMode;
+    if (zoom) zoom.hidden = state.pptPreviewMode;
+    if (dock) dock.hidden = state.pptPreviewMode;
+    if (!state.pptPreviewMode) return;
+    if (!state.deckLayout) {
+      slideEl.innerHTML = '<div class="ppt-empty-note">请先打开项目并加载PPT预览。</div>';
+      return;
+    }
+    const slide = currentPptSlide();
+    const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
+    const elements = (slide && slide.elements) || {};
+    const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
+    const drawingMedia = drawingSrc
+      ? `<img src="${escapeHtml(drawingSrc)}" alt="${escapeHtml(drawingConfig().label || "图纸")}">`
+      : '<div class="ppt-empty-note">暂无图纸输出；将先使用底图或等待agent生成SVG。</div>';
+    const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
+    const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
+    const supportHtml = supportBoxes
+      .map((box) => {
+        const image = supportingImageById(box.id);
+        const src = image ? supportingImageUrl(image) : "";
+        return `
+          <div class="ppt-el ppt-supporting-img" style="${boxStyle(box)}">
+            ${src ? `<img src="${escapeHtml(src)}" alt="${escapeHtml(image.caption || image.original_name || "配图")}">` : '<div class="ppt-empty-note">配图</div>'}
+          </div>
+        `;
+      })
+      .join("");
+    slideEl.innerHTML = `
+      ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
+      <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
+        ${drawingMedia}
+        <span class="ppt-frame-label">全局图纸框</span>
+      </div>
+      <div class="ppt-el ppt-info-box ppt-legend-box" data-ppt-element="legend" style="${boxStyle(elements.legend)}">
+        <h4>图例</h4>
+        ${legendHtml}
+      </div>
+      <div class="ppt-el ppt-info-box" data-ppt-element="text" style="${boxStyle(elements.text)}">
+        <h4>${escapeHtml((slide && slide.title) || drawingConfig().label || "图纸说明")}</h4>
+        <p>${escapeHtml((slide && slide.text) || "暂无图纸说明。")}</p>
+      </div>
+      ${supportHtml}
+    `;
+  }
+
+  function confirmPptGlobalChange() {
+    return window.confirm("图纸位置和大小会应用到全部图纸页，并可能影响现有图例、文本、配图排版。是否继续？");
+  }
+
+  async function saveCurrentPptText() {
+    const input = $("#pptSlideText");
+    await saveDeckLayout({
+      drawing_type: drawingType(),
+      slide: { text: input ? input.value : "" },
+    });
+    setStatus("已保存PPT图纸说明。");
+  }
+
+  async function applyPptTemplate(templateSide) {
+    if (!templateSide || !state.deckLayout || templateSide === state.deckLayout.template_side) return;
+    if (!confirmPptGlobalChange()) {
+      renderPptControls();
+      return;
+    }
+    await saveDeckLayout({ template_side: templateSide });
+    setStatus("已更新全局PPT版式，所有页面已标记为需重新排版。");
   }
 
   function presetMatchesContext(preset, specKey, context = {}) {
@@ -1877,6 +2061,7 @@
     const container = $("#zoneLegendPreview");
     if (!container) return;
     container.innerHTML = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
+    if (state.pptPreviewMode) renderPptPreview();
   }
 
   function selectedObject() {
@@ -1968,6 +2153,10 @@
       "#clearDraft",
       "#sendToAgent",
       "#exportDrawing",
+      "#togglePptPreview",
+      "#savePptSlideText",
+      "#pptReflowCurrent",
+      "#pptReflowAll",
       "#canvasZoomOut",
       "#canvasZoomReset",
       "#canvasZoomIn",
@@ -2179,7 +2368,10 @@
     renderObjectList();
     refreshLegendPreview();
     renderAvailability();
-    loadSupportingImages(drawingType()).catch((err) => setStatus(err.message, false));
+    loadDeckLayout().catch((err) => setPptStatus(err.message, false));
+    loadSupportingImages(drawingType())
+      .then(() => renderPptPreview())
+      .catch((err) => setStatus(err.message, false));
     if (hasBaseImage) {
       setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
       requestAnimationFrame(() => renderCanvasLayers("load-drawing-raf"));
@@ -2343,6 +2535,7 @@
     state.supportingImages[type] = Array.isArray(data.images) ? data.images : [];
     state.supportingLoaded[type] = true;
     if (type === drawingType()) renderSpecificTools();
+    if (type === drawingType()) renderPptPreview();
   }
 
   async function uploadSupportingImage() {
@@ -3816,6 +4009,28 @@
 
     $("#workbenchLoad").addEventListener("click", () => loadDrawing().catch((err) => setStatus(err.message, false)));
     $("#workbenchSave").addEventListener("click", () => saveDrawing().catch((err) => setStatus(err.message, false)));
+    $("#togglePptPreview")?.addEventListener("click", () => {
+      state.pptPreviewMode = !state.pptPreviewMode;
+      renderPptControls();
+      renderPptPreview();
+      if (state.pptPreviewMode && !state.deckLayout) {
+        loadDeckLayout().catch((err) => setPptStatus(err.message, false));
+      }
+    });
+    $("#savePptSlideText")?.addEventListener("click", () => saveCurrentPptText().catch((err) => setStatus(err.message, false)));
+    $("#pptReflowCurrent")?.addEventListener("click", () =>
+      reflowDeckLayout("current")
+        .then(() => setStatus("已重新排版当前PPT页。"))
+        .catch((err) => setStatus(err.message, false)),
+    );
+    $("#pptReflowAll")?.addEventListener("click", () =>
+      reflowDeckLayout("all")
+        .then(() => setStatus("已重新排版全部PPT页。"))
+        .catch((err) => setStatus(err.message, false)),
+    );
+    document.querySelectorAll("[data-ppt-template]").forEach((button) => {
+      button.addEventListener("click", () => applyPptTemplate(button.dataset.pptTemplate).catch((err) => setStatus(err.message, false)));
+    });
     $("#uploadBaseImage").addEventListener("click", () => uploadBaseImage().catch((err) => setStatus(err.message, false)));
     $("#sendToAgent").addEventListener("click", () => sendToAgent().catch((err) => setTaskStatus(err.message, false)));
     $("#exportDrawing").addEventListener("click", () => exportDrawing().catch((err) => setStatus(err.message, false)));
