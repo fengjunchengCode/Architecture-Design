@@ -428,7 +428,11 @@
 
   function draftGeometryFor(objectType, toolId = normalizeActiveTool()) {
     const key = draftKey(toolId, objectType);
-    const defaults = { radius: 0.035, size: 0.055, rotation_deg: 0 };
+    const defaults = {
+      radius: 0.035,
+      size: 0.055,
+      rotation_deg: toolId === "elevation_marker" || objectType === "elevation_marker" ? 180 : 0,
+    };
     return {
       ...defaults,
       ...(state.lastGeometry[objectType] || {}),
@@ -1575,6 +1579,18 @@
     const stroke = style.stroke_color || style.fill_color || "#333333";
     const strokeWidth = Math.max(1, Math.min(4, Math.round((Number(style.stroke_width) || 0.003) * 320)));
     const dashArrayValue = style.stroke_style === "dashed" || style.border_style === "dashed" ? legendDashArray(style) : "";
+    if (group.type === "elevation_marker") {
+      const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent";
+      return `
+        <polygon points="4,2 20,2 12,13"
+          fill="${fillVisible ? style.fill_color || "none" : "none"}"
+          fill-opacity="${style.fill_mode === "translucent" ? String(style.fill_opacity ?? 0.42) : fillVisible ? "1" : "0"}"
+          stroke="${style.border_style === "none" ? "transparent" : stroke}"
+          stroke-width="${style.border_style === "none" ? 0 : strokeWidth}"
+          ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
+        />
+        <rect x="14" y="1" width="9" height="5" rx="0" fill="#FFFFFF" fill-opacity="${(style.label_box && style.label_box.opacity) ?? 0.55}" />`;
+    }
     if (kind === "circle") {
       const fillVisible = style.fill_mode === "solid" || style.fill_mode === "translucent";
       return `

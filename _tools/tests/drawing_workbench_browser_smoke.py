@@ -791,6 +791,38 @@ def assert_legend_by_label(page, drawing_type: str) -> None:
     assert len(split) == 2, f"{drawing_type}: changed style should split legend into two rows, got {split}"
 
 
+def assert_elevation_inverted(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="elevation_marker"]').count() == 0:
+        return
+    label = "+12.30"
+    page.click('[data-tool-id="elevation_marker"]')
+    page.fill("#objectLabel", label)
+    page.eval_on_selector(
+        "#styleStrokeColor",
+        """(el) => {
+            el.value = "#8B2CF5";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    created = page.evaluate(
+        "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+        {"tool": "elevation_marker", "pts": tool_points("elevation_marker")},
+    )
+    geo = created.get("geometry") or {}
+    assert int(round(float(geo.get("rotation_deg", 0)))) == 180, (
+        f"{drawing_type}: elevation default rotation should be 180, got {geo.get('rotation_deg')}"
+    )
+    obj_id = created["id"]
+    rect_box = page.locator(f"#sketchOverlay rect[data-object-id='{obj_id}']").first.bounding_box()
+    marker_box = page.locator(f"#sketchOverlay polygon[data-object-id='{obj_id}']").first.bounding_box()
+    assert rect_box and marker_box and rect_box["y"] + rect_box["height"] <= marker_box["y"], (
+        f"{drawing_type}: elevation label box should sit above inverted triangle; rect={rect_box}, marker={marker_box}"
+    )
+    item = page.locator(".zone-legend-item", has_text=label).last
+    assert item.locator("svg polygon").count() >= 1, f"{drawing_type}: elevation legend missing triangle"
+    assert item.locator("svg rect").count() >= 1, f"{drawing_type}: elevation legend missing label box"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -915,6 +947,10 @@ def main() -> int:
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":
                     assert_labelbox_white_draggable(page, drawing_type)
+                    after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+                    assert_no_bad_kinds(after_objects, drawing_type)
+                if drawing_type == "vertical_analysis":
+                    assert_elevation_inverted(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
 
