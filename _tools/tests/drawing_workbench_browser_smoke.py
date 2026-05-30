@@ -576,6 +576,34 @@ def assert_line_legend_straight(page, drawing_type: str) -> None:
     assert not curved_paths, f"{drawing_type}: line legend swatch still uses curved path(s): {curved_paths}"
 
 
+def assert_non_arrow_line_presets_scoped(page, drawing_type: str) -> None:
+    if drawing_type not in {"planting_design", "landscape_analysis"}:
+        return
+    if page.locator('[data-tool-id="open_path"]').count() == 0:
+        return
+    page.click('[data-tool-id="open_path"]')
+    options = page.eval_on_selector_all("#objectType option", "(nodes) => nodes.map((node) => node.value)")
+    forbidden_preset_ids = [
+        "vehicle-orange-solid",
+        "pedestrian-cobalt-solid",
+        "underground-blue-dashed",
+        "fire-red-line",
+        "runoff-deep-blue",
+    ]
+    for object_type in options or [""]:
+        if object_type:
+            page.select_option("#objectType", object_type)
+        assert page.locator("#styleStartArrow").count() == 0, f"{drawing_type}/{object_type}: start arrow control should be hidden"
+        assert page.locator("#styleEndArrow").count() == 0, f"{drawing_type}/{object_type}: end arrow control should be hidden"
+        for preset_id in forbidden_preset_ids:
+            assert page.locator(f'[data-style-preset-apply="{preset_id}"]').count() == 0, (
+                f"{drawing_type}/{object_type}: arrow preset {preset_id} leaked into non-arrow line tool"
+            )
+        assert page.locator("[data-style-preset-swatch] polygon").count() == 0, (
+            f"{drawing_type}/{object_type}: preset preview should not draw arrowhead polygons"
+        )
+
+
 def assert_dash_scale(page, drawing_type: str) -> None:
     page.click('[data-tool-id="open_path"]')
     page.click('[data-style-segment="stroke_style"][data-style-value="dashed"]')
@@ -1126,11 +1154,14 @@ def main() -> int:
                 )
                 assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "planting_design":
+                    assert_non_arrow_line_presets_scoped(page, drawing_type)
                     assert_dash_scale(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                     assert_legend_non_fz(page, drawing_type)
                     assert_line_legend_straight(page, drawing_type)
+                if drawing_type == "landscape_analysis":
+                    assert_non_arrow_line_presets_scoped(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")

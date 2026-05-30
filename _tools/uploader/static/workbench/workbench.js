@@ -436,11 +436,11 @@
     const key = draftKey(toolId, objectType);
     const selected = selectedObject();
     if (selected && selected.type === objectType) {
-      return Model.cloneStyle(Model.normalizeStyleHints(selected.style_hints, objectType));
+      return sanitizeArrowStyle(Model.normalizeStyleHints(selected.style_hints, objectType), toolId, objectType);
     }
-    if (state.styleDrafts[key]) return Model.cloneStyle(state.styleDrafts[key]);
-    if (state.lastStyles[objectType]) return Model.cloneStyle(state.lastStyles[objectType]);
-    return Model.defaultStyleForObjectType(objectType);
+    if (state.styleDrafts[key]) return sanitizeArrowStyle(state.styleDrafts[key], toolId, objectType);
+    if (state.lastStyles[objectType]) return sanitizeArrowStyle(state.lastStyles[objectType], toolId, objectType);
+    return sanitizeArrowStyle(Model.defaultStyleForObjectType(objectType), toolId, objectType);
   }
 
   function draftGeometryFor(objectType, toolId = normalizeActiveTool()) {
@@ -867,11 +867,25 @@
   }
 
   function shouldShowArrowControls(toolId, objectType) {
-    return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+    return canUseArrowStyle(toolId, objectType);
   }
 
   function shouldRenderArrowHeads(obj) {
     return obj && (obj.type === "turning_radius" || obj.type === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(obj.type));
+  }
+
+  function canUseArrowStyle(toolId, objectType) {
+    return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+  }
+
+  function sanitizeArrowStyle(style, toolId, objectType) {
+    const next = Model.cloneStyle(style || {});
+    if (!canUseArrowStyle(toolId, objectType)) {
+      next.start_arrow = false;
+      next.end_arrow = false;
+      next.arrow_size = null;
+    }
+    return next;
   }
 
   function currentToolSpec() {
@@ -1037,10 +1051,6 @@
     const objectType = context.objectType || "";
     if (specKey === "functional_zone") return kind === "functional_zone" || kind === "all";
     if (!kind || kind === "all" || kind === specKey || kind === toolId || kind === objectType) return true;
-    if (toolId === "open_path" && ["vehicle_flow", "pedestrian_flow", "underground_flow", "fire_route_line", "runoff_line", "ecological_ditch_line"].includes(kind)) return true;
-    if (toolId === "closed_path" && ["planting_zone", "facility_zone", "sponge_zone", "accessible_facility_zone", "civil_defense_zone"].includes(kind)) return true;
-    if (toolId === "circle" && ["landscape_node", "trash_collection_point", "accessible_point"].includes(kind)) return true;
-    if (toolId === "triangle" && kind === "entrance_marker") return true;
     return false;
   }
 
@@ -1055,8 +1065,12 @@
 
   function renderStylePresetSwatch(preset, specKey, context) {
     const geometry = presetGeometryFor(specKey, context);
-    const objectType = preset.kind || context.objectType || specKey;
-    const style = Model.normalizeStyleHints({ ...(preset.hints || {}) }, objectType);
+    const objectType = context.objectType || preset.objectType || preset.kind || specKey;
+    const style = sanitizeArrowStyle(
+      Model.normalizeStyleHints({ ...(preset.hints || {}) }, objectType),
+      context.toolId || specKey,
+      objectType,
+    );
     return `
       <svg data-style-preset-swatch viewBox="0 0 24 16" aria-hidden="true">
         ${renderGenericLegendSwatch({
@@ -1575,7 +1589,7 @@
   function updateActiveStyle(toolId, objectType, patch) {
     const key = draftKey(toolId, objectType);
     const current = draftStyleFor(objectType, toolId);
-    const next = Model.normalizeStyleHints({ ...current, ...patch }, objectType);
+    const next = sanitizeArrowStyle(Model.normalizeStyleHints({ ...current, ...patch }, objectType), toolId, objectType);
     state.styleDrafts[key] = Model.cloneStyle(next);
     state.lastStyles[objectType] = Model.cloneStyle(next);
     const selected = selectedObject();
@@ -1743,7 +1757,11 @@
       .filter((obj) => obj.type !== "functional_zone")
       .map((obj) => ({
         ...obj,
-        style_hints: Model.normalizeStyleHints(obj.style_hints || {}, obj.type),
+        style_hints: sanitizeArrowStyle(
+          Model.normalizeStyleHints(obj.style_hints || {}, obj.type),
+          obj.type,
+          obj.type,
+        ),
       }))
       .filter((obj) => {
         const style = obj.style_hints || {};
@@ -1821,11 +1839,12 @@
           ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
-    const arrow = style.end_arrow
+    const showEndArrow = style.end_arrow && canUseArrowStyle(group.type, group.type);
+    const arrow = showEndArrow
       ? `<polygon points="21,8 17,5.5 17,10.5" fill="${stroke}"></polygon>`
       : "";
     return `
-      <line x1="3" y1="8" x2="${style.end_arrow ? 18 : 21}" y2="8"
+      <line x1="3" y1="8" x2="${showEndArrow ? 18 : 21}" y2="8"
         stroke="${stroke}"
         stroke-width="${strokeWidth}"
         stroke-linecap="${style.stroke_style === "dashed" ? "butt" : "round"}"
