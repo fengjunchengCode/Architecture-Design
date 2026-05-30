@@ -411,6 +411,10 @@ def assert_triangle_rotate_no_scale(page, drawing_type: str) -> None:
     ).count()
     assert size_handles == 3, f"{drawing_type}: triangle should expose 3 corner resize handles, got {size_handles}"
     assert rotate_handles == 1, f"{drawing_type}: triangle should expose 1 floating rotate handle, got {rotate_handles}"
+    rotate_icon = page.locator(
+        f".geometry-rotate-icon[data-vertex-object-id='{obj_id}'][data-vertex-role='triangle-rotate'] path"
+    ).count()
+    assert rotate_icon >= 1, f"{drawing_type}: triangle rotate handle should render a circular-arrow icon"
     drag_locator(page, page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='triangle-rotate']").first)
     changed = page.evaluate("window.DrawingWorkbenchTest.getObjects().at(-1)")
     geometry_after = changed.get("geometry") or {}

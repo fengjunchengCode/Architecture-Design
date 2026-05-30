@@ -2885,10 +2885,9 @@
         });
         const rotatePoint = extendScreenPoint([cx, cy], pts[0]);
         shape += `<line class="geometry-rotate-stem" x1="${pts[0][0]}" y1="${pts[0][1]}" x2="${rotatePoint[0]}" y2="${rotatePoint[1]}" stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}" pointer-events="none"></line>`;
-        shape += renderHandleSvg(
+        shape += renderRotateHandle(
           rotatePoint[0],
           rotatePoint[1],
-          "#fff",
           stroke,
           `data-vertex-object-id="${escapeHtml(obj.id)}" data-vertex-index="rotate" data-vertex-role="triangle-rotate"`,
         );
@@ -3082,6 +3081,34 @@
   function renderHandleSvg(x, y, fill, stroke, attrs = "") {
     const strokeAttr = stroke === "none" ? 'stroke="none"' : `stroke="${stroke}" stroke-width="${getHandleStrokeWidth()}"`;
     return `<ellipse class="geometry-vertex-handle" ${attrs} cx="${x}" cy="${y}" rx="${getHandleRadiusX()}" ry="${getHandleRadiusY()}" fill="${fill}" ${strokeAttr}></ellipse>`;
+  }
+
+  function renderRotateHandle(x, y, stroke, attrs = "") {
+    const outerRx = getHandleRadiusX(9);
+    const outerRy = getHandleRadiusY(9);
+    const arcRx = getHandleRadiusX(4.5);
+    const arcRy = getHandleRadiusY(4.5);
+    const strokeWidth = getHandleStrokeWidth();
+    const startRad = (-145 * Math.PI) / 180;
+    const endRad = (65 * Math.PI) / 180;
+    const start = [x + Math.cos(startRad) * arcRx, y + Math.sin(startRad) * arcRy];
+    const end = [x + Math.cos(endRad) * arcRx, y + Math.sin(endRad) * arcRy];
+    const ux = -Math.sin(endRad);
+    const uy = Math.cos(endRad);
+    const nx = -uy;
+    const ny = ux;
+    const arrowX = getHandleRadiusX(3.2);
+    const arrowY = getHandleRadiusY(3.2);
+    const base = [end[0] - ux * arrowX, end[1] - uy * arrowY];
+    const p2 = [base[0] + nx * arrowX * 0.65, base[1] + ny * arrowY * 0.65];
+    const p3 = [base[0] - nx * arrowX * 0.65, base[1] - ny * arrowY * 0.65];
+    return `
+      <g class="geometry-vertex-handle geometry-rotate-icon" ${attrs}>
+        <ellipse cx="${x}" cy="${y}" rx="${outerRx}" ry="${outerRy}" fill="#fff" stroke="${stroke}" stroke-width="${strokeWidth}" pointer-events="all"></ellipse>
+        <path class="geometry-rotate-arrow" d="M ${start[0]} ${start[1]} A ${arcRx} ${arcRy} 0 1 1 ${end[0]} ${end[1]}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" pointer-events="none"></path>
+        <polygon points="${[end, p2, p3].map((p) => p.join(",")).join(" ")}" fill="${stroke}" pointer-events="none"></polygon>
+      </g>
+    `;
   }
 
   function renderCloseHandleSvg(x, y, fill) {
