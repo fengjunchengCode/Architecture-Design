@@ -684,7 +684,10 @@ def assert_labelbox_white_draggable(page, drawing_type: str) -> None:
     color = (created.get("style_hints") or {}).get("stroke_color", "").upper()
     rect = page.locator(f"#sketchOverlay rect[data-object-id='{obj_id}']").first
     assert rect.get_attribute("fill") == "#FFFFFF", f"{drawing_type}: label_box fill is not white"
-    assert float(rect.get_attribute("fill-opacity") or 0) >= 0.8, f"{drawing_type}: label_box opacity too low"
+    assert rect.get_attribute("stroke") in (None, ""), f"{drawing_type}: label_box should not have a border"
+    assert (rect.get_attribute("rx") or "0") in ("0", "0.0"), f"{drawing_type}: label_box should have square corners"
+    opacity = float(rect.get_attribute("fill-opacity") or 0)
+    assert 0.5 <= opacity <= 0.6, f"{drawing_type}: label_box opacity should be about 0.55, got {opacity}"
     text_fill = page.locator("#sketchOverlay text", has_text="R=9M").last.get_attribute("fill")
     assert (text_fill or "").upper() == color, f"{drawing_type}: label_box text color {text_fill} != stroke {color}"
     handle = page.locator(f".geometry-vertex-handle[data-vertex-object-id='{obj_id}'][data-vertex-role='labelbox']").first
