@@ -67,6 +67,12 @@ BUCKETS = {
 CAD_SEMANTICS_REL = Path("05_output/cad/control_point_candidate_semantics.json")
 CAD_CANDIDATES_REL = Path("05_output/cad/control_point_candidates.json")
 CONTROL_POINTS_REL = Path("05_output/amap/control_points.json")
+STYLE_PRESETS_FILE = Path(
+    os.environ.get(
+        "DRAWING_STYLE_PRESETS_PATH",
+        str(REPO_ROOT / "_tools" / "drawing_workbench" / "style_presets.json"),
+    )
+)
 
 CONTROL_FEATURE_TYPES = {
     "redline_corner",
@@ -273,6 +279,69 @@ def short_candidate_set_id(value: object) -> str:
     return text[:16] or "unknown"
 
 
+def style_presets_path() -> Path:
+    path = STYLE_PRESETS_FILE.resolve()
+    repo = REPO_ROOT.resolve()
+    if path != repo and repo not in path.parents:
+        raise ValueError("style preset path must stay inside repository")
+    return path
+
+
+def normalize_style_preset(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("style preset must be an object")
+    preset_id = str(raw.get("id") or "").strip()
+    name = str(raw.get("name") or "").strip()
+    kind = str(raw.get("kind") or "").strip()
+    hints = raw.get("hints")
+    if not preset_id:
+        preset_id = f"preset-{int(time.time() * 1000)}"
+    if not re.match(r"^[A-Za-z0-9_.:-]+$", preset_id):
+        raise ValueError("style preset id contains unsupported characters")
+    if not name:
+        raise ValueError("style preset name is required")
+    if kind not in OBJECT_TYPE_REGISTRY:
+        raise ValueError(f"style preset kind must be one of {sorted(OBJECT_TYPE_REGISTRY)}")
+    if not isinstance(hints, dict):
+        raise ValueError("style preset hints must be an object")
+    normalized = {
+        "id": preset_id,
+        "name": name,
+        "kind": kind,
+        "hints": hints,
+    }
+    if raw.get("created_at"):
+        normalized["created_at"] = str(raw["created_at"])
+    if raw.get("updated_at"):
+        normalized["updated_at"] = str(raw["updated_at"])
+    return normalized
+
+
+def read_style_preset_library() -> dict:
+    path = style_presets_path()
+    if not path.exists():
+        return {"schema_version": "1.0", "updated_at": "", "presets": []}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    presets = [normalize_style_preset(item) for item in data.get("presets", [])]
+    return {
+        "schema_version": str(data.get("schema_version") or "1.0"),
+        "updated_at": str(data.get("updated_at") or ""),
+        "presets": presets,
+    }
+
+
+def write_style_preset_library(presets: list[dict]) -> dict:
+    path = style_presets_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    library = {
+        "schema_version": "1.0",
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "presets": [normalize_style_preset(item) for item in presets],
+    }
+    path.write_text(json.dumps(library, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return library
+
+
 class UploaderHandler(BaseHTTPRequestHandler):
     server_version = "ArchitectureUploader/0.1"
 
@@ -295,6 +364,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_cad_preview(parsed.query, run=False)
             elif parsed.path == "/api/drawing/registry":
                 self.handle_drawing_registry()
+            elif parsed.path == "/api/drawing/style-presets":
+                self.handle_style_presets_load()
             elif parsed.path == "/api/drawing/load":
                 self.handle_drawing_load(parsed.query)
             elif parsed.path == "/api/drawing/supporting/list":
@@ -343,6 +414,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_drawing_task_pack()
             elif parsed.path == "/api/drawing/export":
                 self.handle_drawing_export(parsed.query)
+            elif parsed.path == "/api/drawing/style-presets/save":
+                self.handle_style_presets_save()
+            elif parsed.path == "/api/drawing/style-presets/delete":
+                self.handle_style_presets_delete()
+            elif parsed.path == "/api/drawing/style-presets/import":
+                self.handle_style_presets_import()
             elif parsed.path == "/api/style/save":
                 self.handle_style_save()
             else:
@@ -466,6 +543,49 @@ class UploaderHandler(BaseHTTPRequestHandler):
             "drawings": drawings,
             "objects": objects,
         })
+
+    def handle_style_presets_load(self) -> None:
+        library = read_style_preset_library()
+        rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
+        self.send_json({"ok": True, "path": rel, **library})
+
+    def handle_style_presets_save(self) -> None:
+        payload = self.read_json()
+        preset = normalize_style_preset(payload.get("preset") or payload)
+        library = read_style_preset_library()
+        presets = [item for item in library["presets"] if item["id"] != preset["id"]]
+        presets.append(preset)
+        next_library = write_style_preset_library(presets)
+        rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
+        self.send_json({"ok": True, "path": rel, **next_library})
+
+    def handle_style_presets_delete(self) -> None:
+        payload = self.read_json()
+        preset_id = str(payload.get("id") or "").strip()
+        if not preset_id:
+            raise ValueError("style preset id is required")
+        library = read_style_preset_library()
+        presets = [item for item in library["presets"] if item["id"] != preset_id]
+        if len(presets) == len(library["presets"]):
+            raise ValueError(f"style preset not found: {preset_id}")
+        next_library = write_style_preset_library(presets)
+        rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
+        self.send_json({"ok": True, "path": rel, **next_library})
+
+    def handle_style_presets_import(self) -> None:
+        payload = self.read_json()
+        source = payload.get("library") or payload
+        presets_raw = source.get("presets") if isinstance(source, dict) else None
+        if not isinstance(presets_raw, list):
+            raise ValueError("import payload must contain presets array")
+        imported = [normalize_style_preset(item) for item in presets_raw]
+        library = read_style_preset_library()
+        merged = {item["id"]: item for item in library["presets"]}
+        for item in imported:
+            merged[item["id"]] = item
+        next_library = write_style_preset_library(list(merged.values()))
+        rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
+        self.send_json({"ok": True, "path": rel, "imported": len(imported), **next_library})
 
     def handle_supporting_list(self, query: str) -> None:
         params = parse_qs(query)

@@ -186,92 +186,6 @@
       fontSize: true,
     },
   };
-  const BUILTIN_STYLE_PRESETS = [
-    {
-      id: "builtin-vehicle-orange",
-      name: "车行-橙红实线",
-      kind: "vehicle_flow",
-      hints: { stroke_color: "#E8551E", stroke_width: 0.007, stroke_style: "solid", start_arrow: false, end_arrow: true },
-    },
-    {
-      id: "builtin-pedestrian-blue",
-      name: "人行-钴蓝实线",
-      kind: "pedestrian_flow",
-      hints: { stroke_color: "#1F6FE0", stroke_width: 0.005, stroke_style: "solid", start_arrow: false, end_arrow: true },
-    },
-    {
-      id: "builtin-underground-blue-dashed",
-      name: "地下-蓝虚线",
-      kind: "underground_flow",
-      hints: { stroke_color: "#1F6FE0", stroke_width: 0.004, stroke_style: "dashed", dash_scale: 1.2, end_arrow: true },
-    },
-    {
-      id: "builtin-fire-red",
-      name: "消防-正红线",
-      kind: "fire_route_line",
-      hints: { stroke_color: "#E11D1D", stroke_width: 0.008, stroke_style: "solid", end_arrow: true },
-    },
-    {
-      id: "builtin-turning-teal-box",
-      name: "转弯半径-深青白框",
-      kind: "turning_radius",
-      hints: { stroke_color: "#0E9594", stroke_width: 0.004, end_arrow: true, label_box: { enabled: true, text: "R=9M", opacity: 0.55 } },
-    },
-    {
-      id: "builtin-landscape-node-orange",
-      name: "景观节点-暖橙半透圆",
-      kind: "landscape_node",
-      hints: { fill_mode: "translucent", fill_color: "#FFFFFF", fill_opacity: 0.42, stroke_color: "#F08A24", border_style: "double", stroke_width: 0.004 },
-    },
-    {
-      id: "builtin-axis-red-dashed",
-      name: "主轴-红虚线",
-      kind: "landscape_axis_primary",
-      hints: { stroke_color: "#E11D1D", stroke_width: 0.006, stroke_style: "dashed", dash_scale: 1.1 },
-    },
-    {
-      id: "builtin-axis-purple-dashed",
-      name: "次轴-紫虚线",
-      kind: "landscape_axis_secondary",
-      hints: { stroke_color: "#7B2FF0", stroke_width: 0.004, stroke_style: "dashed", dash_scale: 1.1 },
-    },
-    {
-      id: "builtin-entrance-red-solid",
-      name: "出入口-朱红实心三角",
-      kind: "entrance_marker",
-      hints: { fill_mode: "solid", fill_color: "#E03020", stroke_color: "#E03020", border_style: "solid", stroke_width: 0.003 },
-    },
-    {
-      id: "builtin-elevation-purple",
-      name: "标高-紫倒三角",
-      kind: "elevation_marker",
-      hints: { fill_mode: "solid", fill_color: "#7B2FF0", stroke_color: "#7B2FF0", border_style: "solid", label_box: { enabled: true, text: "", opacity: 0.55 } },
-    },
-    {
-      id: "builtin-slope-teal",
-      name: "坡度-深青箭头",
-      kind: "slope_arrow",
-      hints: { stroke_color: "#0E7C86", stroke_width: 0.005, end_arrow: true, inline_text: { enabled: true, text: "0.3%" } },
-    },
-    {
-      id: "builtin-planting-green",
-      name: "种植区-饱和绿半透",
-      kind: "planting_zone",
-      hints: { fill_mode: "translucent", fill_color: "#7CB342", fill_opacity: 0.42, stroke_color: "#2E7D32", border_style: "solid", stroke_width: 0.003 },
-    },
-    {
-      id: "builtin-runoff-blue",
-      name: "径流-深蓝",
-      kind: "runoff_line",
-      hints: { stroke_color: "#1A4FB3", stroke_width: 0.005, stroke_style: "solid", end_arrow: true },
-    },
-    {
-      id: "builtin-ditch-teal-dashed",
-      name: "生态沟-青虚线",
-      kind: "ecological_ditch_line",
-      hints: { stroke_color: "#0E9594", stroke_width: 0.004, stroke_style: "dashed", dash_scale: 1.1 },
-    },
-  ];
   const FILL_LABELS = { none: "无", translucent: "半透明", solid: "实心", hatch: "斜线" };
   const BORDER_LABELS = { none: "无边框", solid: "实线", dashed: "虚线", double: "双实线" };
   const STROKE_STYLE_LABELS = { solid: "实线", dashed: "虚线" };
@@ -309,6 +223,8 @@
     vertexDrag: null,
     moveDrag: null,
     clipboard: null,
+    stylePresets: [],
+    stylePresetPath: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -1075,30 +991,56 @@
     `;
   }
 
-  function stylePresetStorageKey() {
-    return `drawing-style-presets:${projectCode() || "default"}`;
-  }
-
-  function loadUserStylePresets() {
+  async function loadStylePresets() {
     try {
-      const raw = window.localStorage.getItem(stylePresetStorageKey());
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((item) => item && item.id && item.name && item.hints) : [];
+      const data = await api("/api/drawing/style-presets");
+      state.stylePresets = Array.isArray(data.presets)
+        ? data.presets.filter((item) => item && item.id && item.name && item.kind && item.hints)
+        : [];
+      state.stylePresetPath = data.path || "";
     } catch (err) {
       console.warn("[workbench] style preset load failed", err);
-      return [];
+      state.stylePresets = [];
+      state.stylePresetPath = "";
     }
   }
 
-  function saveUserStylePresets(presets) {
-    window.localStorage.setItem(stylePresetStorageKey(), JSON.stringify(presets));
+  async function saveStylePresetToLibrary(preset) {
+    const data = await api("/api/drawing/style-presets/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preset }),
+    });
+    state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
+    state.stylePresetPath = data.path || state.stylePresetPath;
+  }
+
+  async function deleteStylePresetFromLibrary(id) {
+    const data = await api("/api/drawing/style-presets/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
+    state.stylePresetPath = data.path || state.stylePresetPath;
+  }
+
+  async function importStylePresetLibrary(library) {
+    const data = await api("/api/drawing/style-presets/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ library }),
+    });
+    state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
+    state.stylePresetPath = data.path || state.stylePresetPath;
   }
 
   function presetMatchesContext(preset, specKey, context = {}) {
-    if (!preset || specKey === "functional_zone") return false;
+    if (!preset) return false;
     const kind = preset.kind || "";
     const toolId = context.toolId || specKey;
     const objectType = context.objectType || "";
+    if (specKey === "functional_zone") return kind === "functional_zone" || kind === "all";
     if (!kind || kind === "all" || kind === specKey || kind === toolId || kind === objectType) return true;
     if (toolId === "open_path" && ["vehicle_flow", "pedestrian_flow", "underground_flow", "fire_route_line", "runoff_line", "ecological_ditch_line"].includes(kind)) return true;
     if (toolId === "closed_path" && ["planting_zone", "facility_zone", "sponge_zone", "accessible_facility_zone", "civil_defense_zone"].includes(kind)) return true;
@@ -1133,17 +1075,12 @@
   }
 
   function allStylePresetsFor(specKey, context = {}) {
-    const builtins = BUILTIN_STYLE_PRESETS
+    return (state.stylePresets || [])
       .filter((preset) => presetMatchesContext(preset, specKey, context))
-      .map((preset) => ({ ...preset, source: "builtin" }));
-    const users = loadUserStylePresets()
-      .filter((preset) => presetMatchesContext(preset, specKey, context))
-      .map((preset) => ({ ...preset, source: "user" }));
-    return [...builtins, ...users];
+      .map((preset) => ({ ...preset, source: "repo" }));
   }
 
   function renderStylePresetControls(specKey, style, context = {}) {
-    if (specKey === "functional_zone") return "";
     const presets = allStylePresetsFor(specKey, context);
     return `
       <div class="style-section-title">预设</div>
@@ -1165,11 +1102,7 @@
                           ${renderStylePresetSwatch(preset, specKey, context)}
                           <span>${escapeHtml(preset.name)}</span>
                         </button>
-                        ${
-                          preset.source === "user"
-                            ? `<button type="button" class="style-preset-delete" data-style-preset-delete="${escapeHtml(preset.id)}" aria-label="删除 ${escapeHtml(preset.name)}">删除</button>`
-                            : ""
-                        }
+                        <button type="button" class="style-preset-delete" data-style-preset-delete="${escapeHtml(preset.id)}" aria-label="删除 ${escapeHtml(preset.name)}">删除</button>
                       </div>
                     `,
                   )
@@ -1180,6 +1113,9 @@
         <div class="style-preset-save">
           <input id="stylePresetName" placeholder="另存当前样式">
           <button type="button" id="saveStylePreset">保存</button>
+        </div>
+        <div class="style-preset-import">
+          <input id="stylePresetImportFile" type="file" accept=".json,application/json">
         </div>
       </div>
     `;
@@ -1503,17 +1439,21 @@
       });
     });
     document.querySelectorAll("[data-style-preset-delete]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const id = button.dataset.stylePresetDelete;
-        const next = loadUserStylePresets().filter((preset) => preset.id !== id);
-        saveUserStylePresets(next);
-        renderSpecificTools();
-        setStatus("已删除样式预设。");
+        if (!id) return;
+        try {
+          await deleteStylePresetFromLibrary(id);
+          renderSpecificTools();
+          setStatus("已删除样式预设。");
+        } catch (err) {
+          setStatus(err.message || "删除样式预设失败。", false);
+        }
       });
     });
     const savePresetButton = $("#saveStylePreset");
     if (savePresetButton) {
-      savePresetButton.addEventListener("click", () => {
+      savePresetButton.addEventListener("click", async () => {
         const input = $("#stylePresetName");
         const name = ((input && input.value) || "").trim();
         if (!name) {
@@ -1521,9 +1461,8 @@
           return;
         }
         const current = currentStyleFor(specKey, { toolId, objectType, functional: isFunctional });
-        const presets = loadUserStylePresets();
         const preset = {
-          id: `user-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          id: `repo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
           name,
           kind: objectType || toolId || specKey,
           toolId,
@@ -1531,10 +1470,30 @@
           hints: Model.cloneStyle(current),
           created_at: new Date().toISOString(),
         };
-        presets.push(preset);
-        saveUserStylePresets(presets);
-        renderSpecificTools();
-        setStatus(`已保存预设：${name}`);
+        try {
+          await saveStylePresetToLibrary(preset);
+          renderSpecificTools();
+          setStatus(`已保存预设到 ${state.stylePresetPath || "JSON"}：${name}`);
+        } catch (err) {
+          setStatus(err.message || "保存样式预设失败。", false);
+        }
+      });
+    }
+    const importPresetFile = $("#stylePresetImportFile");
+    if (importPresetFile) {
+      importPresetFile.addEventListener("change", async () => {
+        const file = importPresetFile.files && importPresetFile.files[0];
+        if (!file) return;
+        try {
+          const library = JSON.parse(await file.text());
+          await importStylePresetLibrary(library);
+          renderSpecificTools();
+          setStatus(`已导入样式预设到 ${state.stylePresetPath || "JSON"}。`);
+        } catch (err) {
+          setStatus(err.message || "导入样式预设失败。", false);
+        } finally {
+          importPresetFile.value = "";
+        }
       });
     }
     document.querySelectorAll("[data-style-segment]").forEach((button) => {
@@ -3851,8 +3810,9 @@
 
   async function bind() {
     if (!$("#drawingWorkbench")) return;
-    // Load registry first, then render
+    // Load registry and shared style presets first, then render.
     await loadRegistry();
+    await loadStylePresets();
     state.currentDrawingType = initialDrawingType();
     renderDrawingTabs();
     renderDrawingWorkspace();

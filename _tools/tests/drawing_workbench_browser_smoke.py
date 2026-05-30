@@ -901,12 +901,12 @@ def assert_move_and_paste(page, drawing_type: str) -> None:
 def assert_style_presets(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="open_path"]').count() == 0:
         return
-    page.evaluate("() => Object.keys(localStorage).filter((key) => key.includes('drawing-style-presets')).forEach((key) => localStorage.removeItem(key))")
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-presets='true']").count() == 1, f"{drawing_type}: style presets panel missing"
-    assert page.locator("[data-style-preset-apply][data-preset-source='builtin']").count() >= 1, (
-        f"{drawing_type}: built-in presets missing"
+    assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
+        f"{drawing_type}: repo presets missing"
     )
+    assert page.locator("[data-style-preset-delete]").count() >= 1, f"{drawing_type}: repo presets should be deletable"
     assert page.locator("[data-style-preset-swatch]").count() >= 1, f"{drawing_type}: preset swatches missing"
     page.eval_on_selector(
         "#styleStrokeColor",
@@ -917,11 +917,15 @@ def assert_style_presets(page, drawing_type: str) -> None:
     )
     page.fill("#stylePresetName", "Smoke preset")
     page.click("#saveStylePreset")
-    page.wait_for_timeout(100)
-    stored = page.evaluate(
-        "() => Object.entries(localStorage).find(([key]) => key.includes('drawing-style-presets'))?.[1] || ''"
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('[data-style-preset-apply]')].some((node) => node.dataset.presetName === 'Smoke preset')",
+        timeout=10000,
     )
-    assert "Smoke preset" in stored and "#123456" in stored, f"{drawing_type}: user preset not saved to localStorage: {stored}"
+    stored = page.evaluate(
+        "() => fetch('/api/drawing/style-presets').then((r) => r.json())"
+    )
+    encoded = json.dumps(stored, ensure_ascii=False)
+    assert "Smoke preset" in encoded and "#123456" in encoded, f"{drawing_type}: preset not saved to repo JSON: {stored}"
     page.eval_on_selector(
         "#styleStrokeColor",
         """(el) => {
@@ -937,12 +941,43 @@ def assert_style_presets(page, drawing_type: str) -> None:
     page.click(f'[data-drawing-type="{drawing_type}"]')
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-preset-apply][data-preset-name='Smoke preset']").count() == 1, (
-        f"{drawing_type}: user preset did not reload from localStorage"
+        f"{drawing_type}: user preset did not reload from repo JSON"
     )
     page.evaluate(
         "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
         {"tool": "open_path", "pts": [[0.2, 0.28], [0.5, 0.3]]},
     )
+
+
+def assert_functional_zone_style_presets(page) -> None:
+    assert page.locator("[data-style-presets='true']").count() == 1, "functional_zoning: style presets panel missing"
+    assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
+        "functional_zoning: repo presets missing"
+    )
+    assert page.locator("[data-style-preset-delete]").count() >= 1, "functional_zoning: repo presets should be deletable"
+    page.eval_on_selector(
+        "#styleFillColor",
+        """(el) => {
+            el.value = "#ABCDEF";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    page.fill("#stylePresetName", "FZ smoke preset")
+    page.click("#saveStylePreset")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('[data-style-preset-apply]')].some((node) => node.dataset.presetName === 'FZ smoke preset')",
+        timeout=10000,
+    )
+    page.eval_on_selector(
+        "#styleFillColor",
+        """(el) => {
+            el.value = "#654321";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    page.click("[data-style-preset-apply][data-preset-name='FZ smoke preset']")
+    value = page.eval_on_selector("#styleFillColor", "(el) => el.value.toUpperCase()")
+    assert value == "#ABCDEF", f"functional_zoning: applying saved preset did not restore fill color, got {value}"
 
 
 def assert_elevation_inverted(page, drawing_type: str) -> None:
@@ -987,6 +1022,10 @@ def main() -> int:
     proj_dir = prepare_project()
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    preset_src = REPO_ROOT / "_tools" / "drawing_workbench" / "style_presets.json"
+    preset_test = proj_dir / "05_output" / "drawings" / "style_presets_smoke.json"
+    shutil.copyfile(preset_src, preset_test)
+    env["DRAWING_STYLE_PRESETS_PATH"] = str(preset_test)
     server = subprocess.Popen(
         [sys.executable, str(REPO_ROOT / "_tools" / "uploader" / "server.py"), "--port", str(PORT), "--no-browser"],
         cwd=str(REPO_ROOT),
@@ -1028,6 +1067,7 @@ def main() -> int:
                 tools = list(info.get("tools") or [])
                 if drawing_type == "functional_zoning":
                     assert_fz_regression(page)
+                    assert_functional_zone_style_presets(page)
                     drive_path_interaction(page, drawing_type, "closed_path")
                 if drawing_type != "functional_zoning":
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")

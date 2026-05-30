@@ -46,6 +46,10 @@ def main() -> int:
 
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    preset_src = REPO_ROOT / "_tools" / "drawing_workbench" / "style_presets.json"
+    preset_test = proj_dir / "05_output" / "drawings" / "style_presets_api_smoke.json"
+    shutil.copyfile(preset_src, preset_test)
+    env["DRAWING_STYLE_PRESETS_PATH"] = str(preset_test)
     server = subprocess.Popen(
         [sys.executable, str(REPO_ROOT / "_tools" / "uploader" / "server.py"),
          "--port", str(PORT), "--no-browser"],
@@ -166,6 +170,49 @@ def main() -> int:
         result = api_get(f"/api/drawing/supporting/list?project={TEST_PROJECT}&drawing_type=planting_design")
         assert result.get("ok"), f"supporting list failed: {result}"
         print("OK: supporting images list endpoint works")
+
+        # Test shared style presets library
+        presets = api_get("/api/drawing/style-presets")
+        assert presets.get("ok"), f"style presets load failed: {presets}"
+        assert any(item.get("kind") == "functional_zone" for item in presets.get("presets", [])), (
+            "style presets should include functional zoning presets"
+        )
+        preset = {
+            "id": "api-smoke-preset",
+            "name": "API smoke preset",
+            "kind": "functional_zone",
+            "hints": {
+                "fill_mode": "translucent",
+                "fill_color": "#ABCDEF",
+                "stroke_color": "#123456",
+                "border_style": "solid",
+            },
+        }
+        saved = api_post("/api/drawing/style-presets/save", {"preset": preset})
+        assert saved.get("ok") and any(item.get("id") == "api-smoke-preset" for item in saved.get("presets", [])), (
+            f"style preset save failed: {saved}"
+        )
+        imported = api_post(
+            "/api/drawing/style-presets/import",
+            {
+                "library": {
+                    "presets": [
+                        {
+                            "id": "api-import-preset",
+                            "name": "API import preset",
+                            "kind": "vehicle_flow",
+                            "hints": {"stroke_color": "#AA3300", "stroke_width": 0.006},
+                        }
+                    ]
+                }
+            },
+        )
+        assert imported.get("ok") and imported.get("imported") == 1, f"style preset import failed: {imported}"
+        deleted = api_post("/api/drawing/style-presets/delete", {"id": "api-smoke-preset"})
+        assert deleted.get("ok") and not any(item.get("id") == "api-smoke-preset" for item in deleted.get("presets", [])), (
+            f"style preset delete failed: {deleted}"
+        )
+        print("OK: shared style presets load/save/import/delete works")
 
         print("\nALL API SMOKE TESTS PASSED")
         return 0

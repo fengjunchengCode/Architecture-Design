@@ -1,0 +1,218 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-30T00:00:00+08:00",
+  "presets": [
+    {
+      "id": "zone-light-green",
+      "name": "功能区-浅绿半透",
+      "kind": "functional_zone",
+      "hints": {
+        "fill_mode": "translucent",
+        "fill_color": "#DCE8C8",
+        "fill_opacity": 0.42,
+        "stroke_color": "#7AA35A",
+        "stroke_width": 0.003,
+        "border_style": "solid"
+      }
+    },
+    {
+      "id": "zone-warm-sand",
+      "name": "功能区-暖米半透",
+      "kind": "functional_zone",
+      "hints": {
+        "fill_mode": "translucent",
+        "fill_color": "#E0D2C2",
+        "fill_opacity": 0.38,
+        "stroke_color": "#8A6F4A",
+        "stroke_width": 0.003,
+        "border_style": "solid"
+      }
+    },
+    {
+      "id": "zone-outline-only",
+      "name": "功能区-无填充实线",
+      "kind": "functional_zone",
+      "hints": {
+        "fill_mode": "none",
+        "fill_color": "#DCE8C8",
+        "stroke_color": "#4F6F52",
+        "stroke_width": 0.0035,
+        "border_style": "solid"
+      }
+    },
+    {
+      "id": "vehicle-orange-solid",
+      "name": "车行-橙红实线",
+      "kind": "vehicle_flow",
+      "hints": {
+        "stroke_color": "#E8551E",
+        "stroke_width": 0.007,
+        "stroke_style": "solid",
+        "start_arrow": false,
+        "end_arrow": true
+      }
+    },
+    {
+      "id": "pedestrian-cobalt-solid",
+      "name": "人行-钴蓝实线",
+      "kind": "pedestrian_flow",
+      "hints": {
+        "stroke_color": "#1F6FE0",
+        "stroke_width": 0.005,
+        "stroke_style": "solid",
+        "start_arrow": false,
+        "end_arrow": true
+      }
+    },
+    {
+      "id": "underground-blue-dashed",
+      "name": "地下-蓝虚线",
+      "kind": "underground_flow",
+      "hints": {
+        "stroke_color": "#1F6FE0",
+        "stroke_width": 0.004,
+        "stroke_style": "dashed",
+        "dash_scale": 1.2,
+        "end_arrow": true
+      }
+    },
+    {
+      "id": "fire-red-line",
+      "name": "消防-正红线",
+      "kind": "fire_route_line",
+      "hints": {
+        "stroke_color": "#E11D1D",
+        "stroke_width": 0.008,
+        "stroke_style": "solid",
+        "end_arrow": true
+      }
+    },
+    {
+      "id": "turning-teal-box",
+      "name": "转弯半径-深青白框",
+      "kind": "turning_radius",
+      "hints": {
+        "stroke_color": "#0E9594",
+        "stroke_width": 0.004,
+        "end_arrow": true,
+        "label_box": {
+          "enabled": true,
+          "text": "R=9M",
+          "opacity": 0.55
+        }
+      }
+    },
+    {
+      "id": "landscape-node-orange",
+      "name": "景观节点-暖橙半透圆",
+      "kind": "landscape_node",
+      "hints": {
+        "fill_mode": "translucent",
+        "fill_color": "#FFFFFF",
+        "fill_opacity": 0.42,
+        "stroke_color": "#F08A24",
+        "border_style": "double",
+        "stroke_width": 0.004
+      }
+    },
+    {
+      "id": "axis-red-dashed",
+      "name": "主轴-红虚线",
+      "kind": "landscape_axis_primary",
+      "hints": {
+        "stroke_color": "#E11D1D",
+        "stroke_width": 0.006,
+        "stroke_style": "dashed",
+        "dash_scale": 1.1
+      }
+    },
+    {
+      "id": "axis-purple-dashed",
+      "name": "次轴-紫虚线",
+      "kind": "landscape_axis_secondary",
+      "hints": {
+        "stroke_color": "#7B2FF0",
+        "stroke_width": 0.004,
+        "stroke_style": "dashed",
+        "dash_scale": 1.1
+      }
+    },
+    {
+      "id": "entrance-red-solid",
+      "name": "出入口-朱红实心三角",
+      "kind": "entrance_marker",
+      "hints": {
+        "fill_mode": "solid",
+        "fill_color": "#E03020",
+        "stroke_color": "#E03020",
+        "border_style": "solid",
+        "stroke_width": 0.003
+      }
+    },
+    {
+      "id": "elevation-purple",
+      "name": "标高-紫倒三角",
+      "kind": "elevation_marker",
+      "hints": {
+        "fill_mode": "solid",
+        "fill_color": "#7B2FF0",
+        "stroke_color": "#7B2FF0",
+        "border_style": "solid",
+        "label_box": {
+          "enabled": true,
+          "text": "",
+          "opacity": 0.55
+        }
+      }
+    },
+    {
+      "id": "slope-teal",
+      "name": "坡度-深青箭头",
+      "kind": "slope_arrow",
+      "hints": {
+        "stroke_color": "#0E7C86",
+        "stroke_width": 0.005,
+        "end_arrow": true,
+        "inline_text": {
+          "enabled": true,
+          "text": "0.3%"
+        }
+      }
+    },
+    {
+      "id": "planting-green-translucent",
+      "name": "种植区-饱和绿半透",
+      "kind": "planting_zone",
+      "hints": {
+        "fill_mode": "translucent",
+        "fill_color": "#7CB342",
+        "fill_opacity": 0.42,
+        "stroke_color": "#2E7D32",
+        "border_style": "solid",
+        "stroke_width": 0.003
+      }
+    },
+    {
+      "id": "runoff-deep-blue",
+      "name": "径流-深蓝",
+      "kind": "runoff_line",
+      "hints": {
+        "stroke_color": "#1A4FB3",
+        "stroke_width": 0.005,
+        "stroke_style": "solid",
+        "end_arrow": true
+      }
+    },
+    {
+      "id": "ditch-teal-dashed",
+      "name": "生态沟-青虚线",
+      "kind": "ecological_ditch_line",
+      "hints": {
+        "stroke_color": "#0E9594",
+        "stroke_width": 0.004,
+        "stroke_style": "dashed",
+        "dash_scale": 1.1
+      }
+    }
+  ]
+}
