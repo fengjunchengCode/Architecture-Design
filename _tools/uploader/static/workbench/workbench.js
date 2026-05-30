@@ -225,6 +225,7 @@
     clipboard: null,
     stylePresets: [],
     stylePresetPath: "",
+    stylePresetLoadError: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -998,10 +999,12 @@
         ? data.presets.filter((item) => item && item.id && item.name && item.kind && item.hints)
         : [];
       state.stylePresetPath = data.path || "";
+      state.stylePresetLoadError = "";
     } catch (err) {
       console.warn("[workbench] style preset load failed", err);
       state.stylePresets = [];
       state.stylePresetPath = "";
+      state.stylePresetLoadError = err.message || "样式预设加载失败";
     }
   }
 
@@ -1013,6 +1016,7 @@
     });
     state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
     state.stylePresetPath = data.path || state.stylePresetPath;
+    state.stylePresetLoadError = "";
   }
 
   async function deleteStylePresetFromLibrary(id) {
@@ -1023,16 +1027,7 @@
     });
     state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
     state.stylePresetPath = data.path || state.stylePresetPath;
-  }
-
-  async function importStylePresetLibrary(library) {
-    const data = await api("/api/drawing/style-presets/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ library }),
-    });
-    state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
-    state.stylePresetPath = data.path || state.stylePresetPath;
+    state.stylePresetLoadError = "";
   }
 
   function presetMatchesContext(preset, specKey, context = {}) {
@@ -1082,12 +1077,15 @@
 
   function renderStylePresetControls(specKey, style, context = {}) {
     const presets = allStylePresetsFor(specKey, context);
+    const loadError = state.stylePresetLoadError || "";
     return `
       <div class="style-section-title">预设</div>
       <div class="zone-tool-group style-presets" data-style-presets="true">
         <div class="style-preset-list">
           ${
-            presets.length
+            loadError
+              ? `<span class="control-empty">预设加载失败：${escapeHtml(loadError)}</span>`
+              : presets.length
               ? presets
                   .map(
                     (preset) => `
@@ -1113,9 +1111,6 @@
         <div class="style-preset-save">
           <input id="stylePresetName" placeholder="另存当前样式">
           <button type="button" id="saveStylePreset">保存</button>
-        </div>
-        <div class="style-preset-import">
-          <input id="stylePresetImportFile" type="file" accept=".json,application/json">
         </div>
       </div>
     `;
@@ -1476,23 +1471,6 @@
           setStatus(`已保存预设到 ${state.stylePresetPath || "JSON"}：${name}`);
         } catch (err) {
           setStatus(err.message || "保存样式预设失败。", false);
-        }
-      });
-    }
-    const importPresetFile = $("#stylePresetImportFile");
-    if (importPresetFile) {
-      importPresetFile.addEventListener("change", async () => {
-        const file = importPresetFile.files && importPresetFile.files[0];
-        if (!file) return;
-        try {
-          const library = JSON.parse(await file.text());
-          await importStylePresetLibrary(library);
-          renderSpecificTools();
-          setStatus(`已导入样式预设到 ${state.stylePresetPath || "JSON"}。`);
-        } catch (err) {
-          setStatus(err.message || "导入样式预设失败。", false);
-        } finally {
-          importPresetFile.value = "";
         }
       });
     }

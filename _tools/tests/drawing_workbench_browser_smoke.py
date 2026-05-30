@@ -903,6 +903,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
         return
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-presets='true']").count() == 1, f"{drawing_type}: style presets panel missing"
+    assert page.locator("#stylePresetImportFile").count() == 0, f"{drawing_type}: preset import picker should not render"
     assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
         f"{drawing_type}: repo presets missing"
     )
@@ -951,6 +952,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
 
 def assert_functional_zone_style_presets(page) -> None:
     assert page.locator("[data-style-presets='true']").count() == 1, "functional_zoning: style presets panel missing"
+    assert page.locator("#stylePresetImportFile").count() == 0, "functional_zoning: preset import picker should not render"
     assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
         "functional_zoning: repo presets missing"
     )
