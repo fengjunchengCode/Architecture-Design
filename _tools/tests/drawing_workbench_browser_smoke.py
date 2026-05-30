@@ -701,6 +701,34 @@ def assert_labelbox_white_draggable(page, drawing_type: str) -> None:
     assert after and after != before, f"{drawing_type}: label_box offset did not change after drag; before={before}, after={after}"
 
 
+def assert_label_persists(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="triangle"]').count() == 0:
+        return
+    label = "\u4e3b\u5165\u53e3"
+    page.click('[data-tool-id="triangle"]')
+    page.fill("#objectLabel", label)
+    created = page.evaluate(
+        "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+        {"tool": "triangle", "pts": tool_points("triangle")},
+    )
+    assert created.get("label") == label, f"{drawing_type}: created label not set"
+    page.eval_on_selector(
+        "#styleFillColor",
+        """(el) => {
+            el.value = "#D94B35";
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+        }""",
+    )
+    page.wait_for_timeout(50)
+    obj = page.evaluate(
+        "(id) => window.DrawingWorkbenchTest.getObjects().find((o) => o.id === id)",
+        created["id"],
+    )
+    assert obj and obj.get("label") == label, f"{drawing_type}: label lost after style change"
+    input_value = page.eval_on_selector("#objectLabel", "(el) => el.value")
+    assert input_value == label, f"{drawing_type}: label input did not rehydrate, got {input_value!r}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -819,6 +847,7 @@ def main() -> int:
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "traffic_analysis":
                     assert_arrow_geometry(page, drawing_type)
+                    assert_label_persists(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":

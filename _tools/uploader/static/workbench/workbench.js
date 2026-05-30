@@ -200,6 +200,7 @@
     activeObjectTypes: {},
     styleDrafts: {},
     geometryDrafts: {},
+    labelDrafts: {},
     lastStyles: {},
     lastGeometry: {},
     supportingImages: {},
@@ -528,6 +529,7 @@
       selectedId: state.selectedId,
       zoneDraftStyle: { ...state.zoneDraftStyle },
       zoneDraftLabel: state.zoneDraftLabel,
+      labelDrafts: JSON.parse(JSON.stringify(state.labelDrafts)),
     };
   }
 
@@ -537,6 +539,7 @@
     state.selectedId = snapshot.selectedId || "";
     state.zoneDraftStyle = normalizeZoneStyle(snapshot.zoneDraftStyle || state.zoneDraftStyle);
     state.zoneDraftLabel = snapshot.zoneDraftLabel || "";
+    state.labelDrafts = JSON.parse(JSON.stringify(snapshot.labelDrafts || {}));
     renderCanvasLayers("restore-snapshot");
     renderObjectList();
     renderSpecificTools();
@@ -771,9 +774,15 @@
     const rawTools = config.tools || [];
     const activeTool = normalizeActiveTool();
     const objectTypes = toolObjectTypes(activeTool);
-    const selectedObject = selectedToolObjectType(activeTool);
-    const draftStyle = activeTool === "supporting_images" ? null : draftStyleFor(selectedObject, activeTool);
-    const draftGeometry = activeTool === "supporting_images" ? null : draftGeometryFor(selectedObject, activeTool);
+    const selectedObjectType = selectedToolObjectType(activeTool);
+    const selected = selectedObject();
+    const labelKey = draftKey(activeTool, selectedObjectType);
+    const labelValue =
+      selected && selected.type === selectedObjectType
+        ? selected.label || ""
+        : state.labelDrafts[labelKey] || "";
+    const draftStyle = activeTool === "supporting_images" ? null : draftStyleFor(selectedObjectType, activeTool);
+    const draftGeometry = activeTool === "supporting_images" ? null : draftGeometryFor(selectedObjectType, activeTool);
     tools.innerHTML = `
       <div class="zone-tool-group drawing-tool-picker" data-workbench-tool-picker="true">
         <span>绘图工具</span>
@@ -797,15 +806,15 @@
           : `
             <label>
               <span>对象类型</span>
-              <select id="objectType">${optionHtml(objectTypes, selectedObject)}</select>
+              <select id="objectType">${optionHtml(objectTypes, selectedObjectType)}</select>
             </label>
             <label>
               <span>标签文本</span>
-              <input id="objectLabel" placeholder="例如：主入口 / 景观节点 / R=9M">
+              <input id="objectLabel" placeholder="例如：主入口 / 景观节点 / R=9M" value="${escapeHtml(labelValue)}">
             </label>
             ${renderStyleControls(activeTool, draftStyle, {
               toolId: activeTool,
-              objectType: selectedObject,
+              objectType: selectedObjectType,
               geometry: draftGeometry,
             })}
           `
@@ -823,7 +832,7 @@
       });
     }
     if (activeTool !== "supporting_images") {
-      bindStyleControls(activeTool, selectedObject, { toolId: activeTool });
+      bindStyleControls(activeTool, selectedObjectType, { toolId: activeTool });
     }
     bindSupportingPanel();
   }
@@ -1234,14 +1243,27 @@
     const toolId = context.toolId || specKey;
     const isFunctional = specKey === "functional_zone" || context.functional;
     const labelInput = $("#objectLabel");
-    if (isFunctional && labelInput) {
+    if (labelInput) {
       labelInput.addEventListener("input", () => {
-        if (!selectedObject()) state.zoneDraftLabel = labelInput.value;
+        const selected = selectedObject();
+        if (isFunctional) {
+          if (!selected) state.zoneDraftLabel = labelInput.value;
+          return;
+        }
+        if (selected && selected.type === objectType) {
+          selected.label = labelInput.value;
+          markDirty();
+          renderObjectList();
+          refreshLegendPreview();
+        } else {
+          state.labelDrafts[draftKey(toolId, objectType)] = labelInput.value;
+        }
       });
       labelInput.addEventListener("change", () => {
         const selected = selectedObject();
-        if (!selected) {
-          state.zoneDraftLabel = labelInput.value.trim();
+        if (!selected || (!isFunctional && selected.type !== objectType)) {
+          if (isFunctional) state.zoneDraftLabel = labelInput.value.trim();
+          else state.labelDrafts[draftKey(toolId, objectType)] = labelInput.value.trim();
           return;
         }
         const next = labelInput.value.trim();
@@ -1251,7 +1273,7 @@
         markDirty();
         renderObjectList();
         refreshLegendPreview();
-        setStatus("已更新分区名称。");
+        setStatus(isFunctional ? "已更新分区名称。" : "已更新对象标签。");
       });
     }
     document.querySelectorAll("[data-style-segment]").forEach((button) => {
@@ -2234,12 +2256,14 @@
     }
     const objectType = options.objectType || selectedToolObjectType(toolId);
     const objectLabel = $("#objectLabel");
+    const labelKey = draftKey(toolId, objectType);
     const index = state.objects.length + 1;
     const id = options.id || nextObjectId();
     const isFunctionalZone = isFunctionalZoneObject(objectType);
     const label =
       options.label ||
       (objectLabel && objectLabel.value.trim()) ||
+      (state.labelDrafts[labelKey] || "").trim() ||
       (isFunctionalZone ? state.zoneDraftLabel.trim() || `功能区 ${index}` : `${objectName(objectType)} ${index}`);
     const geometryPoints = spec.kind === "path" ? points.slice() : points.slice(0, minPoints);
     const geometry = defaultGeometryForTool(toolId, geometryPoints, objectType);
@@ -2285,6 +2309,8 @@
     if (isFunctionalZone) {
       state.zoneDraftStyle = style;
       state.zoneDraftLabel = "";
+    } else {
+      state.labelDrafts[labelKey] = "";
     }
     state.currentPoints = [];
     markDirty();
