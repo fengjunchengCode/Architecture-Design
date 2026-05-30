@@ -221,6 +221,8 @@
     overlayRetryPending: false,
     arcDrag: null,
     vertexDrag: null,
+    moveDrag: null,
+    clipboard: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -3176,6 +3178,21 @@
         finishObject();
       });
     });
+    overlay.querySelectorAll(".geometry-hit[data-object-id]").forEach((shape) => {
+      shape.addEventListener("pointerdown", (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.stopPropagation();
+        const obj = state.objects.find((item) => item.id === shape.dataset.objectId);
+        if (!obj) return;
+        state.moveDrag = {
+          objectId: obj.id,
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+          original: clonePlain(obj),
+        };
+      });
+    });
     overlay.querySelectorAll("[data-object-id]:not(.zone-arc-handle)").forEach((shape) => {
       shape.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -3227,6 +3244,100 @@
       Number(Math.max(0, Math.min(1, p[0])).toFixed(6)),
       Number(Math.max(0, Math.min(1, p[1])).toFixed(6)),
     ];
+  }
+
+  function clonePlain(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function translatePoint(point, dx, dy) {
+    const p = safePoint(point);
+    return p ? clampUnit([p[0] + dx, p[1] + dy]) : point;
+  }
+
+  function translateSegment(segment, dx, dy) {
+    if (!segment || typeof segment !== "object") return segment;
+    const next = { ...segment };
+    if (segment.from) next.from = translatePoint(segment.from, dx, dy);
+    if (segment.to) next.to = translatePoint(segment.to, dx, dy);
+    if (segment.control) next.control = translatePoint(segment.control, dx, dy);
+    return next;
+  }
+
+  function translateGeometry(geometry, dx, dy) {
+    if (!geometry || typeof geometry !== "object") return geometry;
+    const next = { ...geometry };
+    if (Array.isArray(geometry.coords)) next.coords = geometry.coords.map((point) => translatePoint(point, dx, dy));
+    if (Array.isArray(geometry.segments)) next.segments = geometry.segments.map((segment) => translateSegment(segment, dx, dy));
+    if (geometry.center) next.center = translatePoint(geometry.center, dx, dy);
+    return next;
+  }
+
+  function applyTranslatedGeometry(target, original, dx, dy) {
+    if (!target || !original) return;
+    target.geometry = translateGeometry(original.geometry, dx, dy);
+  }
+
+  function updateMoveDrag(event) {
+    const drag = state.moveDrag;
+    if (!drag) return;
+    const stage = $("#workbenchStage");
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const dxPx = event.clientX - drag.startX;
+    const dyPx = event.clientY - drag.startY;
+    const dist = Math.hypot(dxPx, dyPx);
+    if (!drag.moved && dist < 3) return;
+    const obj = state.objects.find((item) => item.id === drag.objectId);
+    if (!obj) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      pushUndoSnapshot();
+      state.selectedId = drag.objectId;
+    }
+    const dx = dxPx / (rect.width || 1);
+    const dy = dyPx / (rect.height || 1);
+    applyTranslatedGeometry(obj, drag.original, dx, dy);
+    markDirty();
+    renderCanvasLayers("move-drag");
+    renderObjectList();
+    renderSpecificTools();
+  }
+
+  function finishMoveDrag() {
+    if (!state.moveDrag) return;
+    const moved = state.moveDrag.moved;
+    state.moveDrag = null;
+    if (moved) {
+      markDirty();
+      refreshLegendPreview();
+    }
+  }
+
+  function copySelectedObject() {
+    const selected = selectedObject();
+    if (!selected) return false;
+    state.clipboard = clonePlain(selected);
+    setStatus("已复制选中对象。");
+    return true;
+  }
+
+  function pasteClipboardObject() {
+    if (!state.clipboard) return false;
+    pushUndoSnapshot();
+    const pasted = clonePlain(state.clipboard);
+    pasted.id = nextObjectId();
+    pasted.geometry = translateGeometry(pasted.geometry, 0.02, 0.02);
+    state.objects.push(pasted);
+    state.selectedId = pasted.id;
+    captureObjectDefaults(pasted);
+    markDirty();
+    renderCanvasLayers("paste-object");
+    renderObjectList();
+    renderSpecificTools();
+    refreshLegendPreview();
+    setStatus(`已粘贴：${pasted.label || pasted.id}`);
+    return true;
   }
 
 
@@ -3448,6 +3559,14 @@
     if (!workbenchIsActive() || !isEnabled()) return;
     const modifier = event.ctrlKey || event.metaKey;
     const editable = isEditableElement(document.activeElement);
+    if (modifier && event.key.toLowerCase() === "c" && !editable) {
+      if (copySelectedObject()) event.preventDefault();
+      return;
+    }
+    if (modifier && event.key.toLowerCase() === "v" && !editable) {
+      if (pasteClipboardObject()) event.preventDefault();
+      return;
+    }
     if (modifier && event.key.toLowerCase() === "z" && !isEditableElement(document.activeElement)) {
       event.preventDefault();
       if (event.shiftKey) redoHistory();
@@ -3521,6 +3640,10 @@
         updateVertexDrag(event);
         return;
       }
+      if (state.moveDrag && !state.arcDrag) {
+        updateMoveDrag(event);
+        return;
+      }
       if (!state.arcDrag) return;
       const stage = $("#workbenchStage");
       if (!stage) return;
@@ -3557,6 +3680,10 @@
         refreshLegendPreview();
         return;
       }
+      if (state.moveDrag) {
+        finishMoveDrag();
+        return;
+      }
       if (!state.arcDrag) return;
       state.arcDrag = null;
       markDirty();
@@ -3565,6 +3692,7 @@
     document.addEventListener("pointercancel", () => {
       state.vertexDrag = null;
       state.arcDrag = null;
+      state.moveDrag = null;
     });
     if (window.ResizeObserver) {
       const stage = $("#workbenchStage");

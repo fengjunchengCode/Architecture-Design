@@ -843,6 +843,61 @@ def assert_arrow_scales(page, drawing_type: str) -> None:
     assert areas[1] > areas[0] * 4, f"{drawing_type}: thick arrowhead should be much larger; areas={areas}"
 
 
+def assert_move_and_paste(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="open_path"]').count() == 0:
+        return
+    page.click('[data-tool-id="open_path"]')
+    created = page.evaluate(
+        "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+        {"tool": "open_path", "pts": [[0.22, 0.32], [0.48, 0.34]]},
+    )
+    obj_id = created["id"]
+    before = [point[:] for point in (created.get("geometry") or {}).get("coords", [])]
+    stage = page.locator("#workbenchStage").bounding_box()
+    assert stage, f"{drawing_type}: stage missing for move test"
+    start = [
+        before[0][0] + (before[1][0] - before[0][0]) * 0.25,
+        before[0][1] + (before[1][1] - before[0][1]) * 0.25,
+    ]
+    sx = stage["x"] + start[0] * stage["width"]
+    sy = stage["y"] + start[1] * stage["height"]
+    page.mouse.move(sx, sy)
+    page.mouse.down()
+    page.mouse.move(sx + 72, sy + 38, steps=8)
+    page.mouse.up()
+    page.wait_for_timeout(120)
+    moved = page.evaluate(
+        "(id) => window.DrawingWorkbenchTest.getObjects().find((obj) => obj.id === id)",
+        obj_id,
+    )
+    moved_coords = (moved.get("geometry") or {}).get("coords", [])
+    assert len(moved_coords) == len(before) >= 2, f"{drawing_type}: moved object coords missing"
+    dx = moved_coords[0][0] - before[0][0]
+    dy = moved_coords[0][1] - before[0][1]
+    assert abs(dx) > 0.02 and abs(dy) > 0.02, f"{drawing_type}: drag did not move object enough; dx={dx}, dy={dy}"
+    for old, new in zip(before, moved_coords):
+        assert abs((new[0] - old[0]) - dx) < 0.002 and abs((new[1] - old[1]) - dy) < 0.002, (
+            f"{drawing_type}: drag did not translate all coordinates uniformly"
+        )
+
+    count_before = page.evaluate("window.DrawingWorkbenchTest.getObjects().length")
+    page.keyboard.press("Control+C")
+    page.keyboard.press("Control+V")
+    page.wait_for_timeout(100)
+    objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
+    assert len(objects) == count_before + 1, f"{drawing_type}: paste should add one object"
+    pasted = objects[-1]
+    assert pasted["id"] != obj_id, f"{drawing_type}: pasted object should get a new id"
+    pasted_coords = (pasted.get("geometry") or {}).get("coords", [])
+    assert len(pasted_coords) == len(moved_coords), f"{drawing_type}: pasted coords missing"
+    assert abs((pasted_coords[0][0] - moved_coords[0][0]) - 0.02) < 0.004, (
+        f"{drawing_type}: pasted object x offset wrong"
+    )
+    assert abs((pasted_coords[0][1] - moved_coords[0][1]) - 0.02) < 0.004, (
+        f"{drawing_type}: pasted object y offset wrong"
+    )
+
+
 def assert_elevation_inverted(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="elevation_marker"]').count() == 0:
         return
@@ -996,6 +1051,7 @@ def main() -> int:
                     assert_label_persists(page, drawing_type)
                     assert_legend_by_label(page, drawing_type)
                     assert_arrow_scales(page, drawing_type)
+                    assert_move_and_paste(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":
