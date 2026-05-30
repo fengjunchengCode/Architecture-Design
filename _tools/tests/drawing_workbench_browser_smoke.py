@@ -729,6 +729,65 @@ def assert_label_persists(page, drawing_type: str) -> None:
     assert input_value == label, f"{drawing_type}: label input did not rehydrate, got {input_value!r}"
 
 
+def _legend_entries(page) -> list[dict[str, str]]:
+    return page.eval_on_selector_all(
+        ".zone-legend-item",
+        """(nodes) => nodes.map((node) => ({
+            label: (node.querySelector(".zone-legend-label") || {}).textContent?.trim() || "",
+            count: (node.querySelector(".zone-legend-count") || {}).textContent?.trim() || "",
+        }))""",
+    )
+
+
+def assert_legend_by_label(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="open_path"]').count() == 0 or page.locator("#objectType").count() == 0:
+        return
+    label = "\u8f66\u884c"
+    page.click('[data-tool-id="open_path"]')
+    options = page.eval_on_selector_all("#objectType option", "(nodes) => nodes.map((node) => node.value)")
+    assert len(options) >= 2, f"{drawing_type}: need at least two object types for legend grouping"
+    created_ids: list[str] = []
+    for object_type in options[:2]:
+        page.select_option("#objectType", object_type)
+        page.fill("#objectLabel", label)
+        page.eval_on_selector(
+            "#styleStrokeColor",
+            """(el) => {
+                el.value = "#B23A2E";
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }""",
+        )
+        page.eval_on_selector(
+            "#styleStrokeWidth",
+            """(el) => {
+                el.value = "0.006";
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+        )
+        created = page.evaluate(
+            "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+            {"tool": "open_path", "pts": tool_points("open_path")},
+        )
+        created_ids.append(created["id"])
+    page.wait_for_timeout(50)
+    matching = [entry for entry in _legend_entries(page) if entry["label"] == label]
+    assert len(matching) == 1, f"{drawing_type}: same style+label legend should merge once, got {matching}"
+    assert matching[0]["count"] == "x 2", f"{drawing_type}: merged legend count should be x 2, got {matching}"
+
+    page.click(f'.object-row[data-object-id="{created_ids[0]}"]')
+    page.select_option("#objectType", options[0])
+    page.eval_on_selector(
+        "#styleStrokeWidth",
+        """(el) => {
+            el.value = "0.012";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+    )
+    page.wait_for_timeout(50)
+    split = [entry for entry in _legend_entries(page) if entry["label"] == label]
+    assert len(split) == 2, f"{drawing_type}: changed style should split legend into two rows, got {split}"
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -848,6 +907,7 @@ def main() -> int:
                 if drawing_type == "traffic_analysis":
                     assert_arrow_geometry(page, drawing_type)
                     assert_label_persists(page, drawing_type)
+                    assert_legend_by_label(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":

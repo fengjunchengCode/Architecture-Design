@@ -418,10 +418,12 @@
   }
 
   function legendGroupKey(obj) {
-    if (!obj || !obj.type) return "";
+    if (!obj) return "";
     var s = obj.style_hints || {};
-    var parts = [obj.type, s.legend_label || ""];
-    var kind = (obj.geometry || {}).kind;
+    var geometry = obj.geometry || {};
+    var kind = geometry.kind || "path";
+    var closed = geometry.closed === true;
+    var parts = [kind, String(closed)];
 
     if (kind === "text") {
       parts.push(s.stroke_color || "", String(s.font_size || ""), s.text_content || "");
@@ -448,7 +450,6 @@
       );
     } else {
       // path
-      var closed = (obj.geometry || {}).closed;
       if (closed) {
         parts.push(
           s.fill_mode || "",
@@ -486,10 +487,14 @@
       if (s.legend_enabled === false) continue;
       var key = legendGroupKey(obj);
       if (!map[key]) {
+        var geo = obj.geometry || {};
         map[key] = {
           key: key,
           type: obj.type,
-          label: s.legend_label || obj.label || obj.type,
+          label: obj.label || s.legend_label || "",
+          geometry_kind: geo.kind || "path",
+          geometry_closed: geo.closed === true,
+          first_object: obj,
           style: cloneStyle(s),
           count: 0,
         };

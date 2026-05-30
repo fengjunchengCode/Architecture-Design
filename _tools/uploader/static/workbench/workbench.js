@@ -1567,8 +1567,11 @@
   function renderGenericLegendSwatch(group) {
     const style = group.style || {};
     const meta = REGISTRY_OBJECTS[group.type] || {};
-    const kind = meta.geometry || "path";
-    const closed = meta.closed === true;
+    const kind = group.geometry_kind || meta.geometry || "path";
+    const closed =
+      Object.prototype.hasOwnProperty.call(group, "geometry_closed")
+        ? group.geometry_closed === true
+        : meta.closed === true;
     const stroke = style.stroke_color || style.fill_color || "#333333";
     const strokeWidth = Math.max(1, Math.min(4, Math.round((Number(style.stroke_width) || 0.003) * 320)));
     const dashArrayValue = style.stroke_style === "dashed" || style.border_style === "dashed" ? legendDashArray(style) : "";
@@ -1625,7 +1628,9 @@
     if (!groups.length) return '<p class="zone-legend-empty">暂无图例对象</p>';
     return groups
       .map((group) => {
-        const label = group.label || objectName(group.type);
+        const label =
+          group.label ||
+          (group.geometry_kind === "path" && group.geometry_closed ? geometryName("closed_path") : geometryName(group.geometry_kind || "path"));
         return `
           <div class="zone-legend-item">
             <svg class="zone-legend-swatch" viewBox="0 0 24 16" aria-hidden="true">
