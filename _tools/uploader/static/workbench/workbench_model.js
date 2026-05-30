@@ -28,7 +28,7 @@
     double_border_gap: 0.006,
     start_arrow: false,
     end_arrow: false,
-    arrow_size: 0.028,
+    arrow_size: null,
     legend_enabled: true,
     legend_label: "",
     label_box: {

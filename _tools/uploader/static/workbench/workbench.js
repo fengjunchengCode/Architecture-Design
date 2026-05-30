@@ -402,6 +402,18 @@
     return `${Number((dash * scale).toFixed(4))} ${Number((gap * scale).toFixed(4))}`;
   }
 
+  function clampArrowSize(value) {
+    return Math.min(0.06, Math.max(0.012, Number(value) || 0.024));
+  }
+
+  function computedArrowSize(style) {
+    const explicit = Number(style && style.arrow_size);
+    if (Number.isFinite(explicit) && explicit > 0) return clampArrowSize(explicit);
+    const strokeWidth = Number(style && style.stroke_width);
+    const base = (Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 0.004) * 6;
+    return clampArrowSize(base);
+  }
+
   function legendDashArray(style, dash = 4, gap = 3) {
     const scale = dashScale(style);
     return `${Number((dash * scale).toFixed(2))} ${Number((gap * scale).toFixed(2))}`;
@@ -1147,8 +1159,8 @@
                         <summary>箭头尺寸</summary>
                         ${rangeControl(
                           "styleArrowSize",
-                          "尺寸",
-                          style.arrow_size || 0.028,
+                          "尺寸（随线宽，可覆盖）",
+                          computedArrowSize(style),
                           "0.012",
                           "0.07",
                           "0.002",
@@ -2492,7 +2504,7 @@
     const dy = tipPx[1] - fromPx[1];
     const length = Math.hypot(dx, dy);
     if (!length) return null;
-    const size = Number(style.arrow_size) || 0.028;
+    const size = computedArrowSize(style);
     const sizePx = Math.min(size * stage.width, length * 0.45);
     const sidePx = sizePx * 0.42;
     const ux = dx / length;

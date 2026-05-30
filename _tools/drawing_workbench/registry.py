@@ -256,7 +256,7 @@ _BASE_STYLE: dict[str, Any] = {
     "double_border_gap": 0.006,
     "start_arrow": False,
     "end_arrow": False,
-    "arrow_size": 0.028,
+    "arrow_size": None,
     "legend_enabled": True,
     "legend_label": "",
     "label_box": {

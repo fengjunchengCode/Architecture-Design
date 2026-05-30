@@ -746,6 +746,14 @@ def _legend_entries(page) -> list[dict[str, str]]:
     )
 
 
+def _polygon_area(points: list[list[float]]) -> float:
+    area = 0.0
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        area += point[0] * next_point[1] - next_point[0] * point[1]
+    return abs(area) / 2.0
+
+
 def assert_legend_by_label(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="open_path"]').count() == 0 or page.locator("#objectType").count() == 0:
         return
@@ -793,6 +801,46 @@ def assert_legend_by_label(page, drawing_type: str) -> None:
     page.wait_for_timeout(50)
     split = [entry for entry in _legend_entries(page) if entry["label"] == label]
     assert len(split) == 2, f"{drawing_type}: changed style should split legend into two rows, got {split}"
+
+
+def assert_arrow_scales(page, drawing_type: str) -> None:
+    if page.locator('[data-tool-id="open_path"]').count() == 0:
+        return
+    page.click('[data-tool-id="open_path"]')
+    if page.locator("#objectType").count():
+        options = page.eval_on_selector_all("#objectType option", "(nodes) => nodes.map((node) => node.value)")
+        if options:
+            page.select_option("#objectType", options[0])
+    areas: list[float] = []
+    for width in ("0.002", "0.012"):
+        page.eval_on_selector(
+            "#styleStrokeWidth",
+            """(el, value) => {
+                el.value = value;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+            width,
+        )
+        if page.locator("#styleEndArrow").count():
+            page.eval_on_selector(
+                "#styleEndArrow",
+                """(el) => {
+                    if (!el.checked) {
+                        el.checked = true;
+                        el.dispatchEvent(new Event("input", { bubbles: true }));
+                    }
+                }""",
+            )
+        created = page.evaluate(
+            "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+            {"tool": "open_path", "pts": [[0.18, 0.55], [0.74, 0.56]]},
+        )
+        points = _parse_svg_points(
+            page.locator(f"#sketchOverlay polygon[data-object-id='{created['id']}']").last.get_attribute("points") or ""
+        )
+        assert len(points) == 3, f"{drawing_type}: missing arrowhead for width {width}"
+        areas.append(_polygon_area(points))
+    assert areas[1] > areas[0] * 4, f"{drawing_type}: thick arrowhead should be much larger; areas={areas}"
 
 
 def assert_elevation_inverted(page, drawing_type: str) -> None:
@@ -947,6 +995,7 @@ def main() -> int:
                     assert_arrow_geometry(page, drawing_type)
                     assert_label_persists(page, drawing_type)
                     assert_legend_by_label(page, drawing_type)
+                    assert_arrow_scales(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":
