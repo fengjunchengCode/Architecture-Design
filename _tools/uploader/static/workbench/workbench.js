@@ -1190,7 +1190,7 @@
     const elements = (slide && slide.elements) || {};
     const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
     const drawingMedia = drawingSrc
-      ? `<img src="${escapeHtml(drawingSrc)}" alt="${escapeHtml(drawingConfig().label || "图纸")}">`
+      ? `<img data-ppt-drawing-media="true" src="${escapeHtml(drawingSrc)}" alt="${escapeHtml(drawingConfig().label || "图纸")}">`
       : '<div class="ppt-empty-note">暂无图纸输出；将先使用底图或等待agent生成SVG。</div>';
     const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
     const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];

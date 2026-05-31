@@ -1028,6 +1028,10 @@ def assert_ppt_preview_basics(page) -> None:
     assert box and abs((box["width"] / box["height"]) - (16 / 9)) < 0.03, f"PPT slide ratio should be 16:9, got {box}"
     assert page.locator("[data-ppt-drawing-frame='true']").count() == 1, "PPT preview should render one global drawing frame"
     assert page.locator("[data-ppt-element='text']", has_text=text).count() == 1, "PPT preview should render saved slide text"
+    media = page.locator("[data-ppt-drawing-frame='true'] [data-ppt-drawing-media='true']")
+    assert media.count() == 1, "PPT preview should mark drawing media for contain checks"
+    object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
+    assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
     dialogs: list[str] = []
 
     def handle_dialog(dialog) -> None:
