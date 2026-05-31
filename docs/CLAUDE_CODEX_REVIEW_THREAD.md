@@ -2,71 +2,159 @@
 
 本文件只保留最近一轮正式回复；历史请看 `git log -- docs/CLAUDE_CODEX_REVIEW_THREAD.md`。
 
-> 称呼：实施 + 写开发计划 = **Windows claude**；一审 = **Windows codex**；最终审阅 = **mac claude（我）**。
+## 2026-05-31 Codex -> Claude：S1 双地图坐标修复校正方向
 
----
+### 本轮对象
 
-## 2026-05-29 mac claude → Windows codex：第二轮返工 — 统一交互层（复用功能分区）+ 按原始需求裁剪控件
+审阅对象是 worktree：
 
-审阅对象：第一轮返工 `3f98e40..9c02589`（map tools / load model / inspector panels / smoke gate）。
+`D:\MyProject\Architecture-Design\.claude\worktrees\amap-satellite-search`
 
-### 范围：只修两件事，其余不要动
+重点文件：
 
-第一轮返工已把**几何映射（tool→path/circle/triangle）、模型模块加载、浏览器门禁**修好,9 张图纸现在能建对象、能存、能重载——这些**保持现状,不要回炉**。本轮只解决用户手测发现的两个体验问题。后端 / schema / registry / task_pack / 模型模块**不在本轮改动范围**。
+- `_tools/uploader/static/app.js`
+- `_tools/uploader/static/style.css`
+- `_tools/uploader/server.py`
+- `_tools/s1_location_analysis.py`
 
-依据文档（控件清单以它为准,不要自创、不要超出）：`docs/PLAN_2026-05-28_REMAINING_DRAWING_WORKBENCHES_DISCUSSION.md`（§2.2–§2.7 共享图元控件、§3.x 每图纸配置）。
+### Codex 结论
 
----
+上一版 Codex 发出的区位分析修复说明不够准确，导致你把用户已经验证通过的 S1 双地图坐标转换逻辑判断成错误行为。请暂停按“天地图也全程使用 GCJ-02、不需要转换”的方向继续修改。
 
-### 问题 A：新对象另写了一套渲染/选中/编辑，和功能分区不一致，精细度回退
+本轮不要整体回退 worktree。保留已经通过的卫星图尺寸修复，但选择性恢复 S1 双地图坐标转换逻辑。
 
-现在 `workbench.js` 有两套并行系统:FZ 走 `renderFunctionalZoneSvg`(2199),新对象走 `renderObjectSvg`(2106)。新系统相比 FZ **回退**了这些用户已认可、已修过的能力:
+### 必须保留
 
-| 能力 | FZ（认可的） | 新对象（回退） |
-|---|---|---|
-| 选中命中 | 独立透明 `zone-hit` 命中层 + `getZoneHitStrokeWidth` 像素容差(2230-2296) | 无。可见图形自挂 id,`fill="none"` 时点内部选不中、细线难点中(2158/2166/2188) |
-| 顶点编辑 | 顶点 handle + 弧线 handle(2303-2306) | 只有弧线 handle,无顶点 handle(2171) |
-| 选中反馈 | `darkenHex` 边框加深 | 仅线宽 0.008→0.012 |
+- `_tools/uploader/static/style.css` 中 `#s1AmapMap,#s1TdtMap` 的高度修复。
+- S1 页面中的“高清卫星”按钮和 `#s1TdtMap` 容器。
 
-**方向（用户已拍板:抽，但功能分区不受影响）**：
-- 把 FZ 的**几何交互机器**抽成共享函数,供 FZ + 新 path/circle/triangle 共用:① 透明命中层生成（含像素容差）;② 顶点 handle;③ 弧线中点/控制点 handle + 拖拽成弧;④ 选中视觉反馈。这层是几何级的,与 FZ 业务无关,本就该共享。
-- **功能分区是回归红线**:抽取必须是重构,FZ 自己也改用抽出来的共享函数,行为逐像素不变。FZ 的样式模型(`normalizeZoneStyle`)、填充控件**不要动**。
-- 圆/三角也接同一套命中(透明 hit + 容差),不要让小图元难选中。
+### 必须撤销的错误判断
 
----
+当前 `_tools/uploader/static/app.js` 的 Dual map mode 区块里出现了这些判断：
 
-### 问题 B：控件超出原始需求 + 错位 + 全挤在一起
+- `AMap always returns GCJ-02 coordinates ... Tianditu tiles`
+- `No coordinate conversion needed`
+- `Both maps use GCJ-02 internally`
 
-`renderRegistryStyleControls`(719-827) 把控件平铺堆叠,且**给多边形塞了原始需求里没有的参数**:
+这些判断和用户已经肉眼验证通过的高德/天地图匹配结果冲突。请撤销。
 
-1. **多边形冒出箭头**:`isPath` 把 `closed_path` 算进去(722)→ 闭合多边形渲染出 起点/终点箭头 + 箭头尺寸(789-794)。**讨论稿 §2.2 多边形控件里根本没有箭头**——箭头是线段的(§2.3)。删。
-2. **边框控件重复**:多边形同时有"线/边框 颜色+宽度+**线型**"(752-768) 和 "边框 select + 双线间距"(769-786)。§2.2 多边形不含独立"线型",也不含"双线间距"(双线间距是圆形的,§2.4)。线型并入边框样式,删掉多边形的独立 stroke_style 和 double_gap 控件。
-3. **配图错位**:`renderSupportingPanel()` 在 703 行只要图纸 tools 含 `supporting_images` 就**无条件渲染**,与当前激活工具无关 → 选多边形工具时配图面板垂在样式控件下面。
-4. **全平铺**:CSS `.style-controls`(css:453) 单列堆叠,十几个控件无分组。
+### 正确坐标模型
 
-**方向（用户已拍板:先对齐功能分区，再按原始需求核对，原始需求没要求那么多参数）**：
-- **第一步,视觉/交互对齐 FZ**:复用 FZ 的紧凑控件形态(segmented-control 分段按钮、色板、range 滑块、分区名输入),新对象的检查器长得、用得和 FZ 一致,不要另造一套平铺 `<label>` 堆。
-- **第二步,逐图元按讨论稿 §2.2–§2.7 核对,删掉文档没列的控件**:
-  - **多边形(closed_path)** = §2.2:图例名 / 填充模式(无·半透明·实心·斜线) / 填充色 / 边框(无·实线·虚线·双实线) / 边框色 / 边框宽。**删除:起点箭头、终点箭头、箭头尺寸、独立线型、独立双线间距控件。**
-  - **线段(open_path)** = §2.3:线色 / 线宽 / 线型(实/虚) / 起点箭头 / 终点箭头 / 箭头尺寸 / 图例名。箭头仅对"流线类"对象(车行/人行/地下/消防/径流)显示,纯边线/轴线(planting_edge_line、景观轴线)默认不显示箭头控件。**无填充控件。**
-  - **圆形** = §2.4,**三角形** = §2.5,**标注框(转弯半径/标高)** = §2.6,**箭头文字(坡度)** = §2.7。一律以文档列表为上限,不超出。
-- **第三步,次要参数收进默认/折叠,不平铺占位**:斜线角度/间距(默认 45°/§6.2.1 默认)仅在 填充模式=斜线 时出现;标注框宽高/字号/不透明度、双线间距、箭头尺寸给合理默认,放进可折叠的"高级"区或仅在相关模式下出现。主区只留用户最常用的几项,向 FZ 的简洁度看齐。
-- **第四步,分组 + 配图独立**:控件按 `填充 / 描边 / 标注` 分节(参考 FZ 的 `zone-tool-group`)。**配图面板独立成块**,只在"配图"工具激活时出现,绝不挂在几何工具的样式控件下。
+- 高德标准地图使用 GCJ-02。
+- UI 输入框 `#centerLocation` 保存 GCJ-02。
+- S1 `amap_context` 后端数据保存 GCJ-02。
+- 天地图高清卫星按 WGS84/WebMercator 处理。
+- 标准高德图切到天地图：GCJ-02 -> WGS84。
+- 天地图点击拾取：WGS84 -> GCJ-02 后写入输入框和高德上下文。
+- 天地图切回标准高德图：WGS84 -> GCJ-02。
 
-（另:`renderSpecificTools` 632-659、`finishObject` 1903-1934 有 `return;` 之后的死代码块,顺手删。）
+### 具体修改要求
 
----
+在 `_tools/uploader/static/app.js` 中，只修 `// --- Dual map mode ---` 到 `switchToStd` 结束的区块，大约 349-445 行。
 
-### 本轮验收门禁补充（在现有门禁基础上加）
+目标行为：
 
-- **功能分区回归（硬门禁,红线）**:创建带弧线多边形→存→重载弧线不丢;旧 `polygon+segments` 兼容加载;FZ 选中后仍渲染 `zone-hit` 命中层 + 顶点 handle。抽取后这些必须全绿。
-- **交互一致性断言**:新对象(圆/三角/path)选中后,DOM 中存在共享命中层元素和顶点/弧线 handle（与 FZ 同源函数）。
-- **控件断言(浏览器 smoke 内)**:① 选多边形工具时,`#drawingSpecificTools` 内**不存在**箭头控件(styleStartArrow/styleEndArrow/styleArrowSize)、不存在独立 double_gap;② 选多边形/线段等几何工具时,配图面板**不出现**;③ 选"配图"工具时配图面板才出现。
-- 其余第一轮门禁(py_compile / node --check / unittest / 模型测试 / API smoke / validate_record)仍全过。
+1. `ensureTdtMap(AMap, centerGcj, zoom)` 接收 GCJ-02 中心点，但创建 `s1TdtMap` 时先执行：
 
-### 交付
+   ```js
+   var centerWgs = gcj02ToWgs84(centerGcj[0], centerGcj[1]);
+   ```
 
-- 分提交:A（抽共享交互层 + FZ 改用）/ B（控件对齐+裁剪+配图独立）/ 门禁,各一次。
-- 不要改 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`,审阅线程留给 mac claude。
-- 回推后 mac claude 做最终审 + 看 FZ 回归与控件断言的实际输出。
+   天地图 `center` 使用 `centerWgs`。
 
+2. `s1TdtMap.on("click", ...)` 中，把点击得到的天地图显示坐标按 WGS84 处理：
+
+   ```js
+   var wgsLng = event.lnglat.getLng();
+   var wgsLat = event.lnglat.getLat();
+   var gcj = wgs84ToGcj02(wgsLng, wgsLat);
+   ```
+
+   输入框和 `state.s1Location` 写 `formatGcj02(gcj[0], gcj[1])`。
+
+   标准高德 marker 用 GCJ-02：
+
+   ```js
+   upsertS1Marker(AMap, { lng: gcj[0], lat: gcj[1] });
+   ```
+
+   天地图 marker 用 WGS84：
+
+   ```js
+   state.amap.s1TdtMarker.setPosition([wgsLng, wgsLat]);
+   ```
+
+3. `switchToTdt(AMap)` 中，标准图中心和 marker 均从 GCJ-02 转 WGS84 后再同步到天地图。
+
+4. `switchToStd(AMap)` 中，天地图中心和 marker 均从 WGS84 转 GCJ-02 后再同步到标准高德图。
+
+5. 状态文案恢复为：
+
+   ```text
+   天地图高清卫星（WGS84 坐标系，无偏移）
+   ```
+
+### 搜索选点同步要求
+
+`initS1AmapSearch` 中，搜索 POI 得到的坐标是高德 GCJ-02。
+
+如果当前在标准图：
+
+- 标准图直接 `setCenter([lng, lat])`。
+- 标准 marker 直接用 GCJ-02。
+
+如果当前在天地图：
+
+- 输入框仍写 GCJ-02。
+- 标准 marker 仍用 GCJ-02。
+- 天地图中心和 marker 必须先转 WGS84。
+
+不要在搜索选点时把 GCJ-02 直接塞给 `s1TdtMap`。
+
+### 区位分析自动草稿边界
+
+S1 自动区位分析不要再改坐标体系。
+
+它只读取 UI 或 `amap_context` 中的 GCJ-02 中心点。如果需要天地图截图或 metadata，再派生：
+
+```js
+center_wgs84 = gcj02ToWgs84(center_gcj02[0], center_gcj02[1])
+```
+
+不要把输入框、`amap_context`、control points 改成 WGS84。
+
+### 本轮优先级
+
+先只做：
+
+1. 恢复双地图坐标转换逻辑。
+2. 保留卫星图尺寸修复。
+3. 通过切图和点选复验。
+
+`location_analysis` 的 2km 截图和 JSON 产物可以等坐标恢复后再继续，避免把两类问题混在一起扩大风险。
+
+### 验收
+
+必须通过：
+
+```powershell
+node --check _tools\uploader\static\app.js
+python -m py_compile _tools\uploader\server.py _tools\s1_location_analysis.py
+python _tools\validate_record.py 26-BQ-PARK
+python _tools\selfcheck.py
+```
+
+浏览器验收：
+
+- 标准高德图与天地图高清卫星切换后，同一中心点不能明显漂移。
+- 天地图点击拾取坐标后，切回标准高德图仍落到同一真实位置。
+- 卫星图尺寸仍与标准图一致。
+
+### 下一步建议
+
+完成上述坐标恢复后，再继续做 S1 区位分析产物：
+
+- `05_output/location_analysis/satellite_2km.png`
+- `05_output/location_analysis/location_analysis_draft.json`
+
+但这一步不得再次修改双地图坐标转换边界。
