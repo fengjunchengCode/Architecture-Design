@@ -1129,6 +1129,48 @@
     return `left:${Number(data.x || 0) * 100}%;top:${Number(data.y || 0) * 100}%;width:${Number(data.w || 0) * 100}%;height:${Number(data.h || 0) * 100}%;`;
   }
 
+  function safeCssColor(value, fallback = "#D9882B") {
+    const text = String(value || "").trim();
+    return /^#[0-9A-Fa-f]{6}$/.test(text) ? text : fallback;
+  }
+
+  function pptTitleStyle() {
+    const style = (state.deckLayout && state.deckLayout.title_style) || {};
+    const font = style.font || "Microsoft YaHei";
+    const size = Number(style.size) || 24;
+    const color = safeCssColor(style.color, "#111111");
+    const weight = style.weight || "700";
+    return `font-family:${escapeHtml(font)}, \"PingFang SC\", Arial, sans-serif;font-size:${size}px;color:${color};font-weight:${escapeHtml(weight)};`;
+  }
+
+  function renderPptHeader(slide) {
+    const title = (slide && slide.title) || drawingConfig().label || "图纸";
+    return `
+      <div class="ppt-el ppt-title-header" data-ppt-header="true">
+        <div class="ppt-title-kicker">设计理念与总平面</div>
+        <div class="ppt-title-kicker-en">Design Philosophy and Master Plan</div>
+        <div class="ppt-title-main" data-ppt-title="true" style="${pptTitleStyle()}">${escapeHtml(title)}</div>
+      </div>
+    `;
+  }
+
+  function renderPptTextContent(slide) {
+    const text = (slide && slide.text) || "暂无图纸说明。";
+    const lines = String(text).split(/\n+/).filter((line) => line.trim());
+    if (!lines.length) return '<p class="ppt-text-body">暂无图纸说明。</p>';
+    return lines
+      .map((line) => {
+        const escaped = escapeHtml(line.trim());
+        const colonMatch = escaped.match(/^([^：:]{1,28}[：:])(.*)$/);
+        let html = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong data-ppt-text-heading="true">$1</strong>');
+        if (colonMatch) {
+          html = `<span data-ppt-text-heading="true" class="ppt-text-heading">${colonMatch[1]}</span>${colonMatch[2]}`;
+        }
+        return `<p class="ppt-text-body">${html}</p>`;
+      })
+      .join("");
+  }
+
   function supportingImageById(id) {
     const images = state.supportingImages[drawingType()] || [];
     return images.find((image) => image.id === id) || null;
@@ -1186,6 +1228,8 @@
       return;
     }
     const slide = currentPptSlide();
+    const accent = safeCssColor(state.deckLayout.typography_accent, "#D9882B");
+    slideEl.style.setProperty("--ppt-accent", accent);
     const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
     const elements = (slide && slide.elements) || {};
     const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
@@ -1212,6 +1256,7 @@
       })
       .join("");
     slideEl.innerHTML = `
+      ${renderPptHeader(slide)}
       ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
       ${warningHtml}
       <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
@@ -1223,8 +1268,7 @@
         ${legendHtml}
       </div>
       <div class="ppt-el ppt-info-box" data-ppt-element="text" style="${boxStyle(elements.text)}">
-        <h4>${escapeHtml((slide && slide.title) || drawingConfig().label || "图纸说明")}</h4>
-        <p>${escapeHtml((slide && slide.text) || "暂无图纸说明。")}</p>
+        ${renderPptTextContent(slide)}
       </div>
       ${supportHtml}
     `;
@@ -4240,10 +4284,21 @@
     getActiveDrawingType() {
       return drawingType();
     },
+    async switchDrawingType(next) {
+      await setCurrentDrawing(next, { skipDirty: true });
+      return drawingType();
+    },
     async reloadStylePresets() {
       await loadStylePresets();
       renderDrawingWorkspace();
       return JSON.parse(JSON.stringify(state.stylePresets || []));
+    },
+    async saveCurrentDrawing() {
+      return saveDrawing();
+    },
+    async loadCurrentDrawing() {
+      await loadDrawing();
+      return JSON.parse(JSON.stringify(state.objects));
     },
   };
 

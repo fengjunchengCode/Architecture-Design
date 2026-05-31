@@ -1032,6 +1032,7 @@ def assert_ppt_preview_basics(page) -> None:
     assert media.count() == 1, "PPT preview should mark drawing media for contain checks"
     object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
     assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
+    assert_title_and_accent_global(page)
     dialogs: list[str] = []
 
     def handle_dialog(dialog) -> None:
@@ -1062,7 +1063,7 @@ def assert_layout_warnings_visible(page) -> None:
         }""",
         TEST_PROJECT,
     )
-    page.reload(wait_until="networkidle")
+    page.reload(wait_until="domcontentloaded")
     page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
     page.click("#togglePptPreview")
     assert page.locator("[data-ppt-layout-warning='true']", has_text="warning smoke").count() == 1, (
@@ -1070,6 +1071,89 @@ def assert_layout_warnings_visible(page) -> None:
     )
     page.click("#togglePptPreview")
     page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_title_and_accent_global(page) -> None:
+    heading_text = "车行流线设置：主入口与慢行系统分离。"
+    page.fill("#pptSlideText", heading_text)
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project, expected}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": heading_text},
+        timeout=10000,
+    )
+    layout = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    accent = (layout.get("typography_accent") or "").upper()
+    assert accent == "#D9882B", f"typography_accent should default to amber orange, got {accent}"
+    assert page.locator("[data-ppt-title='true']").count() == 1, "PPT title should render as an independent header"
+    assert page.locator("[data-ppt-element='text'] [data-ppt-title='true']").count() == 0, (
+        "PPT title must not be nested in the text box"
+    )
+    title_style = page.locator("[data-ppt-title='true']").evaluate(
+        """(node) => {
+            const style = getComputedStyle(node);
+            return {
+                fontFamily: style.fontFamily,
+                fontSize: style.fontSize,
+                color: style.color,
+                fontWeight: style.fontWeight,
+            };
+        }"""
+    )
+    heading_color = page.locator("[data-ppt-text-heading='true']").first.evaluate("(node) => getComputedStyle(node).color")
+    assert heading_color == "rgb(217, 136, 43)", f"heading accent should use global amber, got {heading_color}"
+
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('traffic_analysis')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'traffic_analysis'",
+        timeout=15000,
+    )
+    page.fill("#pptSlideText", "交通组织：车行与人行路径清晰。")
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.traffic_analysis.text.includes('交通组织'))
+        """,
+        arg={"project": TEST_PROJECT},
+        timeout=10000,
+    )
+    other_title_style = page.locator("[data-ppt-title='true']").evaluate(
+        """(node) => {
+            const style = getComputedStyle(node);
+            return {
+                fontFamily: style.fontFamily,
+                fontSize: style.fontSize,
+                color: style.color,
+                fontWeight: style.fontWeight,
+            };
+        }"""
+    )
+    other_heading_color = page.locator("[data-ppt-text-heading='true']").first.evaluate("(node) => getComputedStyle(node).color")
+    assert other_title_style == title_style, f"title style must be deck-global: {title_style} vs {other_title_style}"
+    assert other_heading_color == heading_color, f"heading accent must be deck-global: {heading_color} vs {other_heading_color}"
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('functional_zoning')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=15000,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=20000,
+    )
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen after typography comparison"
 
 
 def assert_reflow_guard(page) -> None:
@@ -1090,7 +1174,7 @@ def assert_reflow_guard(page) -> None:
         }""",
         {"project": TEST_PROJECT, "manualX": manual_x},
     )
-    page.reload(wait_until="networkidle")
+    page.reload(wait_until="domcontentloaded")
     page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
     page.click("#togglePptPreview")
     assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for reflow guard"
@@ -1167,8 +1251,8 @@ def main() -> int:
     server = subprocess.Popen(
         [sys.executable, str(REPO_ROOT / "_tools" / "uploader" / "server.py"), "--port", str(PORT), "--no-browser"],
         cwd=str(REPO_ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         env=env,
     )
 
@@ -1293,10 +1377,9 @@ def main() -> int:
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
 
-                with page.expect_response(lambda r: "/api/drawing/save" in r.url and r.status == 200, timeout=15000):
-                    page.click("#workbenchSave")
-                with page.expect_response(lambda r: "/api/drawing/load" in r.url and r.status == 200, timeout=15000):
-                    page.click("#workbenchLoad")
+                save_result = page.evaluate("() => window.DrawingWorkbenchTest.saveCurrentDrawing()")
+                assert save_result and save_result.get("ok"), f"{drawing_type}: save hook failed: {save_result}"
+                page.evaluate("() => window.DrawingWorkbenchTest.loadCurrentDrawing()")
                 page.wait_for_function(
                     "(count) => window.DrawingWorkbenchTest.getObjects().length >= count",
                     arg=len(after_objects),

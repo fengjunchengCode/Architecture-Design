@@ -631,7 +631,13 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 slide["text"] = str(slide_patch.get("text") or "")
             if "title" in slide_patch:
                 slide["title"] = str(slide_patch.get("title") or "")
+            if isinstance(slide_patch.get("typography"), dict):
+                slide["typography"] = slide_patch["typography"]
             layout.setdefault("slides", {})[drawing_type] = slide
+        if isinstance(payload.get("title_style"), dict):
+            layout["title_style"] = payload["title_style"]
+        if "typography_accent" in payload:
+            layout["typography_accent"] = str(payload.get("typography_accent") or "")
         if "template_side" in payload:
             layout = set_template_side(layout, str(payload.get("template_side") or ""))
         if isinstance(payload.get("drawing_frame"), dict):

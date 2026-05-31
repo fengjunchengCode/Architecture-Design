@@ -15,6 +15,9 @@ SCHEMA_VERSION = "1.0"
 LAYOUT_REL = Path("05_output/ppt/drawing_deck/layout.json")
 SLIDE = {"aspect": "16:9", "width": 13.333, "height": 7.5}
 TEMPLATE_SIDES = {"drawing_left", "drawing_right"}
+TYPOGRAPHY_ACCENT = "#D9882B"
+TITLE_STYLE = {"font": "Microsoft YaHei", "size": 24, "color": "#111111", "weight": "700"}
+BODY_TYPOGRAPHY = {"size": 12, "color": "#3A3732", "weight": "400"}
 DEFAULT_TEMPLATES: dict[str, dict[str, dict[str, float]]] = {
     "drawing_left": {
         "drawing_frame": {"x": 0.02, "y": 0.17, "w": 0.64, "h": 0.72},
@@ -51,6 +54,51 @@ def clamp_number(value: object, fallback: float, *, minimum: float = 0.0, maximu
     return round(min(maximum, max(minimum, number)), 4)
 
 
+def normalize_color(value: object, fallback: str) -> str:
+    text = str(value or "").strip()
+    if len(text) == 7 and text.startswith("#"):
+        try:
+            int(text[1:], 16)
+            return text.upper()
+        except ValueError:
+            pass
+    return fallback
+
+
+def normalize_title_style(raw: object) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    return {
+        "font": str(data.get("font") or TITLE_STYLE["font"]),
+        "size": int(clamp_number(data.get("size"), TITLE_STYLE["size"], minimum=10, maximum=44)),
+        "color": normalize_color(data.get("color"), TITLE_STYLE["color"]),
+        "weight": str(data.get("weight") or TITLE_STYLE["weight"]),
+    }
+
+
+def default_slide_typography(accent: str) -> dict[str, Any]:
+    return {
+        "heading": {"bold": True, "color": accent},
+        "body": deepcopy(BODY_TYPOGRAPHY),
+    }
+
+
+def normalize_slide_typography(raw: object, accent: str) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    heading = data.get("heading") if isinstance(data.get("heading"), dict) else {}
+    body = data.get("body") if isinstance(data.get("body"), dict) else {}
+    return {
+        "heading": {
+            "bold": bool(heading.get("bold", True)),
+            "color": normalize_color(heading.get("color"), accent),
+        },
+        "body": {
+            "size": int(clamp_number(body.get("size"), BODY_TYPOGRAPHY["size"], minimum=8, maximum=22)),
+            "color": normalize_color(body.get("color"), BODY_TYPOGRAPHY["color"]),
+            "weight": str(body.get("weight") or BODY_TYPOGRAPHY["weight"]),
+        },
+    }
+
+
 def normalize_box(raw: object, fallback: dict[str, float]) -> dict[str, float]:
     data = raw if isinstance(raw, dict) else {}
     x = clamp_number(data.get("x"), fallback["x"])
@@ -84,6 +132,8 @@ def default_deck_layout(project_code: str) -> dict[str, Any]:
         "template_side": side,
         "drawing_frame_version": 1,
         "drawing_frame": frame,
+        "title_style": deepcopy(TITLE_STYLE),
+        "typography_accent": TYPOGRAPHY_ACCENT,
         "slides": {
             drawing_type: default_slide(drawing_type, side, frame_version=1)
             for drawing_type in DRAWING_REGISTRY
@@ -91,10 +141,17 @@ def default_deck_layout(project_code: str) -> dict[str, Any]:
     }
 
 
-def default_slide(drawing_type: str, template_side: str, *, frame_version: int) -> dict[str, Any]:
+def default_slide(
+    drawing_type: str,
+    template_side: str,
+    *,
+    frame_version: int,
+    typography_accent: str = TYPOGRAPHY_ACCENT,
+) -> dict[str, Any]:
     return {
         "title": default_title(drawing_type),
         "text": "",
+        "typography": default_slide_typography(typography_accent),
         "layout_generated_from_frame_version": frame_version,
         "needs_reflow": False,
         "manual_overrides": False,
@@ -285,12 +342,19 @@ def estimate_legend_count(objects: list[dict[str, Any]]) -> int:
     return max(1, len(keys))
 
 
-def normalize_slide(raw: object, drawing_type: str, template_side: str, frame_version: int) -> dict[str, Any]:
-    fallback = default_slide(drawing_type, template_side, frame_version=frame_version)
+def normalize_slide(
+    raw: object,
+    drawing_type: str,
+    template_side: str,
+    frame_version: int,
+    typography_accent: str,
+) -> dict[str, Any]:
+    fallback = default_slide(drawing_type, template_side, frame_version=frame_version, typography_accent=typography_accent)
     data = raw if isinstance(raw, dict) else {}
     slide = {
         "title": str(data.get("title") or fallback["title"]),
         "text": str(data.get("text") or ""),
+        "typography": normalize_slide_typography(data.get("typography"), typography_accent),
         "layout_generated_from_frame_version": int(data.get("layout_generated_from_frame_version") or fallback["layout_generated_from_frame_version"]),
         "needs_reflow": bool(data.get("needs_reflow", fallback["needs_reflow"])),
         "manual_overrides": bool(data.get("manual_overrides", fallback["manual_overrides"])),
@@ -330,9 +394,11 @@ def normalize_deck_layout(raw: object, project_code: str) -> dict[str, Any]:
         data.get("drawing_frame"),
         DEFAULT_TEMPLATES[side]["drawing_frame"],
         )
+    title_style = normalize_title_style(data.get("title_style"))
+    typography_accent = normalize_color(data.get("typography_accent"), TYPOGRAPHY_ACCENT)
     slides_raw = data.get("slides") if isinstance(data.get("slides"), dict) else {}
     slides = {
-        drawing_type: normalize_slide(slides_raw.get(drawing_type), drawing_type, side, frame_version)
+        drawing_type: normalize_slide(slides_raw.get(drawing_type), drawing_type, side, frame_version, typography_accent)
         for drawing_type in DRAWING_REGISTRY
     }
     layout = {
@@ -343,6 +409,8 @@ def normalize_deck_layout(raw: object, project_code: str) -> dict[str, Any]:
         "template_side": side,
         "drawing_frame_version": frame_version,
         "drawing_frame": frame,
+        "title_style": title_style,
+        "typography_accent": typography_accent,
         "slides": slides,
     }
     return layout
@@ -402,7 +470,12 @@ def reflow_deck(project_dir: Path, layout: dict[str, Any], *, drawing_type: str 
     for target in targets:
         if target not in DRAWING_TYPES:
             raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
-        slide = layout["slides"].get(target) or default_slide(target, side, frame_version=frame_version)
+        slide = layout["slides"].get(target) or default_slide(
+            target,
+            side,
+            frame_version=frame_version,
+            typography_accent=normalize_color(layout.get("typography_accent"), TYPOGRAPHY_ACCENT),
+        )
         supporting = read_supporting_images(project_dir, target)
         legend_count = estimate_legend_count(read_drawing_objects(project_dir, target))
         elements, warnings = adaptive_elements(

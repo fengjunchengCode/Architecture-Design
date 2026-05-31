@@ -1277,13 +1277,19 @@
 .ppt-slide-shell{width:min(100%,1180px);aspect-ratio:16/9;display:grid;place-items:center}
 .ppt-slide{position:relative;width:100%;height:100%;background:#fff;box-shadow:0 18px 44px rgba(43,39,34,.20);overflow:hidden;color:var(--ink3);font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif}
 .ppt-el{position:absolute;box-sizing:border-box}
+.ppt-title-header{left:4%;top:4.6%;width:58%;height:10%;line-height:1.1}
+.ppt-title-kicker{font-size:11px;font-weight:700;color:#7b756d;letter-spacing:0}
+.ppt-title-kicker-en{margin-top:2px;font-size:8px;text-transform:uppercase;color:#b3ada5;letter-spacing:.04em}
+.ppt-title-main{margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
 .ppt-drawing-frame{border:1px solid rgba(43,39,34,.24);background:#f7f4ed;display:grid;place-items:center;overflow:hidden}
 .ppt-drawing-frame img,.ppt-drawing-frame object{width:100%;height:100%;object-fit:contain;display:block}
 .ppt-drawing-frame [data-ppt-drawing-media="true"]{object-fit:contain;object-position:center center}
 .ppt-frame-label{position:absolute;left:10px;top:8px;background:rgba(255,255,255,.82);border:1px solid rgba(43,39,34,.16);border-radius:6px;padding:3px 7px;font-size:11px;color:var(--muted3)}
 .ppt-info-box{border:1px dashed rgba(143,116,57,.30);background:rgba(255,253,247,.78);padding:10px;overflow:hidden}
-.ppt-info-box h4{margin:0 0 6px;font-size:12px;color:#9a7a24}
+.ppt-info-box h4{margin:0 0 6px;font-size:12px;color:var(--ppt-accent,#D9882B)}
 .ppt-info-box p{margin:0;font-size:12px;line-height:1.55;white-space:pre-wrap}
+.ppt-text-body{color:#3a3732;text-align:justify}
+.ppt-text-heading,.ppt-text-body strong{color:var(--ppt-accent,#D9882B);font-weight:700;font-size:1.05em}
 .ppt-legend-box{overflow:hidden}
 .ppt-legend-box .zone-legend-item{padding:4px 0;font-size:11px}
 .ppt-supporting-img{background:#f4efe4;border:1px solid rgba(43,39,34,.14);overflow:hidden}
