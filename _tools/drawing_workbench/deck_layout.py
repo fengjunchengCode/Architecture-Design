@@ -13,6 +13,8 @@ from _tools.drawing_workbench.registry import DRAWING_REGISTRY, DRAWING_TYPES
 
 SCHEMA_VERSION = "1.0"
 LAYOUT_REL = Path("05_output/ppt/drawing_deck/layout.json")
+EXPORT_REL = Path("05_output/ppt/drawing_deck/deck.pptx")
+PLATE_DIR_REL = Path("05_output/ppt/drawing_deck/plates")
 SLIDE = {"aspect": "16:9", "width": 13.333, "height": 7.5}
 TEMPLATE_SIDES = {"drawing_left", "drawing_right"}
 TYPOGRAPHY_ACCENT = "#D9882B"
@@ -44,6 +46,10 @@ def deck_layout_path(project_dir: Path) -> Path:
 
 def layout_rel_path() -> str:
     return str(LAYOUT_REL).replace("\\", "/")
+
+
+def export_rel_path() -> str:
+    return str(EXPORT_REL).replace("\\", "/")
 
 
 def clamp_number(value: object, fallback: float, *, minimum: float = 0.0, maximum: float = 1.0) -> float:
@@ -509,3 +515,148 @@ def reflow_deck(project_dir: Path, layout: dict[str, Any], *, drawing_type: str 
         slide["layout_warnings"] = warnings
         layout["slides"][target] = slide
     return layout
+
+
+def rel_box_to_inches(box: dict[str, float]) -> tuple[float, float, float, float]:
+    return (
+        float(box.get("x") or 0) * SLIDE["width"],
+        float(box.get("y") or 0) * SLIDE["height"],
+        float(box.get("w") or 0) * SLIDE["width"],
+        float(box.get("h") or 0) * SLIDE["height"],
+    )
+
+
+def hex_to_rgb(color: str, fallback: str = "#333333") -> tuple[int, int, int]:
+    text = normalize_color(color, fallback).lstrip("#")
+    return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+
+
+def drawing_base_image_path(project_dir: Path, drawing_type: str) -> Path | None:
+    drawing_path = project_dir / "05_output" / "drawings" / "semantic" / f"{drawing_type}.json"
+    if drawing_path.exists():
+        try:
+            data = json.loads(drawing_path.read_text(encoding="utf-8"))
+            base_path = ((data.get("base_image") or {}).get("path") or "").strip()
+            if base_path:
+                candidate = project_dir / base_path
+                if candidate.exists():
+                    return candidate
+        except Exception:
+            pass
+    fallback = project_dir / "05_output" / "drawings" / "base" / "master_plan.jpg"
+    return fallback if fallback.exists() else None
+
+
+def make_plate_image(project_dir: Path, drawing_type: str, layout: dict[str, Any]) -> Path | None:
+    source = drawing_base_image_path(project_dir, drawing_type)
+    if not source:
+        return None
+    from PIL import Image
+
+    plate_dir = project_dir / PLATE_DIR_REL
+    plate_dir.mkdir(parents=True, exist_ok=True)
+    frame = layout.get("drawing_frame") or DEFAULT_TEMPLATES["drawing_left"]["drawing_frame"]
+    aspect = max(0.1, drawing_plate_for_frame(frame, int(layout.get("drawing_frame_version") or 1))["aspect_ratio"])
+    width = 1600
+    height = max(400, int(width / aspect))
+    plate = Image.new("RGB", (width, height), (247, 244, 237))
+    try:
+        with Image.open(source) as image:
+            image = image.convert("RGB")
+            image.thumbnail((width, height), Image.Resampling.LANCZOS)
+            x = (width - image.width) // 2
+            y = (height - image.height) // 2
+            plate.paste(image, (x, y))
+    except Exception:
+        return None
+    output = plate_dir / f"{drawing_type}_plate.jpg"
+    plate.save(output, "JPEG", quality=92)
+    return output
+
+
+def add_text_box(slide: Any, box: dict[str, float], text: str, *, size: int, color: str, bold: bool = False) -> None:
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+
+    x, y, w, h = rel_box_to_inches(box)
+    shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    paragraph = tf.paragraphs[0]
+    run = paragraph.add_run()
+    run.text = text
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.color.rgb = RGBColor(*hex_to_rgb(color))
+
+
+def export_deck_pptx(project_dir: Path, layout: dict[str, Any], project_code: str) -> dict[str, Any]:
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+    except Exception as exc:  # pragma: no cover - depends on local optional package.
+        raise RuntimeError("python-pptx is required for PPTX export in this environment") from exc
+
+    layout = normalize_deck_layout(layout, project_code)
+    prs = Presentation()
+    prs.slide_width = Inches(SLIDE["width"])
+    prs.slide_height = Inches(SLIDE["height"])
+    blank_layout = prs.slide_layouts[6]
+    title_style = layout.get("title_style") or TITLE_STYLE
+    accent = normalize_color(layout.get("typography_accent"), TYPOGRAPHY_ACCENT)
+    frame = layout.get("drawing_frame") or DEFAULT_TEMPLATES["drawing_left"]["drawing_frame"]
+
+    for drawing_type in DRAWING_REGISTRY:
+        slide_data = layout["slides"][drawing_type]
+        slide = prs.slides.add_slide(blank_layout)
+        add_text_box(slide, {"x": 0.04, "y": 0.045, "w": 0.55, "h": 0.03}, "设计理念与总平面", size=9, color="#666666", bold=False)
+        add_text_box(slide, {"x": 0.04, "y": 0.075, "w": 0.55, "h": 0.03}, "Design Philosophy and Master Plan", size=7, color="#999999", bold=False)
+        add_text_box(
+            slide,
+            {"x": 0.04, "y": 0.105, "w": 0.7, "h": 0.055},
+            str(slide_data.get("title") or default_title(drawing_type)),
+            size=int(title_style.get("size") or 24),
+            color=str(title_style.get("color") or "#111111"),
+            bold=str(title_style.get("weight") or "700") != "400",
+        )
+
+        plate = make_plate_image(project_dir, drawing_type, layout)
+        fx, fy, fw, fh = rel_box_to_inches(frame)
+        if plate:
+            slide.shapes.add_picture(str(plate), Inches(fx), Inches(fy), width=Inches(fw), height=Inches(fh))
+        else:
+            shape = slide.shapes.add_shape(1, Inches(fx), Inches(fy), Inches(fw), Inches(fh))
+            shape.text = "图纸"
+
+        elements = slide_data.get("elements") or {}
+        text_box = elements.get("text")
+        if isinstance(text_box, dict):
+            body = ((slide_data.get("typography") or {}).get("body") or {})
+            add_text_box(
+                slide,
+                text_box,
+                str(slide_data.get("text") or "暂无图纸说明。"),
+                size=int(body.get("size") or 12),
+                color=str(body.get("color") or BODY_TYPOGRAPHY["color"]),
+            )
+        legend_box = elements.get("legend")
+        if isinstance(legend_box, dict):
+            labels = [str(obj.get("label") or obj.get("type") or "图例") for obj in read_drawing_objects(project_dir, drawing_type)[:8]]
+            add_text_box(slide, legend_box, "图例\n" + "\n".join(labels or ["暂无图例对象"]), size=10, color=accent, bold=False)
+        for image_box in elements.get("supporting_images") or []:
+            if not isinstance(image_box, dict):
+                continue
+            image = next((item for item in read_supporting_images(project_dir, drawing_type) if str(item.get("id")) == str(image_box.get("id"))), None)
+            if not image:
+                continue
+            image_path = project_dir / "05_output" / "drawings" / "supporting" / drawing_type / str(image.get("stored_name") or "")
+            if image_path.exists():
+                x, y, w, h = rel_box_to_inches(image_box)
+                slide.shapes.add_picture(str(image_path), Inches(x), Inches(y), width=Inches(w), height=Inches(h))
+
+    path = project_dir / EXPORT_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(path)
+    return {"path": export_rel_path(), "slides": len(DRAWING_REGISTRY)}

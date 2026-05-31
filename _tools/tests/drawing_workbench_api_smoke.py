@@ -245,6 +245,9 @@ def main() -> int:
             f"current reflow should not clear other slides: {reflowed}"
         )
         assert_reflow_adaptive(proj_dir)
+        exported = api_post("/api/drawing/deck-layout/export", {"project": TEST_PROJECT})
+        assert exported.get("ok") and exported.get("path", "").endswith("deck.pptx"), f"PPT export failed: {exported}"
+        assert (proj_dir / exported["path"]).exists(), f"PPT export file missing: {exported}"
         print("OK: PPT deck layout load/save/template/reflow works")
 
         # Test save for each drawing type

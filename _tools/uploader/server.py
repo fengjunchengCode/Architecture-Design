@@ -33,6 +33,7 @@ from _tools.drawing_workbench.registry import (
     default_object_style,
 )
 from _tools.drawing_workbench.deck_layout import (
+    export_deck_pptx,
     layout_rel_path,
     load_deck_layout,
     reflow_deck,
@@ -434,6 +435,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_deck_layout_save()
             elif parsed.path == "/api/drawing/deck-layout/reflow":
                 self.handle_deck_layout_reflow()
+            elif parsed.path == "/api/drawing/deck-layout/export":
+                self.handle_deck_layout_export()
             elif parsed.path == "/api/style/save":
                 self.handle_style_save()
             else:
@@ -665,6 +668,14 @@ class UploaderHandler(BaseHTTPRequestHandler):
         layout = reflow_deck(proj, layout, drawing_type=drawing_type_arg)
         saved = save_deck_layout(proj, layout, code)
         self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
+
+    def handle_deck_layout_export(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        result = export_deck_pptx(proj, layout, code)
+        self.send_json({"ok": True, "project": code, **result})
 
     def handle_supporting_list(self, query: str) -> None:
         params = parse_qs(query)
