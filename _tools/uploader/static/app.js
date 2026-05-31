@@ -1005,18 +1005,21 @@ function summarizeUpload(data) {
 }
 
 function summarizeAutoDraft(data) {
+  const screenshotUrl = data.ok && data.screenshot_path
+    ? `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}`
+    : null;
   return `
     <div class="summary-card ${data.ok ? "ok" : "warn"}">
-      <h3>${data.ok ? "S1 区位分析草稿已生成" : "区位分析草稿生成失败"}</h3>
+      <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
       <div class="result-grid">
         ${resultRow("项目", data.project_code)}
-        ${resultRow("Markdown 文件", data.path || "无")}
-        ${resultRow("结构化 JSON", data.json_path || "无")}
+        ${resultRow("输出目录", data.output_dir || "无")}
+        ${resultRow("截图", data.screenshot_path || "未捕获")}
+        ${resultRow("JSON", data.json_path || "无")}
       </div>
+      ${screenshotUrl ? `<div class="result-section"><b>卫星截图预览</b><br><img src="${screenshotUrl}" style="max-width:400px;border:1px solid var(--line);border-radius:6px;margin-top:8px" alt="satellite screenshot"></div>` : ""}
       ${data.summary ? `<div class="result-section"><b>摘要</b><p>${escapeHtml(data.summary)}</p></div>` : ""}
-      ${data.structured_preview ? `<div class="result-section"><b>结构化草稿预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:400px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.structured_preview)}</pre></div>` : ""}
-      ${data.markdown_preview ? `<div class="result-section"><b>Markdown 预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:300px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.markdown_preview)}</pre></div>` : ""}
-      <p class="result-next">${data.ok ? "草稿已保存：Markdown（05_output/s1_location_analysis.md）+ 结构化 JSON（05_output/s1_location_draft.json）。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
+      <p class="result-next">${data.ok ? "快照已保存到 05_output/location_analysis/，包含 satellite_2km.png 和 location_analysis_draft.json。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
     </div>
   `;
 }
@@ -1437,13 +1440,39 @@ async function autoDraftS1() {
     setAmapStatus("请先打开或创建项目", false);
     return;
   }
-  setAmapStatus("正在生成区位分析草稿...", null);
+  setAmapStatus("正在生成区位分析快照...", null);
+  // Capture canvas screenshot as base64
+  let screenshotDataUrl = null;
+  try {
+    const containerId = state.amap.s1MapMode === "tianditu" ? "#s1TdtMap" : "#s1AmapMap";
+    const container = document.querySelector(containerId);
+    if (container) {
+      const canvases = container.querySelectorAll("canvas");
+      if (canvases.length > 0) {
+        let w = 0, h = 0;
+        for (let i = 0; i < canvases.length; i++) { if (canvases[i].width > w) w = canvases[i].width; if (canvases[i].height > h) h = canvases[i].height; }
+        if (w > 0 && h > 0) {
+          const merged = document.createElement("canvas"); merged.width = w; merged.height = h;
+          const ctx = merged.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+          for (let j = 0; j < canvases.length; j++) { try { ctx.drawImage(canvases[j], 0, 0); } catch(e) {} }
+          screenshotDataUrl = merged.toDataURL("image/png");
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Screenshot capture failed:", e);
+  }
   const data = await api("/api/s1/auto-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ project: code }),
+    body: JSON.stringify({
+      project: code,
+      map_mode: state.amap.s1MapMode || "standard",
+      screenshot_data_url: screenshotDataUrl,
+    }),
   });
-  setAmapStatus(data.ok ? "区位分析草稿已生成" : data.error || "生成失败", data.ok);
+  setAmapStatus(data.ok ? "区位分析快照已生成" : data.error || "生成失败", data.ok);
   writeOutput(data);
 }
 

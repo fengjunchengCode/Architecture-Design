@@ -1051,7 +1051,24 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_s1_auto_draft(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
+        map_mode = str(payload.get("map_mode", "standard")).strip()
+        screenshot_data_url = str(payload.get("screenshot_data_url", "")).strip()
+        # Save screenshot if provided
+        proj = project_dir(code)
+        output_dir = proj / "05_output" / "location_analysis"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = None
+        if screenshot_data_url and screenshot_data_url.startswith("data:image/png;base64,"):
+            import base64
+            b64 = screenshot_data_url.split(",", 1)[1]
+            png_path = output_dir / "satellite_2km.png"
+            png_path.write_bytes(base64.b64decode(b64))
+            screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
+        # Run analysis script
         args = ["_tools/s1_location_analysis.py", code, "--json", "--write"]
+        if screenshot_path:
+            args.extend(["--screenshot-path", screenshot_path])
+        args.extend(["--map-mode", map_mode])
         rc, stdout, stderr = run_tool(args)
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})
