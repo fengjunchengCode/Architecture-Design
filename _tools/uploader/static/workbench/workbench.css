@@ -1295,6 +1295,18 @@
 .ppt-frame-handle[data-ppt-frame-handle="sw"]{left:-5px;bottom:-5px;cursor:nesw-resize}
 .ppt-frame-handle[data-ppt-frame-handle="w"]{left:-5px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 .ppt-info-box{border:1px dashed rgba(143,116,57,.30);background:rgba(255,253,247,.78);padding:10px;overflow:hidden}
+.ppt-info-box,.ppt-supporting-img{cursor:move}
+.ppt-el-selected{outline:2px solid rgba(217,136,43,.72);outline-offset:2px}
+.ppt-element-handle{position:absolute;width:8px;height:8px;background:#fff;border:1px solid var(--ppt-accent,#D9882B);border-radius:50%;box-shadow:0 1px 4px rgba(43,39,34,.16);z-index:4;opacity:0}
+.ppt-el-selected .ppt-element-handle{opacity:1}
+.ppt-element-handle[data-ppt-element-handle="nw"]{left:-4px;top:-4px;cursor:nwse-resize}
+.ppt-element-handle[data-ppt-element-handle="n"]{left:50%;top:-4px;transform:translateX(-50%);cursor:ns-resize}
+.ppt-element-handle[data-ppt-element-handle="ne"]{right:-4px;top:-4px;cursor:nesw-resize}
+.ppt-element-handle[data-ppt-element-handle="e"]{right:-4px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+.ppt-element-handle[data-ppt-element-handle="se"]{right:-4px;bottom:-4px;cursor:nwse-resize}
+.ppt-element-handle[data-ppt-element-handle="s"]{left:50%;bottom:-4px;transform:translateX(-50%);cursor:ns-resize}
+.ppt-element-handle[data-ppt-element-handle="sw"]{left:-4px;bottom:-4px;cursor:nesw-resize}
+.ppt-element-handle[data-ppt-element-handle="w"]{left:-4px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 .ppt-info-box h4{margin:0 0 6px;font-size:12px;color:var(--ppt-accent,#D9882B)}
 .ppt-info-box p{margin:0;font-size:12px;line-height:1.55;white-space:pre-wrap}
 .ppt-text-body{color:#3a3732;text-align:justify}
@@ -1312,6 +1324,9 @@
 .ppt-template-picker button.active{border-color:var(--accent3);background:var(--accent-soft3);color:var(--accent3)}
 .ppt-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .ppt-actions .wb3-btn{height:30px;padding:0 8px;justify-content:center}
+.ppt-typography-controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
+.ppt-typography-controls label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted3)}
+.ppt-typography-controls input{width:100%;height:28px;border:1px solid var(--line3);border-radius:6px;background:#fff;color:var(--ink3);box-sizing:border-box}
 .ppt-layout-status{margin-top:8px;font-size:11px;color:var(--muted3);line-height:1.45}
 
 /* ---- RIGHT INSPECTOR ---- */

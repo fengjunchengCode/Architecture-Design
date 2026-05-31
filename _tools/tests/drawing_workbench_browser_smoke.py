@@ -1047,6 +1047,7 @@ def assert_ppt_preview_basics(page) -> None:
     assert_layout_warnings_visible(page)
     assert_reflow_guard(page)
     assert_frame_drag(page)
+    assert_manual_adjust(page)
     assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
 
 
@@ -1267,6 +1268,69 @@ def assert_frame_drag(page) -> None:
         "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
         timeout=15000,
     )
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_manual_adjust(page) -> None:
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for manual adjustment"
+    before = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    before_current = before["slides"]["functional_zoning"]["elements"]["legend"]
+    before_other = before["slides"]["traffic_analysis"]["elements"]["legend"]
+    legend_box = page.locator("[data-ppt-element='legend']").bounding_box()
+    assert legend_box, "legend box should be visible for manual adjustment"
+    page.mouse.move(legend_box["x"] + legend_box["width"] / 2, legend_box["y"] + legend_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(legend_box["x"] + legend_box["width"] / 2 + 28, legend_box["y"] + legend_box["height"] / 2 + 16, steps=4)
+    page.mouse.up()
+    page.wait_for_function(
+        """({project, beforeX}) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => {
+                const slide = data.layout.slides.functional_zoning;
+                return slide.manual_overrides === true && Math.abs(slide.elements.legend.x - beforeX) > 0.001;
+            })""",
+        arg={"project": TEST_PROJECT, "beforeX": before_current["x"]},
+        timeout=10000,
+    )
+    after = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    assert after["slides"]["traffic_analysis"]["elements"]["legend"] == before_other, (
+        "manual legend move should only affect current slide"
+    )
+    page.click("[data-ppt-element='text']")
+    assert page.locator("#pptTextFontSize").count() == 1, "text typography size control should render"
+    page.fill("#pptTextFontSize", "16")
+    page.eval_on_selector(
+        "#pptTextColor",
+        """(el) => {
+            el.value = '#345678';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+    )
+    page.wait_for_function(
+        """(project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => {
+                const body = data.layout.slides.functional_zoning.typography.body;
+                return body.size === 16 && body.color === '#345678';
+            })""",
+        arg=TEST_PROJECT,
+        timeout=10000,
+    )
+    body_color = page.locator("[data-ppt-element='text'] .ppt-text-body").first.evaluate("(node) => getComputedStyle(node).color")
+    assert body_color == "rgb(52, 86, 120)", f"manual text color should render, got {body_color}"
     page.click("#togglePptPreview")
     page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
 

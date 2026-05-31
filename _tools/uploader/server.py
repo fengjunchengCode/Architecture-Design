@@ -633,6 +633,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 slide["title"] = str(slide_patch.get("title") or "")
             if isinstance(slide_patch.get("typography"), dict):
                 slide["typography"] = slide_patch["typography"]
+            if isinstance(slide_patch.get("elements"), dict):
+                slide["elements"] = slide_patch["elements"]
+            if "manual_overrides" in slide_patch:
+                slide["manual_overrides"] = bool(slide_patch.get("manual_overrides"))
             layout.setdefault("slides", {})[drawing_type] = slide
         if isinstance(payload.get("title_style"), dict):
             layout["title_style"] = payload["title_style"]

@@ -229,6 +229,7 @@
     deckLayout: null,
     deckLayoutPath: "",
     pptPreviewMode: false,
+    pptSelectedElement: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -1160,10 +1161,18 @@
       .join("");
   }
 
+  function renderPptElementHandles() {
+    return ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
+      .map((handle) => `<span class="ppt-element-handle" data-ppt-element-handle="${handle}" aria-hidden="true"></span>`)
+      .join("");
+  }
+
   function renderPptTextContent(slide) {
     const text = (slide && slide.text) || "暂无图纸说明。";
+    const body = (slide && slide.typography && slide.typography.body) || {};
+    const bodyStyle = `font-size:${Number(body.size || 12)}px;color:${safeCssColor(body.color, "#3A3732")};font-weight:${escapeHtml(body.weight || "400")};`;
     const lines = String(text).split(/\n+/).filter((line) => line.trim());
-    if (!lines.length) return '<p class="ppt-text-body">暂无图纸说明。</p>';
+    if (!lines.length) return `<p class="ppt-text-body" style="${bodyStyle}">暂无图纸说明。</p>`;
     return lines
       .map((line) => {
         const escaped = escapeHtml(line.trim());
@@ -1172,7 +1181,7 @@
         if (colonMatch) {
           html = `<span data-ppt-text-heading="true" class="ppt-text-heading">${colonMatch[1]}</span>${colonMatch[2]}`;
         }
-        return `<p class="ppt-text-body">${html}</p>`;
+        return `<p class="ppt-text-body" style="${bodyStyle}">${html}</p>`;
       })
       .join("");
   }
@@ -1195,6 +1204,13 @@
     if (textarea && document.activeElement !== textarea) {
       textarea.value = slide ? slide.text || "" : "";
     }
+    const body = (slide && slide.typography && slide.typography.body) || {};
+    const sizeInput = $("#pptTextFontSize");
+    if (sizeInput && document.activeElement !== sizeInput) sizeInput.value = String(body.size || 12);
+    const colorInput = $("#pptTextColor");
+    if (colorInput && document.activeElement !== colorInput) colorInput.value = safeCssColor(body.color, "#3A3732");
+    const accentInput = $("#pptAccentColor");
+    if (accentInput && document.activeElement !== accentInput) accentInput.value = safeCssColor(state.deckLayout && state.deckLayout.typography_accent, "#D9882B");
     document.querySelectorAll("[data-ppt-template]").forEach((button) => {
       button.classList.toggle("active", !!state.deckLayout && button.dataset.pptTemplate === state.deckLayout.template_side);
     });
@@ -1255,8 +1271,9 @@
         const image = supportingImageById(box.id);
         const src = image ? supportingImageUrl(image) : "";
         return `
-          <div class="ppt-el ppt-supporting-img" style="${boxStyle(box)}">
+          <div class="ppt-el ppt-supporting-img" data-ppt-element="supporting_image" data-ppt-supporting-id="${escapeHtml(box.id)}" style="${boxStyle(box)}">
             ${src ? `<img src="${escapeHtml(src)}" alt="${escapeHtml(image.caption || image.original_name || "配图")}">` : '<div class="ppt-empty-note">配图</div>'}
+            ${renderPptElementHandles()}
           </div>
         `;
       })
@@ -1273,13 +1290,16 @@
       <div class="ppt-el ppt-info-box ppt-legend-box" data-ppt-element="legend" style="${boxStyle(elements.legend)}">
         <h4>图例</h4>
         ${legendHtml}
+        ${renderPptElementHandles()}
       </div>
       <div class="ppt-el ppt-info-box" data-ppt-element="text" style="${boxStyle(elements.text)}">
         ${renderPptTextContent(slide)}
+        ${renderPptElementHandles()}
       </div>
       ${supportHtml}
     `;
     bindPptFrameInteractions(slideEl);
+    bindPptElementInteractions(slideEl);
   }
 
   function setBoxStyle(el, box) {
@@ -1290,8 +1310,10 @@
   }
 
   function clampPptFrame(box) {
-    const minW = 0.22;
-    const minH = 0.22;
+    return clampPptBox(box, 0.22, 0.22);
+  }
+
+  function clampPptBox(box, minW = 0.06, minH = 0.05) {
     const next = {
       x: Number(box.x) || 0,
       y: Number(box.y) || 0,
@@ -1363,6 +1385,107 @@
     });
   }
 
+  function avoidDrawingFrame(box) {
+    const frame = (state.deckLayout && state.deckLayout.drawing_frame) || null;
+    let next = clampPptBox(box);
+    if (!frame || !boxesOverlap(next, frame)) return next;
+    const frameRight = frame.x + frame.w;
+    const frameBottom = frame.y + frame.h;
+    if (next.x < frame.x) next.x = Math.max(0, frame.x - next.w - 0.012);
+    else next.x = Math.min(1 - next.w, frameRight + 0.012);
+    if (boxesOverlap(next, frame)) {
+      if (next.y < frame.y) next.y = Math.max(0, frame.y - next.h - 0.012);
+      else next.y = Math.min(1 - next.h, frameBottom + 0.012);
+    }
+    return clampPptFrame(next);
+  }
+
+  function boxesOverlap(a, b) {
+    return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+  }
+
+  function selectedPptElementPatch(elementKey, box) {
+    const slide = currentPptSlide() || {};
+    const elements = JSON.parse(JSON.stringify(slide.elements || {}));
+    if (elementKey.startsWith("supporting_image:")) {
+      const id = elementKey.split(":")[1];
+      elements.supporting_images = (elements.supporting_images || []).map((item) =>
+        item.id === id ? { ...box, id } : item
+      );
+    } else {
+      elements[elementKey] = box;
+    }
+    return elements;
+  }
+
+  function bindPptElementInteractions(slideEl) {
+    slideEl.querySelectorAll("[data-ppt-element]").forEach((el) => {
+      if (el.dataset.pptElementBound === "true" || el.dataset.pptDrawingFrame === "true") return;
+      el.dataset.pptElementBound = "true";
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        state.pptSelectedElement = el.dataset.pptElement === "supporting_image"
+          ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+          : el.dataset.pptElement || "";
+        renderPptSelection(slideEl);
+        renderPptControls();
+      });
+      el.addEventListener("mousedown", (event) => {
+        const elementType = el.dataset.pptElement;
+        if (!elementType || elementType === "text" && event.target.closest("textarea,input")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        state.pptSelectedElement = elementType === "supporting_image"
+          ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+          : elementType;
+        renderPptSelection(slideEl);
+        const handle = event.target.closest("[data-ppt-element-handle]");
+        const mode = handle ? handle.dataset.pptElementHandle || "se" : "move";
+        const slideRect = slideEl.getBoundingClientRect();
+        const current = {
+          x: parseFloat(el.style.left) / 100,
+          y: parseFloat(el.style.top) / 100,
+          w: parseFloat(el.style.width) / 100,
+          h: parseFloat(el.style.height) / 100,
+        };
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let nextBox = current;
+        const onMove = (moveEvent) => {
+          const dx = (moveEvent.clientX - startX) / slideRect.width;
+          const dy = (moveEvent.clientY - startY) / slideRect.height;
+          nextBox = mode === "move"
+            ? avoidDrawingFrame({ ...current, x: current.x + dx, y: current.y + dy })
+            : avoidDrawingFrame(resizePptFrame(current, mode, dx, dy));
+          setBoxStyle(el, nextBox);
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          saveDeckLayout({
+            drawing_type: drawingType(),
+            slide: {
+              elements: selectedPptElementPatch(state.pptSelectedElement, nextBox),
+              manual_overrides: true,
+            },
+          }).catch((err) => setStatus(err.message, false));
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+    renderPptSelection(slideEl);
+  }
+
+  function renderPptSelection(slideEl) {
+    slideEl.querySelectorAll("[data-ppt-element]").forEach((el) => {
+      const key = el.dataset.pptElement === "supporting_image"
+        ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+        : el.dataset.pptElement || "";
+      el.classList.toggle("ppt-el-selected", key === state.pptSelectedElement);
+    });
+  }
+
   function confirmPptGlobalChange() {
     return window.confirm("图纸位置和大小会应用到全部图纸页，并可能影响现有图例、文本、配图排版。是否继续？");
   }
@@ -1374,6 +1497,26 @@
       slide: { text: input ? input.value : "" },
     });
     setStatus("已保存PPT图纸说明。");
+  }
+
+  async function saveCurrentPptTypography() {
+    const slide = currentPptSlide() || {};
+    const typography = JSON.parse(JSON.stringify(slide.typography || {}));
+    typography.body = typography.body || {};
+    const size = Number($("#pptTextFontSize")?.value || typography.body.size || 12);
+    typography.body.size = Math.max(8, Math.min(22, Math.round(size)));
+    typography.body.color = safeCssColor($("#pptTextColor")?.value, typography.body.color || "#3A3732");
+    await saveDeckLayout({
+      drawing_type: drawingType(),
+      slide: { typography, manual_overrides: true },
+    });
+    setStatus("已更新本页PPT说明文字样式。");
+  }
+
+  async function savePptAccent() {
+    const color = safeCssColor($("#pptAccentColor")?.value, "#D9882B");
+    await saveDeckLayout({ typography_accent: color });
+    setStatus("已更新全局PPT品牌色。");
   }
 
   async function applyPptTemplate(templateSide) {
@@ -4176,6 +4319,9 @@
       }
     });
     $("#savePptSlideText")?.addEventListener("click", () => saveCurrentPptText().catch((err) => setStatus(err.message, false)));
+    $("#pptTextFontSize")?.addEventListener("change", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));
+    $("#pptTextColor")?.addEventListener("input", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));
+    $("#pptAccentColor")?.addEventListener("input", () => savePptAccent().catch((err) => setStatus(err.message, false)));
     $("#pptReflowCurrent")?.addEventListener("click", () =>
       reflowDeckLayout("current")
         .then(() => setStatus("已重新排版当前PPT页。"))
