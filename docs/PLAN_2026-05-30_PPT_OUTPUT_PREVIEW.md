@@ -335,9 +335,15 @@ python _tools\tests\drawing_workbench_browser_smoke.py
 
 ### 必做修正（与原计划不符,优先）
 
-**C1 自动排版改为内容自适应(计划 §7,现为静态占位)**
-`deck_layout.default_elements` 现在图例固定 36%、说明 24%、配图网格,与内容无关。改为:① 无说明文本→图例占信息区上部、配图填其余;② 有说明→说明在上、图例其次、配图垫底;③ 配图按 1/2/3/4 张自适应网格(现 `supporting_image_boxes` 固定 2 列,扩成 1→单列、2→双列、3-4→2×2);④ 空间不足时压缩配图高度并写 `layout_warnings`,绝不与 `drawing_frame` 相交。
-验收:`assert_reflow_adaptive`——无文本/有长文本/配图 1 与 4 张,四种情形元素框不重叠且不压 `drawing_frame`。
+**C1 自动排版按 PPT 实况 + 内容自适应(计划 §7,现为静态占位且顺序反了)**
+依据:启泰 PDF 第 51-55 页(技术图纸页实样)——**图左信息右;信息列自上而下 = 说明文字(上)→ 图例(下)→ 配图(若有,嵌中部/底部)**。
+`deck_layout.default_elements` 现在是**图例 36% 在上、说明 24% 在下**(顺序反了)且与内容无关。改为:
+- ① **说明在上、图例在下**(纠正现有顺序);
+- ② **说明高度随文本长度自适应**(按字数估算行数→高度,设上下限);文本越多占越高,图例与配图相应下移/压缩;
+- ③ **图例高度随条目数自适应**(按图例分组数×行高);
+- ④ 配图按 1/2/3/4 张自适应网格(现 `supporting_image_boxes` 固定 2 列,扩成 1→单列、2→双列、3-4→2×2);无配图则说明+图例占满信息区;
+- ⑤ 空间不足时压缩配图高度并写 `layout_warnings`,任何元素**绝不与 `drawing_frame` 相交**。
+验收:`assert_reflow_adaptive`——无文本/短文本/长文本 × 配图 0/1/4 张,各情形:说明框在图例框上方、元素互不重叠、不压 `drawing_frame`;长文本时说明框明显高于短文本。
 
 **C2 reflow 必须守护手动调整(计划 §6.4)**
 现 `reflow_deck` 直接把 `manual_overrides` 清零。前端"重排本页/全部"前:若目标页 `manual_overrides=true`,弹窗"重新排版会覆盖本页手动调整。是否继续？";取消则不动该页。
@@ -349,15 +355,26 @@ python _tools\tests\drawing_workbench_browser_smoke.py
 **C4 预览图纸用 contain,不拉伸**
 现预览把图纸 `<img>` 直接塞进框 div 会拉伸。立即改为 `object-fit: contain` 居中+留白(预演 `drawing_plate` 概念),避免长方形图纸变形。
 
+**C5 说明文字排版参照 PPT(加粗/放大/上色,现完全没有)**
+依据:启泰 PDF 第 51-55 页——信息列文字分层级:① **图纸标题**(页眉 + "10.绿化设计专篇"式编号标题)粗体、字号大、深色;② **说明小标题**(如"车行流线设置:""人行流线设置:")粗体 + **主题色**(随该图纸预设主色,如交通=橙、消防=红、景观=青);③ **正文**深灰、两端对齐、正常字重,**关键词可加粗**。
+落地:
+- deck layout 的 slide 增加 `typography`(或复用 `style_schema` 的 `typography` 字段):`title`{bold,size,color}、`heading`{bold,size,color=主题色}、`body`{size,color}。
+- **自动首次排版时即赋默认排版**:标题粗体大字;说明首行/小标题用该图纸预设主色加粗放大;正文深灰常规。主题色取该图纸主导预设色(复用 `style_presets`/`_STYLE_OVERRIDES`)。
+- 预览与导出用同一份 `typography` 渲染,所见即所得。
+验收:`assert_typography_defaults`——新页预览中,标题元素 `font-weight:700` 且字号大于正文;小标题颜色 = 该图纸主题色(非纯黑)。
+
 ### 续做功能（F4 收尾 + F5）
 
 **P1 图纸框交互拖拽/缩放(F4 收尾)**
 预览里 `[data-ppt-drawing-frame]` 支持拖动+8 向缩放 → 调 `set_drawing_frame`(后端已就绪)。改动前走现有 `confirmPptGlobalChange` 弹窗;确认后 `drawing_frame_version+1`、全页标记 `needs_reflow`、所有页预览即时同步。约束:框保持在 slide 内、信息区不被挤没。
 验收:`assert_frame_drag`——拖动框后 `drawing_frame_version` 增、切到他页框坐标一致、所有页 `needs_reflow=true`。
 
-**P2 信息元素手动调整(F5a)**
-图例/说明/配图框支持拖动+缩放,**只影响当前 slide**,落点校验不与 `drawing_frame` 相交(相交则吸附回可用区或拒绝),改后置 `manual_overrides=true`,存 layout。
-验收:`assert_manual_adjust`——拖动图例框→当前页 elements.legend 变、`manual_overrides=true`、他页不变。
+**P2 PPT 预览即编辑工作台(F5a + 字体编辑)**
+点开"PPT预览"进入可编辑工作台:agent 已自动排好第一版(C1+C5),用户可在其上手动微调:
+- **位置/大小**:图例/说明/配图框拖动 + 8 向缩放,**只影响当前 slide**,落点校验不与 `drawing_frame` 相交(相交则吸附回可用区),改后置 `manual_overrides=true`。
+- **字体**:选中说明文本元素后,可改其 `typography`(字号、颜色、加粗)——即 C5 的字段,在预览里直接可调,存进当前 slide。
+- 所有改动存 layout.json(当前 slide);"重排本页"会覆盖(走 C2 守护弹窗)。
+验收:`assert_manual_adjust`——拖图例框→当前页 `elements.legend` 变、`manual_overrides=true`、他页不变;改说明字号/颜色→当前页 `typography` 变并重渲染。
 
 **P3 `drawing_plate`(F5b)**
 后端生成统一比例 plate:plate 比例 = 全局 `drawing_frame` 比例;真实图纸 `contain` 居中、可留白、不拉伸;PPT 中插入 plate,使**每页图纸对象 x/y/w/h 完全一致**。预览与导出共用同一 plate 逻辑。
@@ -377,7 +394,7 @@ node --check _tools/uploader/static/workbench/workbench.js
 python3 _tools/tests/drawing_workbench_api_smoke.py
 python3 _tools/tests/drawing_workbench_browser_smoke.py
 ```
-新增断言:C1 `assert_reflow_adaptive`、C2 `assert_reflow_guard`、P1 `assert_frame_drag`、P2 `assert_manual_adjust`、P5 `assert_export_frame_consistency`;现有 PPT/制图 smoke 全绿。
+新增断言:C1 `assert_reflow_adaptive`、C2 `assert_reflow_guard`、C5 `assert_typography_defaults`、P1 `assert_frame_drag`、P2 `assert_manual_adjust`、P5 `assert_export_frame_consistency`;现有 PPT/制图 smoke 全绿。
 
 ### 顺序
-C1 → C2 → C3 → C4 → P1 → P2 → P3 → P4 → P5,各一次提交。P3/P4/P5 是导出闭环,放最后。回推后通知 mac claude 终审。
+C1 → C2 → C3 → C4 → C5 → P1 → P2 → P3 → P4 → P5,各一次提交。说明:**C1(说明在上图例在下+自适应)和 C5(字体加粗放大上色)是本轮用户最在意的两条,先做**;P3/P4/P5 导出闭环放最后。**核心要求:agent 必须先用代码确定性地排好一版"像原 PPT"的版式(C1+C5),用户再在预览工作台手动微调(P2)。** 回推后通知 mac claude 终审。
