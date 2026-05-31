@@ -26,6 +26,16 @@ const state = {
     loaderPromise: null,
     s1Map: null,
     s1Marker: null,
+    s1TdtMap: null,
+    s1TdtMarker: null,
+    s1MapMode: "standard",
+    s1MouseTool: null,
+    s1DrawMode: null,
+    s1DistrictLayer: null,
+    s1TdtDistrictLayer: null,
+    s1Is3D: false,
+    s1Geocoder: null,
+    tiandituKey: null,
     s2Map: null,
     s2Markers: new Map(),
     activeCandidateId: "",
@@ -191,6 +201,7 @@ function amapFailureHint(error) {
 async function loadAmapJsapiConfig() {
   if (state.amap.config) return state.amap.config;
   state.amap.config = await api("/api/amap-jsapi-config");
+  state.amap.tiandituKey = state.amap.config.tianditu_key || null;
   return state.amap.config;
 }
 
@@ -213,7 +224,7 @@ async function ensureAmapSdk() {
   state.amap.loaderPromise = window.AMapLoader.load({
     key: config.key,
     version: "2.0",
-    plugins: ["AMap.Scale", "AMap.ToolBar"],
+    plugins: ["AMap.Scale", "AMap.ToolBar", "AMap.AutoComplete", "AMap.PlaceSearch", "AMap.Geocoder", "AMap.DistrictSearch", "AMap.MouseTool"],
   }).then((sdk) => {
     state.amap.sdk = sdk;
     return sdk;
@@ -269,6 +280,7 @@ async function ensureS1Map() {
         center: [center.lng, center.lat],
         zoom: 17,
         viewMode: "2D",
+        WebGLParams: { preserveDrawingBuffer: true },
       });
       addAmapControls(AMap, state.amap.s1Map);
       state.amap.s1Map.on("click", (event) => {
@@ -283,6 +295,8 @@ async function ensureS1Map() {
           writeOutput(err.message);
         }
       });
+      initS1AmapSearch(AMap);
+      initS1MapTools(AMap);
     }
     if (state.amap.s1Map.setCenter) state.amap.s1Map.setCenter([center.lng, center.lat]);
     upsertS1Marker(AMap, center);
@@ -293,6 +307,318 @@ async function ensureS1Map() {
     setMapHint("#s1AmapHint", amapFailureHint(err), true);
     setMapEmpty("#s1AmapMap", "内嵌地图暂不可用；请使用外部高德拾取器备用。");
   }
+}
+
+
+// --- GCJ-02 <-> WGS84 conversion (standard Krasovsky 1940 algorithm) ---
+var _PI = 3.14159265358979324;
+var _A = 6378245.0;
+var _EE = 0.00669342162296594323;
+
+function _tLat(x, y) {
+  var r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*_PI)+20*Math.sin(2*x*_PI))*2/3;
+  r += (20*Math.sin(y*_PI)+40*Math.sin(y/3*_PI))*2/3;
+  r += (160*Math.sin(y/12*_PI)+320*Math.sin(y*_PI/30))*2/3;
+  return r;
+}
+function _tLng(x, y) {
+  var r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*_PI)+20*Math.sin(2*x*_PI))*2/3;
+  r += (20*Math.sin(x*_PI)+40*Math.sin(x/3*_PI))*2/3;
+  r += (150*Math.sin(x/12*_PI)+300*Math.sin(x/30*_PI))*2/3;
+  return r;
+}
+function gcj02ToWgs84(lng, lat) {
+  var dx = _tLng(lng-105, lat-35), dy = _tLat(lng-105, lat-35);
+  var rl = lat/180*_PI, m = Math.sin(rl);
+  m = 1-_EE*m*m; var sm = Math.sqrt(m);
+  dy = (dy*180)/((_A*(1-_EE))/(m*sm)*_PI);
+  dx = (dx*180)/(_A/sm*Math.cos(rl)*_PI);
+  return [lng-dx, lat-dy];
+}
+function wgs84ToGcj02(lng, lat) {
+  var dx = _tLng(lng-105, lat-35), dy = _tLat(lng-105, lat-35);
+  var rl = lat/180*_PI, m = Math.sin(rl);
+  m = 1-_EE*m*m; var sm = Math.sqrt(m);
+  dy = (dy*180)/((_A*(1-_EE))/(m*sm)*_PI);
+  dx = (dx*180)/(_A/sm*Math.cos(rl)*_PI);
+  return [lng+dx, lat+dy];
+}
+
+// --- Dual map mode ---
+// Tianditu uses WGS84, standard AMap uses GCJ-02.
+// Click events on Tianditu return WGS84; need conversion to GCJ-02 for input.
+function ensureTdtMap(AMap, centerWgs, zoom) {
+  if (state.amap.s1TdtMap) return;
+  var tk = state.amap.tiandituKey;
+  if (!tk) return;
+  // Tianditu map center uses WGS84
+  state.amap.s1TdtMap = new AMap.Map("s1TdtMap", {
+    center: centerWgs, zoom: zoom || 17, viewMode: "2D",
+    layers: [
+      new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 }),
+      new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 })
+    ],
+    WebGLParams: { preserveDrawingBuffer: true },
+  });
+  addAmapControls(AMap, state.amap.s1TdtMap);
+  // Click handler: Tianditu returns WGS84, convert to GCJ-02 for input
+  state.amap.s1TdtMap.on("click", function(event) {
+    try {
+      if (!event.lnglat) return;
+      var wgsLng = event.lnglat.getLng(), wgsLat = event.lnglat.getLat();
+      var gcj = wgs84ToGcj02(wgsLng, wgsLat);
+      document.querySelector("#centerLocation").value = formatGcj02(gcj[0], gcj[1]);
+      state.s1Location = formatGcj02(gcj[0], gcj[1]);
+      // Standard marker uses GCJ-02
+      upsertS1Marker(AMap, { lng: gcj[0], lat: gcj[1] });
+      // Tianditu marker uses WGS84
+      if (state.amap.s1TdtMarker) {
+        state.amap.s1TdtMarker.setPosition([wgsLng, wgsLat]);
+      } else {
+        state.amap.s1TdtMarker = new AMap.Marker({ position: [wgsLng, wgsLat] });
+        state.amap.s1TdtMarker.setMap(state.amap.s1TdtMap);
+      }
+      setMapStatus("#s1AmapStatus", "已写入中心点（WGS84→GCJ-02）", true);
+      if (state.amap.s1Geocoder) {
+        state.amap.s1Geocoder.getAddress(gcj, function(s, r) {
+          if (s === "complete" && r.regeocode) {
+            var g = document.querySelector("#s1AmapGeocoder");
+            if (g) g.textContent = r.regeocode.formattedAddress;
+          }
+        });
+      }
+      setMapHint("#s1AmapHint", "坐标已写入上方输入框。");
+    } catch (err) { writeOutput(err.message); }
+  });
+}
+
+function switchToTdt(AMap) {
+  var aMapEl = document.querySelector("#s1AmapMap");
+  var tdtEl = document.querySelector("#s1TdtMap");
+  if (!aMapEl || !tdtEl) return;
+  var center = state.amap.s1Map.getCenter();
+  var zoom = state.amap.s1Map.getZoom();
+  // Convert GCJ-02 center to WGS84 for Tianditu
+  var centerWgs = gcj02ToWgs84(center.getLng(), center.getLat());
+  // Show container FIRST so map gets correct dimensions
+  aMapEl.style.display = "none";
+  tdtEl.style.display = "block";
+  state.amap.s1MapMode = "tianditu";
+  // Create or reuse Tianditu map with WGS84 center
+  ensureTdtMap(AMap, centerWgs, zoom);
+  state.amap.s1TdtMap.setCenter(centerWgs);
+  state.amap.s1TdtMap.setZoom(zoom);
+  // Sync marker: GCJ-02 → WGS84 for Tianditu
+  if (state.amap.s1Marker) {
+    var mPos = state.amap.s1Marker.getPosition();
+    var mWgs = gcj02ToWgs84(mPos.getLng(), mPos.getLat());
+    if (state.amap.s1TdtMarker) {
+      state.amap.s1TdtMarker.setPosition(mWgs);
+    } else {
+      state.amap.s1TdtMarker = new AMap.Marker({ position: mWgs });
+      state.amap.s1TdtMarker.setMap(state.amap.s1TdtMap);
+    }
+  }
+  // Force resize after DOM layout update
+  setTimeout(function() { state.amap.s1TdtMap.resize(); }, 200);
+  setMapStatus("#s1AmapStatus", "天地图高清卫星（WGS84 坐标系，无偏移）", true);
+}
+
+function switchToStd(AMap) {
+  var aMapEl = document.querySelector("#s1AmapMap");
+  var tdtEl = document.querySelector("#s1TdtMap");
+  if (!aMapEl || !tdtEl) return;
+  if (state.amap.s1TdtMap) {
+    // Convert Tianditu WGS84 center to GCJ-02 for standard map
+    var tCenter = state.amap.s1TdtMap.getCenter();
+    var gcj = wgs84ToGcj02(tCenter.getLng(), tCenter.getLat());
+    state.amap.s1Map.setCenter(gcj);
+    state.amap.s1Map.setZoom(state.amap.s1TdtMap.getZoom());
+    // Sync marker: WGS84 → GCJ-02
+    if (state.amap.s1TdtMarker) {
+      var mPos = state.amap.s1TdtMarker.getPosition();
+      var mGcj = wgs84ToGcj02(mPos.getLng(), mPos.getLat());
+      upsertS1Marker(AMap, { lng: mGcj[0], lat: mGcj[1] });
+    }
+  }
+  tdtEl.style.display = "none";
+  aMapEl.style.display = "block";
+  state.amap.s1MapMode = "standard";
+  setMapStatus("#s1AmapStatus", "标准地图（GCJ-02 坐标系）", true);
+}
+
+function setS1MapMode(AMap, mode) {
+  if (!state.amap.s1Map) return;
+  if (mode === "tianditu" && state.amap.tiandituKey) {
+    switchToTdt(AMap);
+  } else {
+    switchToStd(AMap);
+  }
+  var btns = { standard: "#s1MapStd", tianditu: "#s1MapTdt" };
+  for (var k in btns) { var b = document.querySelector(btns[k]); if (b) b.classList.toggle("active", k === mode); }
+}
+
+function initS1MapTools(AMap) {
+  state.amap.s1Geocoder = new AMap.Geocoder();
+  var bindings = { "#s1MapStd": "standard", "#s1MapTdt": "tianditu" };
+  for (var sel in bindings) { (function(s, m) { var btn = document.querySelector(s); if (btn) btn.addEventListener("click", function() { setS1MapMode(AMap, m); }); })(sel, bindings[sel]); }
+
+  // 3D toggle
+  var d3Btn = document.querySelector("#s1Map3D");
+  if (d3Btn) d3Btn.addEventListener("click", function() {
+    state.amap.s1Is3D = !state.amap.s1Is3D;
+    var center = state.amap.s1Map.getCenter();
+    var zoom = state.amap.s1Map.getZoom();
+    state.amap.s1Map.destroy();
+    state.amap.s1Map = new AMap.Map("s1AmapMap", {
+      center: [center.getLng(), center.getLat()], zoom: zoom,
+      viewMode: state.amap.s1Is3D ? "3D" : "2D",
+      pitch: state.amap.s1Is3D ? 60 : 0,
+      buildingAnimation: state.amap.s1Is3D,
+      WebGLParams: { preserveDrawingBuffer: true },
+    });
+    addAmapControls(AMap, state.amap.s1Map);
+    if (state.amap.s1Marker) state.amap.s1Marker.setMap(state.amap.s1Map);
+    if (state.amap.s1DistrictLayer) state.amap.s1Map.add(state.amap.s1DistrictLayer);
+    state.amap.s1Map.on("click", function(event) {
+      try {
+        var picked = lngLatFromAmapClick(event);
+        document.querySelector("#centerLocation").value = picked.location;
+        state.s1Location = picked.location;
+        upsertS1Marker(AMap, picked);
+        setMapStatus("#s1AmapStatus", "已写入中心点", true);
+        if (state.amap.s1Geocoder) { state.amap.s1Geocoder.getAddress([picked.lng, picked.lat], function(s,r) { if (s==="complete"&&r.regeocode) { var g=document.querySelector("#s1AmapGeocoder"); if(g) g.textContent=r.regeocode.formattedAddress; } }); }
+        setMapHint("#s1AmapHint", "坐标已写入上方输入框。");
+      } catch (err) { writeOutput(err.message); }
+    });
+    d3Btn.classList.toggle("active", state.amap.s1Is3D);
+    setMapStatus("#s1AmapStatus", state.amap.s1Is3D ? "3D视角" : "地图已加载", true);
+  });
+
+  // District boundary
+  var distBtn = document.querySelector("#s1DistrictBtn");
+  if (distBtn) distBtn.addEventListener("click", function() {
+    var activeMap = state.amap.s1MapMode === "tianditu" ? state.amap.s1TdtMap : state.amap.s1Map;
+    var activeDistrict = state.amap.s1MapMode === "tianditu" ? state.amap.s1TdtDistrictLayer : state.amap.s1DistrictLayer;
+    if (!activeMap) return;
+    if (activeDistrict) {
+      activeMap.remove(activeDistrict);
+      if (state.amap.s1MapMode === "tianditu") state.amap.s1TdtDistrictLayer = null;
+      else state.amap.s1DistrictLayer = null;
+      distBtn.classList.remove("active");
+      return;
+    }
+    var center = s1CenterPoint(); if (!center) return;
+    state.amap.s1Geocoder.getAddress([center.lng, center.lat], function(st, res) {
+      if (st !== "complete" || !res.regeocode) { setMapStatus("#s1AmapStatus", "逆地理编码失败", false); return; }
+      var comp = res.regeocode.addressComponent;
+      var adcode = comp.adcode;
+      var township = comp.township || "";
+      var district = comp.district || "";
+      if (!adcode) { setMapStatus("#s1AmapStatus", "无法获取行政区编码", false); return; }
+      var ds = new AMap.DistrictSearch({ level: "district", extensions: "all", subdistrict: 0 });
+      ds.search(adcode, function(s2, r2) {
+        if (s2 !== "complete" || !r2.districtList || !r2.districtList[0]) { setMapStatus("#s1AmapStatus", "行政区查询失败", false); return; }
+        var result = r2.districtList[0];
+        var boundaries = result.boundaries;
+        if (!boundaries || !boundaries.length) { setMapStatus("#s1AmapStatus", "该区域无边界数据", false); return; }
+        var paths = [];
+        for (var i = 0; i < boundaries.length; i++) { paths.push(boundaries[i]); }
+        var poly = new AMap.Polygon({ path: paths, strokeColor: "#1f6f5b", strokeWeight: 2, fillColor: "#1f6f5b", fillOpacity: 0.08, strokeStyle: "dashed", zIndex: 50 });
+        activeMap.add(poly);
+        if (state.amap.s1MapMode === "tianditu") state.amap.s1TdtDistrictLayer = poly;
+        else state.amap.s1DistrictLayer = poly;
+        distBtn.classList.add("active");
+        var displayName = district || result.name || "行政区";
+        if (township && township !== district) displayName = township + "（" + displayName + "边界）";
+        setMapStatus("#s1AmapStatus", "已显示: " + displayName, true);
+      });
+    });
+  });
+
+  // Draw polygon
+  var drawBtn = document.querySelector("#s1DrawBtn");
+  if (drawBtn) drawBtn.addEventListener("click", function() {
+    var activeMap = state.amap.s1MapMode === "tianditu" ? state.amap.s1TdtMap : state.amap.s1Map;
+    if (!activeMap) return;
+    if (state.amap.s1DrawMode === "draw") { if (state.amap.s1MouseTool) state.amap.s1MouseTool.close(true); state.amap.s1DrawMode = null; drawBtn.classList.remove("active"); return; }
+    if (!state.amap.s1MouseTool) state.amap.s1MouseTool = new AMap.MouseTool(activeMap);
+    state.amap.s1DrawMode = "draw"; drawBtn.classList.add("active");
+    state.amap.s1MouseTool.polygon({ strokeColor: "#E04030", strokeWeight: 2, fillColor: "#E04030", fillOpacity: 0.15, strokeStyle: "dashed" });
+    setMapHint("#s1AmapHint", "在地图上点击绘制用地范围，双击结束。");
+  });
+
+  // Screenshot
+  var shotBtn = document.querySelector("#s1ScreenshotBtn");
+  if (shotBtn) shotBtn.addEventListener("click", function() {
+    var containerId = state.amap.s1MapMode === "tianditu" ? "#s1TdtMap" : "#s1AmapMap";
+    var container = document.querySelector(containerId);
+    if (!container) return;
+    setMapStatus("#s1AmapStatus", "正在截图...", null);
+    try {
+      var canvases = container.querySelectorAll("canvas");
+      if (canvases.length === 0) { setMapStatus("#s1AmapStatus", "截图失败: 无canvas", false); return; }
+      var w = 0, h = 0;
+      for (var i = 0; i < canvases.length; i++) { if (canvases[i].width > w) w = canvases[i].width; if (canvases[i].height > h) h = canvases[i].height; }
+      if (w === 0 || h === 0) { setMapStatus("#s1AmapStatus", "截图失败: canvas尺寸为0", false); return; }
+      var merged = document.createElement("canvas"); merged.width = w; merged.height = h;
+      var ctx = merged.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      for (var j = 0; j < canvases.length; j++) { try { ctx.drawImage(canvases[j], 0, 0); } catch(e) {} }
+      var link = document.createElement("a");
+      link.download = "s1_" + state.amap.s1MapMode + "_" + new Date().toISOString().slice(0,19).replace(/[T:]/g,"-") + ".png";
+      link.href = merged.toDataURL("image/png"); link.click();
+      setMapStatus("#s1AmapStatus", "截图已下载", true);
+    } catch (e) { setMapStatus("#s1AmapStatus", "截图失败: " + e.message, false); }
+  });
+}
+
+// --- S1 Map: search ---
+function initS1AmapSearch(AMap) {
+  var input = document.querySelector("#s1AmapSearch");
+  var resultsEl = document.querySelector("#s1AmapSearchResults");
+  if (!input || !resultsEl) return;
+  var debounceTimer = null; var autoComplete = null;
+  function clearResults() { resultsEl.innerHTML = ""; resultsEl.hidden = true; }
+  function showResults(pois) {
+    if (!pois || !pois.length) { clearResults(); return; }
+    var html = "";
+    for (var i = 0; i < pois.length; i++) { var p = pois[i]; html += '<div class="amap-search-item" data-index="' + i + '"><div class="sr-name">' + escapeHtml(p.name||"") + '</div><div class="sr-addr">' + escapeHtml(p.address||p.cityname||"") + '</div></div>'; }
+    resultsEl.innerHTML = html; resultsEl.hidden = false;
+    var items = resultsEl.querySelectorAll(".amap-search-item");
+    for (var j = 0; j < items.length; j++) { (function(el) { el.addEventListener("click", function() {
+      var idx = Number(el.dataset.index); var poi = pois[idx]; if (!poi||!poi.location) return;
+      var lng = typeof poi.location.getLng==="function" ? poi.location.getLng() : poi.location.lng;
+      var lat = typeof poi.location.getLat==="function" ? poi.location.getLat() : poi.location.lat;
+      // Search results are GCJ-02 from AMap
+      // Input and standard marker always use GCJ-02
+      document.querySelector("#centerLocation").value = formatGcj02(lng,lat);
+      state.s1Location = formatGcj02(lng,lat);
+      upsertS1Marker(AMap, {lng:lng,lat:lat});
+      if (state.amap.s1MapMode === "tianditu") {
+        // Convert GCJ-02 → WGS84 for Tianditu map center and marker
+        var wgs = gcj02ToWgs84(lng, lat);
+        if (state.amap.s1TdtMap) { state.amap.s1TdtMap.setCenter(wgs); state.amap.s1TdtMap.setZoom(17); }
+        if (state.amap.s1TdtMarker) { state.amap.s1TdtMarker.setPosition(wgs); }
+        else { state.amap.s1TdtMarker = new AMap.Marker({ position: wgs }); state.amap.s1TdtMarker.setMap(state.amap.s1TdtMap); }
+      } else {
+        var activeMap = state.amap.s1Map;
+        if (activeMap) { activeMap.setCenter([lng,lat]); activeMap.setZoom(17); }
+      }
+      setMapStatus("#s1AmapStatus","已定位: "+poi.name,true);
+      clearResults(); input.value = poi.name;
+      if (state.amap.s1Geocoder) { state.amap.s1Geocoder.getAddress([lng,lat], function(s,r) { if (s==="complete"&&r.regeocode) { var g=document.querySelector("#s1AmapGeocoder"); if(g) g.textContent=r.regeocode.formattedAddress; } }); }
+    }); })(items[j]); }
+  }
+  if (AMap.AutoComplete) autoComplete = new AMap.AutoComplete({ city: "全国" });
+  input.addEventListener("input", function() { clearTimeout(debounceTimer); var kw=input.value.trim(); if(!kw){clearResults();return;} debounceTimer=setTimeout(function(){
+    if (autoComplete) { autoComplete.search(kw, function(st,res) { if(st==="complete"&&res.tips){var f=[];for(var i=0;i<res.tips.length;i++){if(res.tips[i].location)f.push(res.tips[i]);}showResults(f);}else{clearResults();} }); }
+    else if (AMap.PlaceSearch) { var ps=new AMap.PlaceSearch({city:"全国",pageSize:8}); ps.search(kw,function(st,res){if(st==="complete"&&res.poiList){showResults(res.poiList.pois);}else{clearResults();}}); }
+  },300); });
+  document.addEventListener("click", function(e) { if(!e.target.closest(".amap-search-wrap"))clearResults(); });
+  input.addEventListener("keydown", function(e) { if(e.key==="Enter"){e.preventDefault();var f=resultsEl.querySelector(".amap-search-item");if(f)f.click();} });
 }
 
 function findCandidateById(id) {
@@ -678,6 +1004,23 @@ function summarizeUpload(data) {
   `;
 }
 
+function summarizeAutoDraft(data) {
+  return `
+    <div class="summary-card ${data.ok ? "ok" : "warn"}">
+      <h3>${data.ok ? "S1 区位分析草稿已生成" : "区位分析草稿生成失败"}</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project_code)}
+        ${resultRow("Markdown 文件", data.path || "无")}
+        ${resultRow("结构化 JSON", data.json_path || "无")}
+      </div>
+      ${data.summary ? `<div class="result-section"><b>摘要</b><p>${escapeHtml(data.summary)}</p></div>` : ""}
+      ${data.structured_preview ? `<div class="result-section"><b>结构化草稿预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:400px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.structured_preview)}</pre></div>` : ""}
+      ${data.markdown_preview ? `<div class="result-section"><b>Markdown 预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:300px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.markdown_preview)}</pre></div>` : ""}
+      <p class="result-next">${data.ok ? "草稿已保存：Markdown（05_output/s1_location_analysis.md）+ 结构化 JSON（05_output/s1_location_draft.json）。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
+    </div>
+  `;
+}
+
 function summarizeGeneric(data) {
   if (typeof data === "string") {
     return `<div class="summary-card warn"><h3>提示</h3><p>${escapeHtml(data)}</p></div>`;
@@ -690,6 +1033,7 @@ function summarizeGeneric(data) {
   if ("control_points" in data && "count" in data && data.path) return summarizeControlPoints(data);
   if ("migration" in data || (Array.isArray(data.items) && "candidate_set_id_current" in data)) return summarizeMigration(data);
   if ("saved" in data && "bucket" in data) return summarizeUpload(data);
+  if ("auto_draft" in data) return summarizeAutoDraft(data);
   if (data.provider?.name === "amap_webservice" && !("location" in data)) {
     return `
       <div class="summary-card ${data.provider.configured ? "ok" : "warn"}">
@@ -1085,6 +1429,22 @@ async function saveCenter() {
   setAmapStatus(ok ? "已生成高德上下文" : data.status || "生成失败", ok);
   writeOutput(data);
   await loadSpatial();
+}
+
+async function autoDraftS1() {
+  const code = activeProject();
+  if (!code) {
+    setAmapStatus("请先打开或创建项目", false);
+    return;
+  }
+  setAmapStatus("正在生成区位分析草稿...", null);
+  const data = await api("/api/s1/auto-draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project: code }),
+  });
+  setAmapStatus(data.ok ? "区位分析草稿已生成" : data.error || "生成失败", data.ok);
+  writeOutput(data);
 }
 
 async function loadSpatial() {
@@ -1514,6 +1874,10 @@ function bind() {
   $("#cadZoomIn").addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom + 0.25));
   $("#saveCenter").addEventListener("click", () => saveCenter().catch((err) => {
     setAmapStatus("生成失败", false);
+    writeOutput(err.message);
+  }));
+  $("#autoDraftS1").addEventListener("click", () => autoDraftS1().catch((err) => {
+    setAmapStatus("草稿生成失败", false);
     writeOutput(err.message);
   }));
   $("#centerLocation").addEventListener("change", () => {

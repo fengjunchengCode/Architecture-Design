@@ -388,6 +388,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_upload(parsed.query)
             elif parsed.path == "/api/amap-context":
                 self.handle_amap_context()
+            elif parsed.path == "/api/s1/auto-draft":
+                self.handle_s1_auto_draft()
             elif parsed.path == "/api/control-points":
                 self.handle_control_points()
             elif parsed.path == "/api/control-points/archive":
@@ -631,7 +633,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         if manifest_path.exists():
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         else:
-            manifest = {"schema_version": "1.0", "project_code": code, "drawing_type": drawing_type, "updated_at": now_iso(), "images": []}
+            manifest = {"schema_version": "1.0", "project_code": code, "drawing_type": drawing_type, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "images": []}
 
         saved = []
         for fname, payload in files:
@@ -642,7 +644,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             out = unique_dash_path(sup_dir, filename)
             out.write_bytes(payload)
             rel = str(out.relative_to(proj)).replace("\\", "/")
-            img_id = f"img-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{len(manifest['images'])+1:03d}"
+            img_id = f"img-{time.strftime('%Y%m%d-%H%M%S')}-{len(manifest['images'])+1:03d}"
             entry = {
                 "id": img_id,
                 "file": rel,
@@ -650,12 +652,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 "caption": "",
                 "sort_order": len(manifest["images"]) + 1,
                 "notes": "",
-                "uploaded_at": now_iso(),
+                "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             }
             manifest["images"].append(entry)
             saved.append(entry)
 
-        manifest["updated_at"] = now_iso()
+        manifest["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
         self.send_json({
@@ -689,7 +691,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 break
         else:
             raise ValueError(f"image_id {image_id} not found")
-        manifest["updated_at"] = now_iso()
+        manifest["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         self.send_json({"ok": True, "project": code, "drawing_type": drawing_type})
 
@@ -717,7 +719,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             else:
                 new_images.append(img)
         manifest["images"] = new_images
-        manifest["updated_at"] = now_iso()
+        manifest["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         self.send_json({"ok": True, "project": code, "drawing_type": drawing_type, "deleted_file": deleted_file})
 
@@ -1025,6 +1027,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 "key": key or None,
                 "key_env": "AMAP_JSAPI_KEY" if key else None,
                 "security": security,
+                "tianditu_key": os.environ.get("TIANDITU_KEY", "").strip() or None,
                 "warnings": warnings,
                 "env_loaded": loaded_env,
             }
@@ -1043,6 +1046,15 @@ class UploaderHandler(BaseHTTPRequestHandler):
         rc, stdout, stderr = run_tool(args)
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         result.update({"ok": rc == 0 and result.get("status") == "ok", "returncode": rc, "stderr": stderr})
+        self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
+
+    def handle_s1_auto_draft(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        args = ["_tools/s1_location_analysis.py", code, "--json", "--write"]
+        rc, stdout, stderr = run_tool(args)
+        result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
+        result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})
         self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
 
     def handle_spatial(self, query: str) -> None:
