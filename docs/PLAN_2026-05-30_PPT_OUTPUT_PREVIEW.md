@@ -356,13 +356,21 @@ python _tools\tests\drawing_workbench_browser_smoke.py
 现预览把图纸 `<img>` 直接塞进框 div 会拉伸。立即改为 `object-fit: contain` 居中+留白(预演 `drawing_plate` 概念),避免长方形图纸变形。
 
 **C5 说明文字排版参照 PPT(加粗/放大/全局统一色,现完全没有)**
-依据:启泰 PDF 第 53-55 页——**全 deck 的小标题与加粗文字用同一个「全局品牌色」(琥珀橙,≈ 封面标题/分节编号那个,取 `#D9882B` 量级),与图纸主题/标记色无关**(实证:消防页第 55 的加粗说明是橙色,不是红;交通页第 54 也是同一个橙)。文字分层级:① **图纸标题**(页眉 + 编号标题)粗体、字号大、深色;② **说明小标题**(如"车行流线设置:")粗体 + **全局品牌色**;③ **正文**深灰、两端对齐、正常字重,**关键词加粗**(加粗部分也可用全局品牌色或保持深灰加粗)。
+依据:启泰 PDF 第 53-55 页。两类文字,**都全局统一,不随图纸变**:
+
+**(a) 页标题 = 固定页眉的独立元素,全 deck 字体/颜色一致**
+每页左上角有:分组小标(中文"设计理念与总平面" + 英文"Design Philosophy and Master Plan")+ **编号页标题**(如"13.交通组织方案分析图…")。这是**独立的页眉元素**,在所有页**位置固定、字体与颜色完全一致**(标题黑色粗体大字、英文副标灰色),**不属于右侧说明框,也不按 slide 各自排版**。
+- 现状错误:`renderPptPreview` 把 `slide.title` 塞进了说明文本框的 `<h4>`。改为**独立页眉区**(slide 顶部,固定位置,如左上),与 `drawing_frame`/信息列分开。
+- 标题样式是 **deck 级常量** `layout.title_style`{font, size, color, weight}(默认黑色粗体),所有页共用同一份;标题**文本**=该图纸名称,但**样式不变**。
+
+**(b) 说明小标题/加粗文字 = 同一个「全局品牌色」**
+全 deck 的说明小标题(如"车行流线设置:")与加粗关键词用同一个琥珀橙(≈ 封面标题/分节编号那个,`#D9882B` 量级),**与图纸主题/标记色无关**(实证:消防页第 55 加粗说明是橙不是红;交通页第 54 同一个橙)。正文深灰、两端对齐、常规字重。
+
 落地:
-- **全局品牌色是 deck 级设置**:`layout.typography_accent`(默认 `#D9882B`),**所有 slide 共用同一个**;用户改一次,全 deck 生效。**不要**按图纸预设色逐图变色。
-- slide 级 `typography`:`title`{bold,size,color=深色}、`heading`{bold,size,color=`typography_accent`}、`body`{size,color=深灰}。
-- **自动首次排版即赋默认**:标题粗体大字;小标题加粗放大并取 `typography_accent`;正文深灰常规。
-- 预览与导出用同一份 typography,所见即所得。
-验收:`assert_typography_global_accent`——在**两张不同图纸**(如交通、消防)预览中,小标题元素颜色**相同**且等于 `layout.typography_accent`(非纯黑、不随图纸变);标题 `font-weight:700` 且字号大于正文。
+- **deck 级常量**:`layout.title_style`(页标题样式,全页一致)、`layout.typography_accent`(默认 `#D9882B`,小标题/加粗色,全 deck 一致)。两者用户各改一次、全 deck 生效,**都不按图纸逐图变**。
+- slide 级 `typography` 仅留可微调的 `heading`{bold,color=`typography_accent`}、`body`{size,color=深灰};**title 不进 slide 级、不可逐图改样式**(只有文本不同)。
+- 自动首次排版即赋默认:页眉标题用 `title_style`;小标题加粗放大取 `typography_accent`;正文深灰。预览与导出共用,所见即所得。
+验收:`assert_title_and_accent_global`——① **两张不同图纸**的页标题元素 `font/size/color` **完全相同**(只有文本不同),且标题在**独立页眉区**(不在 `[data-ppt-element="text"]` 内);② 两张图纸的说明小标题颜色相同且等于 `layout.typography_accent`(非纯黑、不随图纸变)。
 
 ### 续做功能（F4 收尾 + F5）
 
@@ -373,7 +381,7 @@ python _tools\tests\drawing_workbench_browser_smoke.py
 **P2 PPT 预览即编辑工作台(F5a + 字体编辑)**
 点开"PPT预览"进入可编辑工作台:agent 已自动排好第一版(C1+C5),用户可在其上手动微调:
 - **位置/大小**:图例/说明/配图框拖动 + 8 向缩放,**只影响当前 slide**,落点校验不与 `drawing_frame` 相交(相交则吸附回可用区),改后置 `manual_overrides=true`。
-- **字体**:选中说明文本元素后,可改其 `typography`(字号、颜色、加粗)——即 C5 的字段,在预览里直接可调,存进当前 slide;另设一个 **deck 级"全局品牌色"控件**改 `layout.typography_accent`(一处改、全 deck 小标题同步)。
+- **字体**:选中说明文本元素后,可改其 `typography`(字号、颜色、加粗)——即 C5 的字段,在预览里直接可调,存进当前 slide;另设 **deck 级控件**:"全局品牌色"改 `layout.typography_accent`、"页标题样式"改 `layout.title_style`(各一处改、全 deck 同步;页标题不可逐页改样式)。
 - 所有改动存 layout.json(当前 slide);"重排本页"会覆盖(走 C2 守护弹窗)。
 验收:`assert_manual_adjust`——拖图例框→当前页 `elements.legend` 变、`manual_overrides=true`、他页不变;改说明字号/颜色→当前页 `typography` 变并重渲染。
 
@@ -395,7 +403,7 @@ node --check _tools/uploader/static/workbench/workbench.js
 python3 _tools/tests/drawing_workbench_api_smoke.py
 python3 _tools/tests/drawing_workbench_browser_smoke.py
 ```
-新增断言:C1 `assert_reflow_adaptive`、C2 `assert_reflow_guard`、C5 `assert_typography_global_accent`、P1 `assert_frame_drag`、P2 `assert_manual_adjust`、P5 `assert_export_frame_consistency`;现有 PPT/制图 smoke 全绿。
+新增断言:C1 `assert_reflow_adaptive`、C2 `assert_reflow_guard`、C5 `assert_title_and_accent_global`、P1 `assert_frame_drag`、P2 `assert_manual_adjust`、P5 `assert_export_frame_consistency`;现有 PPT/制图 smoke 全绿。
 
 ### 顺序
 C1 → C2 → C3 → C4 → C5 → P1 → P2 → P3 → P4 → P5,各一次提交。说明:**C1(说明在上图例在下+自适应)和 C5(字体加粗放大上色)是本轮用户最在意的两条,先做**;P3/P4/P5 导出闭环放最后。**核心要求:agent 必须先用代码确定性地排好一版"像原 PPT"的版式(C1+C5),用户再在预览工作台手动微调(P2)。** 回推后通知 mac claude 终审。
