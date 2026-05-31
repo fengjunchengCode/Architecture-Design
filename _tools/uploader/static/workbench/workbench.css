@@ -1288,6 +1288,7 @@
 .ppt-supporting-img{background:#f4efe4;border:1px solid rgba(43,39,34,.14);overflow:hidden}
 .ppt-supporting-img img{width:100%;height:100%;object-fit:cover;display:block}
 .ppt-reflow-banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:#2b2722;color:#fff;border-radius:999px;padding:6px 12px;font-size:12px;box-shadow:var(--shadow-pop3)}
+.ppt-warning-banner{position:absolute;left:50%;top:48px;z-index:2;max-width:58%;transform:translateX(-50%);background:#fff5d8;color:#8a5a13;border:1px solid rgba(217,136,43,.38);border-radius:999px;padding:6px 12px;font-size:12px;line-height:1.35;box-shadow:0 8px 22px rgba(92,64,19,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ppt-empty-note{font-size:12px;color:var(--muted3);text-align:center;padding:12px}
 .ppt-text-field{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--muted3);margin-bottom:10px}
 .ppt-template-picker{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}

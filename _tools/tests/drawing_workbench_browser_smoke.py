@@ -1039,8 +1039,33 @@ def assert_ppt_preview_basics(page) -> None:
     page.wait_for_timeout(100)
     assert dialogs and "全部图纸页" in dialogs[-1], f"global frame warning missing expected copy: {dialogs!r}"
     page.remove_listener("dialog", handle_dialog)
+    assert_layout_warnings_visible(page)
     assert_reflow_guard(page)
     assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
+
+
+def assert_layout_warnings_visible(page) -> None:
+    page.evaluate(
+        """async (project) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            layout.slides.functional_zoning.layout_warnings = ['warning smoke: info column compressed'];
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        TEST_PROJECT,
+    )
+    page.reload(wait_until="networkidle")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    assert page.locator("[data-ppt-layout-warning='true']", has_text="warning smoke").count() == 1, (
+        "PPT preview should surface layout_warnings"
+    )
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
 
 
 def assert_reflow_guard(page) -> None:

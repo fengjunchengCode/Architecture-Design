@@ -1194,6 +1194,12 @@
       : '<div class="ppt-empty-note">暂无图纸输出；将先使用底图或等待agent生成SVG。</div>';
     const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
     const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
+    const warnings = Array.isArray(slide && slide.layout_warnings)
+      ? slide.layout_warnings.filter(Boolean)
+      : [];
+    const warningHtml = warnings.length
+      ? `<div class="ppt-warning-banner" data-ppt-layout-warning="true">排版提醒：${escapeHtml(warnings.join("；"))}</div>`
+      : "";
     const supportHtml = supportBoxes
       .map((box) => {
         const image = supportingImageById(box.id);
@@ -1207,6 +1213,7 @@
       .join("");
     slideEl.innerHTML = `
       ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
+      ${warningHtml}
       <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
         ${drawingMedia}
         <span class="ppt-frame-label">全局图纸框</span>
