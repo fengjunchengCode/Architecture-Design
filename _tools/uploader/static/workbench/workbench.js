@@ -1154,6 +1154,12 @@
     `;
   }
 
+  function renderPptFrameHandles() {
+    return ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
+      .map((handle) => `<span class="ppt-frame-handle" data-ppt-frame-handle="${handle}" aria-hidden="true"></span>`)
+      .join("");
+  }
+
   function renderPptTextContent(slide) {
     const text = (slide && slide.text) || "暂无图纸说明。";
     const lines = String(text).split(/\n+/).filter((line) => line.trim());
@@ -1262,6 +1268,7 @@
       <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
         ${drawingMedia}
         <span class="ppt-frame-label">全局图纸框</span>
+        ${renderPptFrameHandles()}
       </div>
       <div class="ppt-el ppt-info-box ppt-legend-box" data-ppt-element="legend" style="${boxStyle(elements.legend)}">
         <h4>图例</h4>
@@ -1272,6 +1279,88 @@
       </div>
       ${supportHtml}
     `;
+    bindPptFrameInteractions(slideEl);
+  }
+
+  function setBoxStyle(el, box) {
+    el.style.left = `${Number(box.x || 0) * 100}%`;
+    el.style.top = `${Number(box.y || 0) * 100}%`;
+    el.style.width = `${Number(box.w || 0) * 100}%`;
+    el.style.height = `${Number(box.h || 0) * 100}%`;
+  }
+
+  function clampPptFrame(box) {
+    const minW = 0.22;
+    const minH = 0.22;
+    const next = {
+      x: Number(box.x) || 0,
+      y: Number(box.y) || 0,
+      w: Math.max(minW, Number(box.w) || minW),
+      h: Math.max(minH, Number(box.h) || minH),
+    };
+    next.w = Math.min(0.92, next.w);
+    next.h = Math.min(0.9, next.h);
+    next.x = Math.min(Math.max(0, next.x), 1 - next.w);
+    next.y = Math.min(Math.max(0, next.y), 1 - next.h);
+    return {
+      x: Number(next.x.toFixed(4)),
+      y: Number(next.y.toFixed(4)),
+      w: Number(next.w.toFixed(4)),
+      h: Number(next.h.toFixed(4)),
+    };
+  }
+
+  function resizePptFrame(start, mode, dx, dy) {
+    const next = { ...start };
+    if (mode.includes("w")) {
+      next.x = start.x + dx;
+      next.w = start.w - dx;
+    }
+    if (mode.includes("e")) next.w = start.w + dx;
+    if (mode.includes("n")) {
+      next.y = start.y + dy;
+      next.h = start.h - dy;
+    }
+    if (mode.includes("s")) next.h = start.h + dy;
+    return clampPptFrame(next);
+  }
+
+  function bindPptFrameInteractions(slideEl) {
+    const frameEl = slideEl.querySelector("[data-ppt-drawing-frame='true']");
+    if (!frameEl || frameEl.dataset.pptFrameBound === "true") return;
+    frameEl.dataset.pptFrameBound = "true";
+    frameEl.addEventListener("mousedown", (event) => {
+      if (!state.deckLayout) return;
+      const handle = event.target.closest("[data-ppt-frame-handle]");
+      const mode = handle ? handle.dataset.pptFrameHandle || "se" : "move";
+      if (!confirmPptGlobalChange()) return;
+      event.preventDefault();
+      const slideRect = slideEl.getBoundingClientRect();
+      const startFrame = { ...(state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 }) };
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let nextFrame = startFrame;
+      const onMove = (moveEvent) => {
+        const dx = (moveEvent.clientX - startX) / slideRect.width;
+        const dy = (moveEvent.clientY - startY) / slideRect.height;
+        nextFrame = mode === "move"
+          ? clampPptFrame({ ...startFrame, x: startFrame.x + dx, y: startFrame.y + dy })
+          : resizePptFrame(startFrame, mode, dx, dy);
+        setBoxStyle(frameEl, nextFrame);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        saveDeckLayout({ drawing_frame: nextFrame })
+          .then(() => setStatus("已更新全局PPT图纸框，所有图纸页已标记为需重新排版。"))
+          .catch((err) => {
+            setStatus(err.message, false);
+            setBoxStyle(frameEl, startFrame);
+          });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
   }
 
   function confirmPptGlobalChange() {

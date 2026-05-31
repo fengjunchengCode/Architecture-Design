@@ -1046,6 +1046,7 @@ def assert_ppt_preview_basics(page) -> None:
     page.remove_listener("dialog", handle_dialog)
     assert_layout_warnings_visible(page)
     assert_reflow_guard(page)
+    assert_frame_drag(page)
     assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
 
 
@@ -1198,6 +1199,74 @@ def assert_reflow_guard(page) -> None:
     slide = layout["slides"]["functional_zoning"]
     assert slide["manual_overrides"] is True, f"cancelled reflow should keep manual flag: {slide}"
     assert abs(slide["elements"]["text"]["x"] - manual_x) < 0.0001, f"cancelled reflow moved text box: {slide}"
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_frame_drag(page) -> None:
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for frame drag"
+    assert page.locator("[data-ppt-frame-handle]").count() == 8, "global drawing frame should expose 8 resize handles"
+    before = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    before_version = int(before["drawing_frame_version"])
+    before_frame = before["drawing_frame"]
+    dialogs: list[str] = []
+
+    def accept_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.accept()
+
+    page.on("dialog", accept_dialog)
+    frame_box = page.locator("[data-ppt-drawing-frame='true']").bounding_box()
+    assert frame_box, "global drawing frame should have a visible box"
+    page.mouse.move(frame_box["x"] + frame_box["width"] / 2, frame_box["y"] + frame_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(frame_box["x"] + frame_box["width"] / 2 + 34, frame_box["y"] + frame_box["height"] / 2 + 18, steps=5)
+    page.mouse.up()
+    page.remove_listener("dialog", accept_dialog)
+    assert dialogs and "全部图纸页" in dialogs[-1], f"global frame drag warning missing: {dialogs!r}"
+    page.wait_for_function(
+        """({project, beforeVersion}) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout.drawing_frame_version > beforeVersion
+                && Object.values(data.layout.slides).every((slide) => slide.needs_reflow === true))""",
+        arg={"project": TEST_PROJECT, "beforeVersion": before_version},
+        timeout=10000,
+    )
+    after = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    assert after["drawing_frame"] != before_frame, f"drag should change global drawing frame: {after}"
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('traffic_analysis')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'traffic_analysis'",
+        timeout=15000,
+    )
+    traffic_frame = page.locator("[data-ppt-drawing-frame='true']").evaluate(
+        """(node) => ({
+            x: parseFloat(node.style.left) / 100,
+            y: parseFloat(node.style.top) / 100,
+            w: parseFloat(node.style.width) / 100,
+            h: parseFloat(node.style.height) / 100,
+        })"""
+    )
+    for key in ("x", "y", "w", "h"):
+        assert abs(traffic_frame[key] - after["drawing_frame"][key]) < 0.001, (
+            f"traffic preview should use same global frame {after['drawing_frame']}, got {traffic_frame}"
+        )
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('functional_zoning')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=15000,
+    )
     page.click("#togglePptPreview")
     page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
 
