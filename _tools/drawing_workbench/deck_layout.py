@@ -112,6 +112,16 @@ def normalize_box(raw: object, fallback: dict[str, float]) -> dict[str, float]:
     return {"x": x, "y": y, "w": w, "h": h}
 
 
+def drawing_plate_for_frame(frame: dict[str, float], frame_version: int) -> dict[str, Any]:
+    frame_w = max(0.001, float(frame.get("w") or 0.001) * SLIDE["width"])
+    frame_h = max(0.001, float(frame.get("h") or 0.001) * SLIDE["height"])
+    return {
+        "fit": "contain",
+        "frame_version": frame_version,
+        "aspect_ratio": round(frame_w / frame_h, 4),
+    }
+
+
 def boxes_intersect(a: dict[str, float], b: dict[str, float]) -> bool:
     return not (a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or a["y"] + a["h"] <= b["y"] or b["y"] + b["h"] <= a["y"])
 
@@ -132,6 +142,7 @@ def default_deck_layout(project_code: str) -> dict[str, Any]:
         "template_side": side,
         "drawing_frame_version": 1,
         "drawing_frame": frame,
+        "drawing_plate": drawing_plate_for_frame(frame, 1),
         "title_style": deepcopy(TITLE_STYLE),
         "typography_accent": TYPOGRAPHY_ACCENT,
         "slides": {
@@ -409,6 +420,7 @@ def normalize_deck_layout(raw: object, project_code: str) -> dict[str, Any]:
         "template_side": side,
         "drawing_frame_version": frame_version,
         "drawing_frame": frame,
+        "drawing_plate": drawing_plate_for_frame(frame, frame_version),
         "title_style": title_style,
         "typography_accent": typography_accent,
         "slides": slides,

@@ -200,6 +200,11 @@ def main() -> int:
         assert layout.get("drawing_frame") and len(layout.get("slides", {})) == len(expected_types), (
             f"deck layout missing global frame or slides: {layout}"
         )
+        frame = layout["drawing_frame"]
+        expected_plate_aspect = round((frame["w"] * 13.333) / (frame["h"] * 7.5), 4)
+        assert layout.get("drawing_plate", {}).get("aspect_ratio") == expected_plate_aspect, (
+            f"drawing_plate should match global frame ratio: {layout.get('drawing_plate')} vs {expected_plate_aspect}"
+        )
         saved_deck = api_post(
             "/api/drawing/deck-layout/save",
             {

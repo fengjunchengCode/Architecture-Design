@@ -1030,6 +1030,7 @@ def assert_ppt_preview_basics(page) -> None:
     assert page.locator("[data-ppt-element='text']", has_text=text).count() == 1, "PPT preview should render saved slide text"
     media = page.locator("[data-ppt-drawing-frame='true'] [data-ppt-drawing-media='true']")
     assert media.count() == 1, "PPT preview should mark drawing media for contain checks"
+    assert page.locator("[data-ppt-drawing-plate='true']").count() == 1, "PPT preview should render a drawing plate"
     object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
     assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
     assert_title_and_accent_global(page)

@@ -1252,6 +1252,8 @@
     const slide = currentPptSlide();
     const accent = safeCssColor(state.deckLayout.typography_accent, "#D9882B");
     slideEl.style.setProperty("--ppt-accent", accent);
+    const plate = state.deckLayout.drawing_plate || {};
+    slideEl.style.setProperty("--ppt-plate-aspect", String(Number(plate.aspect_ratio) || 1.6));
     const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
     const elements = (slide && slide.elements) || {};
     const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
@@ -1283,7 +1285,9 @@
       ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
       ${warningHtml}
       <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
-        ${drawingMedia}
+        <div class="ppt-drawing-plate" data-ppt-drawing-plate="true">
+          ${drawingMedia}
+        </div>
         <span class="ppt-frame-label">全局图纸框</span>
         ${renderPptFrameHandles()}
       </div>
