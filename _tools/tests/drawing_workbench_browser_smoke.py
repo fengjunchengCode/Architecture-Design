@@ -965,8 +965,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
     page.click("[data-style-preset-apply][data-preset-name='Smoke preset']")
     value = page.eval_on_selector("#styleStrokeColor", "(el) => el.value.toUpperCase()")
     assert value == "#123456", f"{drawing_type}: applying saved preset did not restore color, got {value}"
-    page.reload(wait_until="networkidle")
-    page.wait_for_function("window.DrawingWorkbenchTest", timeout=15000)
+    page.evaluate("() => window.DrawingWorkbenchTest.reloadStylePresets()")
     page.click(f'[data-drawing-type="{drawing_type}"]')
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-preset-apply][data-preset-name='Smoke preset']").count() == 1, (
@@ -1039,8 +1038,55 @@ def assert_ppt_preview_basics(page) -> None:
     page.click('[data-ppt-template="drawing_right"]')
     page.wait_for_timeout(100)
     assert dialogs and "全部图纸页" in dialogs[-1], f"global frame warning missing expected copy: {dialogs!r}"
-    page.click("#togglePptPreview")
+    page.remove_listener("dialog", handle_dialog)
+    assert_reflow_guard(page)
     assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
+
+
+def assert_reflow_guard(page) -> None:
+    manual_x = 0.731
+    page.evaluate(
+        """async ({project, manualX}) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            const slide = layout.slides.functional_zoning;
+            slide.manual_overrides = true;
+            slide.elements.text.x = manualX;
+            slide.elements.text.y = 0.211;
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        {"project": TEST_PROJECT, "manualX": manual_x},
+    )
+    page.reload(wait_until="networkidle")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for reflow guard"
+    dialogs: list[str] = []
+
+    def dismiss_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", dismiss_dialog)
+    page.click("#pptReflowCurrent")
+    page.wait_for_timeout(200)
+    page.remove_listener("dialog", dismiss_dialog)
+    assert dialogs and "手动调整" in dialogs[-1], f"manual reflow warning missing: {dialogs!r}"
+    layout = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    slide = layout["slides"]["functional_zoning"]
+    assert slide["manual_overrides"] is True, f"cancelled reflow should keep manual flag: {slide}"
+    assert abs(slide["elements"]["text"]["x"] - manual_x) < 0.0001, f"cancelled reflow moved text box: {slide}"
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
 
 
 def assert_elevation_inverted(page, drawing_type: str) -> None:

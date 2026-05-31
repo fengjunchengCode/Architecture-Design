@@ -1085,6 +1085,10 @@
   async function reflowDeckLayout(scope = "current") {
     const project = projectCode();
     if (!project) throw new Error("请先打开或创建项目。");
+    if (hasManualReflowTarget(scope) && !confirmManualReflow(scope)) {
+      setPptStatus("已取消重新排版，保留本页手动调整。", true);
+      return state.deckLayout;
+    }
     const data = await api("/api/drawing/deck-layout/reflow", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1099,6 +1103,20 @@
     renderPptControls();
     renderPptPreview();
     return state.deckLayout;
+  }
+
+  function hasManualReflowTarget(scope = "current") {
+    if (!state.deckLayout || !state.deckLayout.slides) return false;
+    if (scope === "all") {
+      return Object.values(state.deckLayout.slides).some((slide) => slide && slide.manual_overrides === true);
+    }
+    const slide = currentPptSlide();
+    return !!(slide && slide.manual_overrides === true);
+  }
+
+  function confirmManualReflow(scope = "current") {
+    const target = scope === "all" ? "全部图纸页中已有手动调整的页面" : "本页";
+    return window.confirm(`重新排版会覆盖${target}手动调整。是否继续？`);
   }
 
   function currentPptSlide() {
@@ -4214,6 +4232,11 @@
     },
     getActiveDrawingType() {
       return drawingType();
+    },
+    async reloadStylePresets() {
+      await loadStylePresets();
+      renderDrawingWorkspace();
+      return JSON.parse(JSON.stringify(state.stylePresets || []));
     },
   };
 
