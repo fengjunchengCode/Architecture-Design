@@ -34,6 +34,17 @@ def api_post(path: str, body: dict) -> dict:
         return json.loads(resp.read())
 
 
+def api_post_error(path: str, body: dict) -> dict:
+    url = f"{BASE}{path}"
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return {"status": resp.status, "body": json.loads(resp.read())}
+    except urllib.error.HTTPError as exc:
+        return {"status": exc.code, "body": json.loads(exc.read())}
+
+
 def boxes_intersect(a: dict, b: dict) -> bool:
     return not (
         a["x"] + a["w"] <= b["x"]
@@ -248,6 +259,13 @@ def main() -> int:
         exported = api_post("/api/drawing/deck-layout/export", {"project": TEST_PROJECT})
         assert exported.get("ok") and exported.get("path", "").endswith("deck.pptx"), f"PPT export failed: {exported}"
         assert (proj_dir / exported["path"]).exists(), f"PPT export file missing: {exported}"
+        inconsistent_layout = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]
+        inconsistent_layout["slides"]["traffic_analysis"]["drawing_frame"] = {"x": 0.12, "y": 0.2, "w": 0.52, "h": 0.7}
+        api_post("/api/drawing/deck-layout/save", {"project": TEST_PROJECT, "layout": inconsistent_layout})
+        rejected = api_post_error("/api/drawing/deck-layout/export", {"project": TEST_PROJECT})
+        assert rejected["status"] == 400 and "traffic_analysis" in json.dumps(rejected["body"]), (
+            f"export should reject per-slide frame drift: {rejected}"
+        )
         print("OK: PPT deck layout load/save/template/reflow works")
 
         # Test save for each drawing type

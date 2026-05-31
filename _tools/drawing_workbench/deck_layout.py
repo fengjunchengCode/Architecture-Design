@@ -378,6 +378,8 @@ def normalize_slide(
         "elements": normalize_elements(data.get("elements"), fallback["elements"]),
         "layout_warnings": data.get("layout_warnings") if isinstance(data.get("layout_warnings"), list) else [],
     }
+    if isinstance(data.get("drawing_frame"), dict):
+        slide["drawing_frame"] = normalize_box(data.get("drawing_frame"), DEFAULT_TEMPLATES[template_side]["drawing_frame"])
     if slide["layout_generated_from_frame_version"] != frame_version:
         slide["needs_reflow"] = True
     return slide
@@ -591,6 +593,18 @@ def add_text_box(slide: Any, box: dict[str, float], text: str, *, size: int, col
     run.font.color.rgb = RGBColor(*hex_to_rgb(color))
 
 
+def export_frame_inconsistencies(layout: dict[str, Any]) -> list[str]:
+    frame = layout.get("drawing_frame") or {}
+    problems = []
+    for drawing_type, slide in (layout.get("slides") or {}).items():
+        if not isinstance(slide, dict) or not isinstance(slide.get("drawing_frame"), dict):
+            continue
+        slide_frame = normalize_box(slide.get("drawing_frame"), frame)
+        if slide_frame != frame:
+            problems.append(str(drawing_type))
+    return problems
+
+
 def export_deck_pptx(project_dir: Path, layout: dict[str, Any], project_code: str) -> dict[str, Any]:
     try:
         from pptx import Presentation
@@ -600,6 +614,9 @@ def export_deck_pptx(project_dir: Path, layout: dict[str, Any], project_code: st
         raise RuntimeError("python-pptx is required for PPTX export in this environment") from exc
 
     layout = normalize_deck_layout(layout, project_code)
+    inconsistent = export_frame_inconsistencies(layout)
+    if inconsistent:
+        raise ValueError(f"Export rejected: per-slide drawing_frame differs from deck frame: {', '.join(inconsistent)}")
     prs = Presentation()
     prs.slide_width = Inches(SLIDE["width"])
     prs.slide_height = Inches(SLIDE["height"])
