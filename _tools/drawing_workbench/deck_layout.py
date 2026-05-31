@@ -25,6 +25,10 @@ DEFAULT_TEMPLATES: dict[str, dict[str, dict[str, float]]] = {
         "info_area": {"x": 0.04, "y": 0.18, "w": 0.25, "h": 0.72},
     },
 }
+INFO_GAP = 0.018
+MIN_TEXT_H = 0.1
+MIN_LEGEND_H = 0.1
+MIN_IMAGES_H = 0.08
 
 
 def now_iso() -> str:
@@ -99,24 +103,114 @@ def default_slide(drawing_type: str, template_side: str, *, frame_version: int) 
     }
 
 
-def default_elements(template_side: str, supporting_images: list[dict[str, Any]]) -> dict[str, Any]:
+def weighted_text_length(text: str) -> float:
+    total = 0.0
+    for char in text:
+        if char.isspace():
+            continue
+        total += 1.0 if ord(char) > 127 else 0.55
+    return total
+
+
+def estimate_text_lines(text: str, info_width: float) -> int:
+    if not text.strip():
+        return 2
+    chars_per_line = max(10, int(info_width * 72))
+    lines = 0
+    for paragraph in text.splitlines() or [text]:
+        length = weighted_text_length(paragraph)
+        lines += max(1, int((length + chars_per_line - 1) // chars_per_line))
+    return max(2, lines)
+
+
+def default_elements(
+    template_side: str,
+    supporting_images: list[dict[str, Any]],
+    *,
+    text: str = "",
+    legend_count: int = 1,
+) -> dict[str, Any]:
+    elements, _warnings = adaptive_elements(
+        template_side,
+        supporting_images,
+        text=text,
+        legend_count=legend_count,
+    )
+    return elements
+
+
+def adaptive_elements(
+    template_side: str,
+    supporting_images: list[dict[str, Any]],
+    *,
+    text: str,
+    legend_count: int,
+) -> tuple[dict[str, Any], list[str]]:
     info = deepcopy(DEFAULT_TEMPLATES.get(template_side, DEFAULT_TEMPLATES["drawing_left"])["info_area"])
-    gap = 0.025
-    legend_h = round(info["h"] * 0.36, 4)
-    text_h = round(info["h"] * 0.24, 4)
-    images_y = round(info["y"] + legend_h + text_h + gap * 2, 4)
-    images_h = round(max(0.08, info["y"] + info["h"] - images_y), 4)
+    warnings: list[str] = []
+    image_count = min(len(supporting_images), 4)
+    gap_count = 1 + (1 if image_count else 0)
+    available_h = info["h"] - INFO_GAP * gap_count
+    lines = estimate_text_lines(text, info["w"])
+    max_text_share = 0.54 if image_count == 0 else 0.46
+    text_h = min(info["h"] * max_text_share, max(MIN_TEXT_H, 0.058 + lines * 0.026))
+    legend_rows = max(1, int(legend_count or 1))
+    legend_h = min(info["h"] * 0.44, max(MIN_LEGEND_H, 0.06 + legend_rows * 0.042))
+    images_h = 0.0
+    if image_count:
+        if image_count == 1:
+            images_h = info["h"] * 0.3
+        elif image_count == 2:
+            images_h = info["h"] * 0.25
+        else:
+            images_h = info["h"] * 0.32
+    total_h = text_h + legend_h + images_h
+    overflow = total_h - available_h
+    if overflow > 0 and image_count:
+        shrink = min(overflow, max(0.0, images_h - MIN_IMAGES_H))
+        if shrink > 0:
+            images_h -= shrink
+            overflow -= shrink
+            warnings.append("supporting_images compressed to fit info column")
+    if overflow > 0:
+        shrink = min(overflow, max(0.0, legend_h - MIN_LEGEND_H))
+        if shrink > 0:
+            legend_h -= shrink
+            overflow -= shrink
+            warnings.append("legend compressed to fit info column")
+    if overflow > 0:
+        shrink = min(overflow, max(0.0, text_h - MIN_TEXT_H))
+        if shrink > 0:
+            text_h -= shrink
+            overflow -= shrink
+            warnings.append("text compressed to fit info column")
+    if overflow > 0:
+        warnings.append("info column content exceeds available area")
+    used_h = text_h + legend_h + images_h
+    remaining = available_h - used_h
+    if remaining > 0:
+        if image_count:
+            images_h += remaining
+        else:
+            text_h += remaining
+
+    y = info["y"]
+    text_box = {"x": info["x"], "y": round(y, 4), "w": info["w"], "h": round(text_h, 4)}
+    y += text_h + INFO_GAP
+    legend_box = {"x": info["x"], "y": round(y, 4), "w": info["w"], "h": round(legend_h, 4)}
+    y += legend_h
+    image_area = {"x": info["x"], "y": round(y + INFO_GAP, 4), "w": info["w"], "h": round(max(0.0, images_h), 4)}
     return {
-        "legend": {"x": info["x"], "y": info["y"], "w": info["w"], "h": legend_h},
-        "text": {"x": info["x"], "y": round(info["y"] + legend_h + gap, 4), "w": info["w"], "h": text_h},
-        "supporting_images": supporting_image_boxes(supporting_images, {"x": info["x"], "y": images_y, "w": info["w"], "h": images_h}),
-    }
+        "text": text_box,
+        "legend": legend_box,
+        "supporting_images": supporting_image_boxes(supporting_images, image_area),
+    }, warnings
 
 
 def supporting_image_boxes(images: list[dict[str, Any]], area: dict[str, float]) -> list[dict[str, Any]]:
     if not images:
         return []
-    count = min(len(images), 6)
+    count = min(len(images), 4)
     cols = 1 if count == 1 else 2
     rows = (count + cols - 1) // cols
     gap = 0.012
@@ -148,6 +242,47 @@ def read_supporting_images(project_dir: Path, drawing_type: str) -> list[dict[st
         return []
     images = manifest.get("images")
     return images if isinstance(images, list) else []
+
+
+def read_drawing_objects(project_dir: Path, drawing_type: str) -> list[dict[str, Any]]:
+    drawing_path = project_dir / "05_output" / "drawings" / "semantic" / f"{drawing_type}.json"
+    if not drawing_path.exists():
+        return []
+    try:
+        payload = json.loads(drawing_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    objects = payload.get("objects")
+    return objects if isinstance(objects, list) else []
+
+
+def estimate_legend_count(objects: list[dict[str, Any]]) -> int:
+    keys: set[str] = set()
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        style = obj.get("style_hints") if isinstance(obj.get("style_hints"), dict) else {}
+        if style.get("legend_enabled") is False:
+            continue
+        geometry = obj.get("geometry") if isinstance(obj.get("geometry"), dict) else {}
+        if geometry.get("kind") == "text":
+            label = str(style.get("text_content") or obj.get("label") or "").strip()
+            if not label:
+                continue
+        label = str(style.get("legend_label") or obj.get("label") or obj.get("type") or "").strip()
+        style_key = {
+            "type": obj.get("type"),
+            "kind": geometry.get("kind"),
+            "closed": geometry.get("closed"),
+            "fill_mode": style.get("fill_mode"),
+            "fill_color": style.get("fill_color"),
+            "stroke_color": style.get("stroke_color"),
+            "stroke_width": style.get("stroke_width"),
+            "stroke_style": style.get("stroke_style"),
+            "border_style": style.get("border_style"),
+        }
+        keys.add(json.dumps({"style": style_key, "label": label}, sort_keys=True, ensure_ascii=False))
+    return max(1, len(keys))
 
 
 def normalize_slide(raw: object, drawing_type: str, template_side: str, frame_version: int) -> dict[str, Any]:
@@ -269,8 +404,13 @@ def reflow_deck(project_dir: Path, layout: dict[str, Any], *, drawing_type: str 
             raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
         slide = layout["slides"].get(target) or default_slide(target, side, frame_version=frame_version)
         supporting = read_supporting_images(project_dir, target)
-        elements = default_elements(side, supporting)
-        warnings = []
+        legend_count = estimate_legend_count(read_drawing_objects(project_dir, target))
+        elements, warnings = adaptive_elements(
+            side,
+            supporting,
+            text=str(slide.get("text") or ""),
+            legend_count=legend_count,
+        )
         for key in ("legend", "text"):
             if boxes_intersect(elements[key], frame):
                 warnings.append(f"{key} overlaps drawing_frame")

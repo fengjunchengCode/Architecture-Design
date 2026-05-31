@@ -34,6 +34,107 @@ def api_post(path: str, body: dict) -> dict:
         return json.loads(resp.read())
 
 
+def boxes_intersect(a: dict, b: dict) -> bool:
+    return not (
+        a["x"] + a["w"] <= b["x"]
+        or b["x"] + b["w"] <= a["x"]
+        or a["y"] + a["h"] <= b["y"]
+        or b["y"] + b["h"] <= a["y"]
+    )
+
+
+def write_supporting_manifest(proj_dir: Path, drawing_type: str, count: int) -> None:
+    sup_dir = proj_dir / "05_output" / "drawings" / "supporting" / drawing_type
+    sup_dir.mkdir(parents=True, exist_ok=True)
+    images = [
+        {
+            "id": f"support-{index + 1}",
+            "stored_name": f"support-{index + 1}.jpg",
+            "original_name": f"support-{index + 1}.jpg",
+            "caption": f"support {index + 1}",
+        }
+        for index in range(count)
+    ]
+    (sup_dir / "manifest.json").write_text(
+        json.dumps({"images": images}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def write_semantic_objects(proj_dir: Path, drawing_type: str, count: int) -> None:
+    semantic_dir = proj_dir / "05_output" / "drawings" / "semantic"
+    semantic_dir.mkdir(parents=True, exist_ok=True)
+    objects = [
+        {
+            "id": f"legend-{index + 1}",
+            "type": "planting_line",
+            "geometry": {
+                "kind": "path",
+                "closed": False,
+                "coords": [[0.1, 0.1 + index * 0.01], [0.3, 0.1 + index * 0.01]],
+            },
+            "label": f"legend {index + 1}",
+            "style_hints": {"legend_enabled": True, "stroke_width": 0.004, "stroke_color": "#5B8C3A"},
+        }
+        for index in range(count)
+    ]
+    payload = {
+        "schema_version": "1.2",
+        "drawing_type": drawing_type,
+        "project_code": TEST_PROJECT,
+        "objects": objects,
+    }
+    (semantic_dir / f"{drawing_type}.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def assert_reflow_adaptive(proj_dir: Path) -> None:
+    drawing_type = "planting_design"
+    frame = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]["drawing_frame"]
+    write_semantic_objects(proj_dir, drawing_type, 5)
+
+    samples = [
+        ("empty", "", 0),
+        ("short", "短说明。", 1),
+        ("long", "这是用于验证 PPT 自动排版的长说明文字。" * 16, 4),
+    ]
+    seen = {}
+    for name, text, image_count in samples:
+        write_supporting_manifest(proj_dir, drawing_type, image_count)
+        api_post(
+            "/api/drawing/deck-layout/save",
+            {"project": TEST_PROJECT, "drawing_type": drawing_type, "slide": {"text": text}},
+        )
+        result = api_post(
+            "/api/drawing/deck-layout/reflow",
+            {"project": TEST_PROJECT, "drawing_type": drawing_type, "scope": "current"},
+        )
+        slide = result["layout"]["slides"][drawing_type]
+        elements = slide["elements"]
+        text_box = elements["text"]
+        legend_box = elements["legend"]
+        support_boxes = elements["supporting_images"]
+        assert text_box["y"] < legend_box["y"], f"{name}: text should be above legend: {elements}"
+        assert text_box["y"] + text_box["h"] <= legend_box["y"], f"{name}: text and legend overlap: {elements}"
+        for key in ("text", "legend"):
+            assert not boxes_intersect(elements[key], frame), f"{name}: {key} overlaps drawing frame: {elements[key]} vs {frame}"
+        for box in support_boxes:
+            assert not boxes_intersect(box, frame), f"{name}: supporting image overlaps drawing frame: {box} vs {frame}"
+        assert len(support_boxes) == image_count, f"{name}: expected {image_count} supporting boxes, got {support_boxes}"
+        seen[name] = elements
+
+    assert seen["long"]["text"]["h"] > seen["short"]["text"]["h"], (
+        f"long text should receive more height than short text: {seen}"
+    )
+    four = seen["long"]["supporting_images"]
+    assert {round(box["x"], 4) for box in four[:2]} != {round(four[0]["x"], 4)}, f"four images should use a grid: {four}"
+    assert {round(box["y"], 4) for box in four} and len({round(box["y"], 4) for box in four}) == 2, (
+        f"four images should use two rows: {four}"
+    )
+
+
 def main() -> int:
     proj_dir = REPO_ROOT / "projects" / TEST_PROJECT
     if proj_dir.exists():
@@ -138,6 +239,7 @@ def main() -> int:
         assert reflowed_slides.get("traffic_analysis", {}).get("needs_reflow") is True, (
             f"current reflow should not clear other slides: {reflowed}"
         )
+        assert_reflow_adaptive(proj_dir)
         print("OK: PPT deck layout load/save/template/reflow works")
 
         # Test save for each drawing type
