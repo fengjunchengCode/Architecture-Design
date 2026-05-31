@@ -1005,21 +1005,18 @@ function summarizeUpload(data) {
 }
 
 function summarizeAutoDraft(data) {
-  const screenshotUrl = data.ok && data.screenshot_path
-    ? `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}`
-    : null;
   return `
     <div class="summary-card ${data.ok ? "ok" : "warn"}">
-      <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
+      <h3>${data.ok ? "S1 区位分析草稿已生成" : "区位分析草稿生成失败"}</h3>
       <div class="result-grid">
         ${resultRow("项目", data.project_code)}
-        ${resultRow("输出目录", data.output_dir || "无")}
-        ${resultRow("截图", data.screenshot_path || "无")}
-        ${resultRow("JSON", data.json_path || "无")}
+        ${resultRow("Markdown 文件", data.path || "无")}
+        ${resultRow("结构化 JSON", data.json_path || "无")}
       </div>
-      ${screenshotUrl ? `<div class="result-section"><b>2km 卫星截图预览</b><br><img src="${screenshotUrl}" style="max-width:400px;border:1px solid var(--line);border-radius:6px;margin-top:8px" alt="satellite 2km"></div>` : ""}
       ${data.summary ? `<div class="result-section"><b>摘要</b><p>${escapeHtml(data.summary)}</p></div>` : ""}
-      <p class="result-next">${data.ok ? "快照已保存到 05_output/location_analysis/，包含 satellite_2km.png 和 location_analysis_draft.json。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
+      ${data.structured_preview ? `<div class="result-section"><b>结构化草稿预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:400px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.structured_preview)}</pre></div>` : ""}
+      ${data.markdown_preview ? `<div class="result-section"><b>Markdown 预览</b><pre style="white-space:pre-wrap;font-size:12px;max-height:300px;overflow:auto;background:rgba(255,253,247,.72);padding:8px;border-radius:6px;border:1px solid var(--line)">${escapeHtml(data.markdown_preview)}</pre></div>` : ""}
+      <p class="result-next">${data.ok ? "草稿已保存：Markdown（05_output/s1_location_analysis.md）+ 结构化 JSON（05_output/s1_location_draft.json）。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
     </div>
   `;
 }

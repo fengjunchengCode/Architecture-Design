@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Generate S1 location analysis snapshot: satellite PNG + structured JSON draft.
+"""Generate S1 location analysis draft from existing map context data.
 
-Reads projects/{code}/05_output/amap/s1_map_context.json and produces:
-- satellite_2km.png (placeholder if screenshot not available)
-- location_analysis_draft.json (structured analysis)
+Reads projects/{code}/05_output/amap/s1_map_context.json and produces
+a structured Chinese markdown analysis document.
+
+Does NOT call any AMap APIs — purely local data transformation.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import math
-import os
 import sys
 import time
 from pathlib import Path
@@ -27,7 +26,14 @@ CATEGORY_LABELS = {
     "medical_sports": "医疗体育",
 }
 
-RINGS_M = [500, 1000, 2000]
+KEYWORD_LABELS = {
+    "河": "水系",
+    "桥": "桥梁",
+    "公园": "公园绿地",
+    "公交站": "公交站点",
+}
+
+POI_DISPLAY_LIMIT = 8
 
 
 def safe_project(code: str) -> str:
@@ -54,200 +60,370 @@ def load_context(proj: Path) -> dict:
     return data
 
 
-def gcj02_to_wgs84(lng: float, lat: float) -> tuple[float, float]:
-    """Convert GCJ-02 to WGS84 (inverse transform, iterative)."""
-    PI = 3.14159265358979324
-    A = 6378245.0
-    EE = 0.00669342162296594323
-
-    def _t_lat(x, y):
-        r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*math.sqrt(abs(x))
-        r += (20*math.sin(6*x*PI) + 20*math.sin(2*x*PI)) * 2/3
-        r += (20*math.sin(y*PI) + 40*math.sin(y/3*PI)) * 2/3
-        r += (160*math.sin(y/12*PI) + 320*math.sin(y*PI/30)) * 2/3
-        return r
-
-    def _t_lng(x, y):
-        r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*math.sqrt(abs(x))
-        r += (20*math.sin(6*x*PI) + 20*math.sin(2*x*PI)) * 2/3
-        r += (20*math.sin(x*PI) + 40*math.sin(x/3*PI)) * 2/3
-        r += (150*math.sin(x/12*PI) + 300*math.sin(x/30*PI)) * 2/3
-        return r
-
-    dx = _t_lng(lng - 105, lat - 35)
-    dy = _t_lat(lng - 105, lat - 35)
-    rl = lat / 180 * PI
-    m = math.sin(rl)
-    m = 1 - EE * m * m
-    sm = math.sqrt(m)
-    dy = (dy * 180) / ((A * (1 - EE)) / (m * sm) * PI)
-    dx = (dx * 180) / (A / sm * math.cos(rl) * PI)
-    return (lng - dx, lat - dy)
-
-
-def compute_bounds(center_gcj02: str, radius_m: int = 2000) -> dict:
-    """Compute approximate bounding box for a given radius around center."""
+def _fmt_distance(val) -> str:
     try:
-        parts = center_gcj02.split(",")
-        lng, lat = float(parts[0]), float(parts[1])
-    except (ValueError, IndexError):
-        return {"gcj02": None, "wgs84": None}
-
-    # Approximate degrees per meter at this latitude
-    lat_rad = math.radians(lat)
-    m_per_deg_lat = 111132.92 - 559.82 * math.cos(2 * lat_rad) + 1.175 * math.cos(4 * lat_rad)
-    m_per_deg_lng = 111412.84 * math.cos(lat_rad) - 93.5 * math.cos(3 * lat_rad)
-
-    dlat = radius_m / m_per_deg_lat
-    dlng = radius_m / m_per_deg_lng
-
-    gcj_bounds = {
-        "south": lat - dlat,
-        "north": lat + dlat,
-        "west": lng - dlng,
-        "east": lng + dlng,
-    }
-
-    wgs_sw = gcj02_to_wgs84(gcj_bounds["west"], gcj_bounds["south"])
-    wgs_ne = gcj02_to_wgs84(gcj_bounds["east"], gcj_bounds["north"])
-
-    return {
-        "gcj02": gcj_bounds,
-        "wgs84": {
-            "south": wgs_sw[1],
-            "north": wgs_ne[1],
-            "west": wgs_sw[0],
-            "east": wgs_ne[0],
-        },
-    }
+        d = float(val)
+        if d < 1000:
+            return f"{d:.0f}m"
+        return f"{d / 1000:.1f}km"
+    except (TypeError, ValueError):
+        return str(val)
 
 
-def compute_zoom_for_radius(radius_m: int) -> int:
-    """Approximate AMap zoom level for a given radius in meters."""
-    # zoom 14 ~ 2km radius, zoom 15 ~ 1km, zoom 16 ~ 500m
-    if radius_m >= 2000:
-        return 14
-    elif radius_m >= 1000:
-        return 15
-    else:
-        return 16
+def _poi_summary(items: list, limit: int = POI_DISPLAY_LIMIT) -> tuple[list[str], int]:
+    """Return (display_lines, total_count)."""
+    total = len(items)
+    shown = sorted(items, key=lambda x: float(x.get("distance_m", 9999)))[:limit]
+    lines = []
+    for p in shown:
+        name = p.get("name", "")
+        dist = _fmt_distance(p.get("distance_m"))
+        lines.append(f"{name}（{dist}）")
+    return lines, total
 
 
-def extract_poi_summary(ctx: dict) -> dict:
-    """Extract POI summary for each ring distance."""
-    mc = ctx.get("map_context", {})
-    result = {}
-    for radius in RINGS_M:
-        key = f"poi_{radius}m"
-        poi_data = mc.get(key, {})
-        ring_summary = {}
-        for cat_key, cat_data in poi_data.items():
-            if not isinstance(cat_data, dict) or int(cat_data.get("count", 0)) == 0:
-                continue
-            items = cat_data.get("items", [])
-            ring_summary[cat_key] = {
-                "label": CATEGORY_LABELS.get(cat_key, cat_key),
-                "count": int(cat_data.get("count", 0)),
-                "top_items": [
-                    {"name": p.get("name", ""), "distance_m": float(p.get("distance_m", 0))}
-                    for p in sorted(items, key=lambda x: float(x.get("distance_m", 9999)))[:5]
-                ],
-            }
-        result[str(radius)] = ring_summary
-    return result
+def generate_markdown(ctx: dict) -> str:
+    lines: list[str] = []
+    ts = time.strftime("%Y-%m-%d %H:%M")
 
+    lines.append("# S1 区位分析草稿")
+    lines.append("")
+    lines.append(f"> 自动生成于 {ts}，基于高德地图数据。本草稿为设计参考，需结合现场调研验证。")
+    lines.append("")
 
-def build_draft(ctx: dict, code: str, screenshot_path: str | None) -> dict:
-    """Build the structured JSON draft."""
+    # 一、区位身份
     loc = ctx.get("location", {})
     regeo = ctx.get("map_context", {}).get("regeo", {})
     addr_comp = regeo.get("address_component", {})
 
-    center_gcj02 = loc.get("amap_gcj02", "")
-    center_wgs84 = None
-    if center_gcj02:
-        try:
-            parts = center_gcj02.split(",")
-            wgs = gcj02_to_wgs84(float(parts[0]), float(parts[1]))
-            center_wgs84 = f"{wgs[0]:.6f},{wgs[1]:.6f}"
-        except (ValueError, IndexError):
-            pass
+    lines.append("## 一、区位身份")
+    lines.append("")
+    fa = regeo.get("formatted_address") or "无"
+    lines.append(f"- **详细地址：** {fa}")
+    province = addr_comp.get("province", "")
+    city = addr_comp.get("city", "")
+    district = addr_comp.get("district", "")
+    township = addr_comp.get("township", "")
+    admin_parts = " ".join(filter(None, [province, city, district, township]))
+    lines.append(f"- **行政区划：** {admin_parts or '无'}")
+    adcode = addr_comp.get("adcode", "")
+    if adcode:
+        lines.append(f"- **行政代码：** {adcode}")
+    lines.append(f"- **坐标（GCJ-02）：** {loc.get('amap_gcj02', '无')}")
+    lines.append(f"- **定位来源：** {loc.get('source', '无')}，置信度 {loc.get('confidence', '无')}")
+    lines.append("")
 
-    bounds = compute_bounds(center_gcj02, 2000)
+    # 二、周边设施
+    mc = ctx.get("map_context", {})
+    poi_500 = mc.get("poi_500m", {})
+    poi_1000 = mc.get("poi_1000m", {})
+
+    has_any_poi = False
+    for cat_data in list(poi_500.values()) + list(poi_1000.values()):
+        if isinstance(cat_data, dict) and int(cat_data.get("count", 0)) > 0:
+            has_any_poi = True
+            break
+
+    lines.append("## 二、周边设施")
+    lines.append("")
+
+    if has_any_poi:
+        # 500m
+        has_500 = any(int(v.get("count", 0)) > 0 for v in poi_500.values() if isinstance(v, dict))
+        if has_500:
+            lines.append("### 2.1 500米范围内")
+            lines.append("")
+            for cat_key, cat_data in sorted(poi_500.items()):
+                if not isinstance(cat_data, dict) or int(cat_data.get("count", 0)) == 0:
+                    continue
+                label = CATEGORY_LABELS.get(cat_key, cat_key)
+                items = cat_data.get("items", [])
+                shown, total = _poi_summary(items)
+                suffix = f"（共 {total} 处）" if total > len(shown) else ""
+                lines.append(f"- **{label}：** {', '.join(shown)}{suffix}")
+            lines.append("")
+
+        # 1000m
+        has_1000 = any(int(v.get("count", 0)) > 0 for v in poi_1000.values() if isinstance(v, dict))
+        if has_1000:
+            lines.append("### 2.2 1000米范围内")
+            lines.append("")
+            for cat_key, cat_data in sorted(poi_1000.items()):
+                if not isinstance(cat_data, dict) or int(cat_data.get("count", 0)) == 0:
+                    continue
+                label = CATEGORY_LABELS.get(cat_key, cat_key)
+                items = cat_data.get("items", [])
+                shown, total = _poi_summary(items)
+                suffix = f"（共 {total} 处）" if total > len(shown) else ""
+                lines.append(f"- **{label}：** {', '.join(shown)}{suffix}")
+            lines.append("")
+    else:
+        lines.append("高德地图在 1km 范围内未返回分类 POI 数据。")
+        lines.append("")
+
+    # 关键词检索
+    kw_ctx = mc.get("keyword_context", {})
+    has_kw = any(int(v.get("count", 0)) > 0 for v in kw_ctx.values() if isinstance(v, dict))
+    if has_kw:
+        lines.append("### 2.3 关键词检索")
+        lines.append("")
+        for kw, kw_data in sorted(kw_ctx.items()):
+            if not isinstance(kw_data, dict) or int(kw_data.get("count", 0)) == 0:
+                continue
+            label = KEYWORD_LABELS.get(kw, kw)
+            items = kw_data.get("items", [])
+            shown, total = _poi_summary(items)
+            suffix = f"（共 {total} 处）" if total > len(shown) else ""
+            lines.append(f"- **{label}：** {', '.join(shown)}{suffix}")
+        lines.append("")
+
+    # 三、道路交通
+    roads = regeo.get("roads", [])
+    intersections = regeo.get("road_intersections", [])
+
+    lines.append("## 三、道路交通")
+    lines.append("")
+
+    if roads:
+        lines.append("### 3.1 周边道路")
+        lines.append("")
+        for r in roads:
+            name = r.get("name", "")
+            direction = r.get("direction", "")
+            dist = _fmt_distance(r.get("distance_m"))
+            parts = [name]
+            if direction:
+                parts.append(f"{direction}侧")
+            parts.append(dist)
+            lines.append(f"- {' '.join(parts)}")
+        lines.append("")
+
+    if intersections:
+        lines.append("### 3.2 道路交叉口")
+        lines.append("")
+        for ix in intersections:
+            n1 = ix.get("first_name", "")
+            n2 = ix.get("second_name", "")
+            direction = ix.get("direction", "")
+            dist = _fmt_distance(ix.get("distance_m"))
+            parts = [f"{n1} / {n2}"]
+            if direction:
+                parts.append(f"{direction}侧")
+            parts.append(dist)
+            lines.append(f"- {' '.join(parts)}")
+        lines.append("")
+
+    if not roads and not intersections:
+        lines.append("高德地图在该位置未返回道路数据，可能为偏远或新开发区域。")
+        lines.append("")
+
+    # 四、自然与景观要素
+    lines.append("## 四、自然与景观要素")
+    lines.append("")
+
+    seed = ctx.get("s1_external_context_seed", {})
+    water = seed.get("amap_context", {}).get("water", [])
+    kw_water = []
+    for kw in ("河", "桥"):
+        kw_data = kw_ctx.get(kw, {})
+        if isinstance(kw_data, dict):
+            for item in kw_data.get("items", []):
+                kw_water.append(item.get("name", ""))
+
+    all_water = list(dict.fromkeys(water + kw_water))  # dedupe preserving order
+    if all_water:
+        lines.append(f"- **水系/桥梁：** {', '.join(all_water[:10])}")
+    else:
+        lines.append("- **水系/桥梁：** 未检索到")
+
+    parks = []
+    park_data = kw_ctx.get("公园", {})
+    if isinstance(park_data, dict):
+        for item in park_data.get("items", []):
+            parks.append(item.get("name", ""))
+    if parks:
+        lines.append(f"- **公园绿地：** {', '.join(parks[:10])}")
+    else:
+        lines.append("- **公园绿地：** 未检索到")
+
+    bus = []
+    bus_data = kw_ctx.get("公交站", {})
+    if isinstance(bus_data, dict):
+        for item in bus_data.get("items", []):
+            bus.append(item.get("name", ""))
+    if bus:
+        lines.append(f"- **公交站点：** {', '.join(bus[:10])}")
+    else:
+        lines.append("- **公交站点：** 未检索到")
+    lines.append("")
+
+    # 五、设计启示与局限
+    lines.append("## 五、设计启示与局限")
+    lines.append("")
+
+    lines.append("### 5.1 数据可支撑的判断")
+    lines.append("")
+
+    poi_total_500 = sum(int(v.get("count", 0)) for v in poi_500.values() if isinstance(v, dict))
+    poi_total_1000 = sum(int(v.get("count", 0)) for v in poi_1000.values() if isinstance(v, dict))
+
+    if admin_parts:
+        lines.append(f"- 该地块位于{admin_parts}")
+    if poi_total_500 > 0 or poi_total_1000 > 0:
+        lines.append(f"- 周边 500m 内 {poi_total_500} 个设施，1km 内 {poi_total_1000} 个设施")
+
+    commercial_500 = poi_500.get("commercial_life", {})
+    if isinstance(commercial_500, dict) and int(commercial_500.get("count", 0)) > 0:
+        lines.append("- 周边有商业配套，生活便利性可期")
+    transport_1000 = poi_1000.get("transport", {})
+    if isinstance(transport_1000, dict) and int(transport_1000.get("count", 0)) > 0:
+        names = [i.get("name", "") for i in transport_1000.get("items", [])[:3]]
+        lines.append(f"- 交通设施包括：{', '.join(names)}")
+    if roads:
+        lines.append(f"- 可达性：周边有 {len(roads)} 条道路")
+    if all_water:
+        lines.append(f"- 景观资源：{all_water[0]}等水系/桥梁要素")
+
+    lines.append("")
+    lines.append("### 5.2 需进一步调查的内容")
+    lines.append("")
+    lines.append("- 出入口位置需结合 CAD 红线和现场踏勘确定")
+    lines.append("- 道路等级与通行条件需现场核实")
+    if not roads and not intersections:
+        lines.append("- 道路信息缺失，需现场补充")
+    lines.append("- 周边用地性质需查阅规划文件确认")
+    lines.append("- 噪音、日照等环境因素需现场测量")
+    lines.append("")
+
+    lines.append("### 5.3 坐标配准说明")
+    lines.append("")
+    lines.append("- 当前坐标系为 GCJ-02（高德），与 CAD 工程坐标系不能直接叠加")
+    lines.append("- 精确落边需在 S2 阶段通过 2-3 个控制点完成配准")
+    lines.append("")
+    lines.append("---")
+    lines.append("*本文件由 s1_location_analysis.py 自动生成，可直接编辑修改。*")
+
+    return "\n".join(lines)
+
+
+def generate_structured_draft(ctx: dict) -> dict:
+    """Generate a structured JSON draft for programmatic consumption."""
+    loc = ctx.get("location", {})
+    regeo = ctx.get("map_context", {}).get("regeo", {})
+    addr_comp = regeo.get("address_component", {})
+    mc = ctx.get("map_context", {})
+    poi_500 = mc.get("poi_500m", {})
+    poi_1000 = mc.get("poi_1000m", {})
+    kw_ctx = mc.get("keyword_context", {})
+    seed = ctx.get("s1_external_context_seed", {})
+
+    # POI summary by category
+    def extract_pois(poi_data: dict) -> dict:
+        result = {}
+        for cat_key, cat_data in poi_data.items():
+            if not isinstance(cat_data, dict) or int(cat_data.get("count", 0)) == 0:
+                continue
+            items = cat_data.get("items", [])
+            result[cat_key] = {
+                "label": CATEGORY_LABELS.get(cat_key, cat_key),
+                "count": int(cat_data.get("count", 0)),
+                "items": [
+                    {"name": p.get("name", ""), "distance_m": float(p.get("distance_m", 0))}
+                    for p in sorted(items, key=lambda x: float(x.get("distance_m", 9999)))[:POI_DISPLAY_LIMIT]
+                ],
+            }
+        return result
+
+    # Water/park features from keywords
+    def extract_keyword_features(kw_data: dict, keywords: list[str]) -> list[dict]:
+        features = []
+        for kw in keywords:
+            data = kw_data.get(kw, {})
+            if not isinstance(data, dict) or int(data.get("count", 0)) == 0:
+                continue
+            for item in data.get("items", []):
+                features.append({
+                    "type": KEYWORD_LABELS.get(kw, kw),
+                    "name": item.get("name", ""),
+                    "distance_m": float(item.get("distance_m", 0)),
+                })
+        return sorted(features, key=lambda x: x["distance_m"])
+
+    # Static map URL for 2km satellite view
+    gcj02 = loc.get("amap_gcj02", "")
+    static_map_url = None
+    if gcj02:
+        static_map_url = (
+            f"https://restapi.amap.com/v3/staticmap?"
+            f"location={gcj02}&zoom=14&size=750*750&scale=2"
+            f"&markers=mid,0xFF0000,{gcj02}"
+            f"&key=<AMAP_WEBSERVICE_KEY>"
+        )
 
     return {
         "schema_version": "1.0",
-        "project_code": code,
+        "type": "s1_location_draft",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "center_gcj02": center_gcj02,
-        "center_wgs84": center_wgs84,
-        "rings_m": RINGS_M,
-        "map_mode": "satellite",
-        "bounds_gcj02": bounds.get("gcj02"),
-        "bounds_wgs84": bounds.get("wgs84"),
-        "screenshot_path": screenshot_path,
-        "data_sources": {
-            "amap_context": "s1_map_context.json",
-            "satellite": "AMap static map API",
-        },
+        "project_code": ctx.get("project_code", ""),
         "location": {
+            "gcj02": gcj02,
             "formatted_address": regeo.get("formatted_address", ""),
             "province": addr_comp.get("province", ""),
             "city": addr_comp.get("city", ""),
             "district": addr_comp.get("district", ""),
             "township": addr_comp.get("township", ""),
             "adcode": addr_comp.get("adcode", ""),
+            "confidence": loc.get("confidence", ""),
         },
-        "poi_summary": extract_poi_summary(ctx),
-        "limitations": [
-            "卫星截图精度取决于 AMap 静态地图 API，zoom=14 对应约 2km 范围",
-            "POI 数据仅覆盖高德地图已收录的兴趣点，偏远区域可能缺失",
-            "坐标系为 GCJ-02（高德），与 WGS84 存在约 500m 偏移",
-            "精确落边需在 S2 阶段通过控制点配准",
-            "配图上传功能已就绪，可附加现场照片用于 PPT 排版",
-            "区界数据来源为 AMap DistrictSearch，边界精度有限",
-        ],
+        "static_map": {
+            "url_template": static_map_url,
+            "zoom": 14,
+            "radius_m": 2000,
+            "note": "Replace <AMAP_WEBSERVICE_KEY> with actual key from .env",
+        },
+        "facilities": {
+            "500m": extract_pois(poi_500),
+            "1000m": extract_pois(poi_1000),
+        },
+        "roads": {
+            "list": regeo.get("roads", []),
+            "intersections": regeo.get("road_intersections", []),
+        },
+        "natural_features": extract_keyword_features(kw_ctx, ["河", "桥", "公园", "公交站"]),
+        "design_notes": {
+            "data_supports": [],
+            "needs_investigation": [
+                "出入口位置需结合 CAD 红线和现场踏勘确定",
+                "道路等级与通行条件需现场核实",
+                "周边用地性质需查阅规划文件确认",
+                "噪音、日照等环境因素需现场测量",
+            ],
+            "coordinate_note": "当前坐标系为 GCJ-02（高德），精确落边需在 S2 阶段通过控制点配准",
+        },
     }
 
 
-def generate_screenshot_placeholder(proj: Path, center_gcj02: str, output_dir: Path) -> str | None:
-    """Generate a placeholder PNG for the satellite screenshot."""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-
-        img = Image.new("RGB", (750, 750), (245, 242, 232))
-        draw = ImageDraw.Draw(img)
-
-        # Draw grid
-        for i in range(0, 750, 50):
-            draw.line([(i, 0), (i, 750)], fill=(220, 218, 210), width=1)
-            draw.line([(0, i), (750, i)], fill=(220, 218, 210), width=1)
-
-        # Draw center marker
-        cx, cy = 375, 375
-        draw.ellipse([cx-8, cy-8, cx+8, cy+8], fill=(220, 50, 50), outline=(180, 30, 30))
-        draw.line([(cx-15, cy), (cx+15, cy)], fill=(220, 50, 50), width=2)
-        draw.line([(cx, cy-15), (cx, cy+15)], fill=(220, 50, 50), width=2)
-
-        # Draw radius circles (approximate)
-        for r_px, label in [(94, "500m"), (188, "1km"), (375, "2km")]:
-            draw.ellipse([cx-r_px, cy-r_px, cx+r_px, cy+r_px], outline=(100, 100, 100), width=1)
-            draw.text((cx+r_px-30, cy-12), label, fill=(100, 100, 100))
-
-        # Draw text
-        draw.text((20, 20), "S1 Satellite Placeholder", fill=(60, 60, 60))
-        draw.text((20, 40), f"Center: {center_gcj02}", fill=(100, 100, 100))
-        draw.text((20, 60), "Replace with actual AMap satellite screenshot", fill=(150, 150, 150))
-
-        output_path = output_dir / "satellite_2km.png"
-        img.save(str(output_path), "PNG")
-        return str(output_path.relative_to(proj)).replace("\\", "/")
-    except ImportError:
-        return None
+def build_summary(ctx: dict) -> str:
+    mc = ctx.get("map_context", {})
+    regeo = mc.get("regeo", {})
+    addr_comp = regeo.get("address_component", {})
+    district = addr_comp.get("district", "")
+    township = addr_comp.get("township", "")
+    poi_500 = mc.get("poi_500m", {})
+    poi_1000 = mc.get("poi_1000m", {})
+    c500 = sum(int(v.get("count", 0)) for v in poi_500.values() if isinstance(v, dict))
+    c1000 = sum(int(v.get("count", 0)) for v in poi_1000.values() if isinstance(v, dict))
+    roads = regeo.get("roads", [])
+    loc = f"{township or district}"
+    parts = [f"区位：{loc}"] if loc else []
+    parts.append(f"500m 内 {c500} 个设施，1km 内 {c1000} 个设施")
+    if roads:
+        parts.append(f"{len(roads)} 条道路")
+    return "，".join(parts)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate S1 location analysis snapshot")
+    parser = argparse.ArgumentParser(description="Generate S1 location analysis draft")
     parser.add_argument("project")
     parser.add_argument("--json", action="store_true", dest="json_output")
     parser.add_argument("--write", action="store_true")
@@ -257,37 +433,35 @@ def main() -> int:
         code = safe_project(args.project)
         proj = project_dir(code)
         ctx = load_context(proj)
+        markdown = generate_markdown(ctx)
+        structured = generate_structured_draft(ctx)
+        summary = build_summary(ctx)
 
-        output_dir = proj / "05_output" / "location_analysis"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate screenshot placeholder
-        center_gcj02 = ctx.get("location", {}).get("amap_gcj02", "")
-        screenshot_rel = generate_screenshot_placeholder(proj, center_gcj02, output_dir)
-
-        # Generate draft
-        draft = build_draft(ctx, code, screenshot_rel)
-        json_path = output_dir / "location_analysis_draft.json"
-
+        out_path = proj / "05_output" / "s1_location_analysis.md"
+        json_path = proj / "05_output" / "s1_location_draft.json"
         result: dict = {
             "ok": True,
             "auto_draft": True,
             "project_code": code,
-            "output_dir": str(output_dir.relative_to(proj)).replace("\\", "/"),
-            "screenshot_path": screenshot_rel,
+            "path": str(out_path.relative_to(proj)).replace("\\", "/"),
             "json_path": str(json_path.relative_to(proj)).replace("\\", "/"),
-            "summary": f"区位：{ctx.get('map_context', {}).get('regeo', {}).get('address_component', {}).get('district', '')}",
+            "summary": summary,
+            "markdown_preview": markdown[:2000],
+            "structured_preview": json.dumps(structured, ensure_ascii=False, indent=2)[:2000],
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
 
         if args.write:
-            json_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(markdown, encoding="utf-8")
+            json_path.write_text(json.dumps(structured, ensure_ascii=False, indent=2), encoding="utf-8")
+            result["written_to"] = str(out_path)
             result["json_written_to"] = str(json_path)
 
         if args.json_output:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
-            print(json.dumps(draft, ensure_ascii=False, indent=2))
+            print(markdown)
 
         return 0
 
