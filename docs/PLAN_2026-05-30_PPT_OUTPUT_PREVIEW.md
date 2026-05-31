@@ -325,3 +325,59 @@ python _tools\tests\drawing_workbench_browser_smoke.py
 - 不把 PPT layout 字段塞进 semantic drawing schema。
 - 不提交 `projects/26-BQ-PARK/05_output/` 下已有运行输出脏文件，除非用户明确要求保存项目输出示例。
 - 不破坏现有制图工作台：绘制、选中、弧线、预设、图例、配图、task_pack、PNG/PDF 导出必须继续通过现有 smoke。
+
+---
+
+## 11. 第二阶段 brief（mac claude 评审 `0e348d6` 后续做）
+
+> **评审结论**：F1（数据模型+API）、F2（说明文本）、F3（预览基础）已完成且有测试,门禁绿,做得扎实。F4 只做了模板切换+确认+重排按钮,**图纸框还不能交互拖拽**;F5 整体未开始;另有几处实现与计划第 7 节/6.4 节不符。本阶段补齐。
+> **执行者：codex(有视觉)。单线程顺序,每条一个提交。**红线沿用第 10 节;不得污染 semantic schema;现有制图 smoke 必须继续全绿。
+
+### 必做修正（与原计划不符,优先）
+
+**C1 自动排版改为内容自适应(计划 §7,现为静态占位)**
+`deck_layout.default_elements` 现在图例固定 36%、说明 24%、配图网格,与内容无关。改为:① 无说明文本→图例占信息区上部、配图填其余;② 有说明→说明在上、图例其次、配图垫底;③ 配图按 1/2/3/4 张自适应网格(现 `supporting_image_boxes` 固定 2 列,扩成 1→单列、2→双列、3-4→2×2);④ 空间不足时压缩配图高度并写 `layout_warnings`,绝不与 `drawing_frame` 相交。
+验收:`assert_reflow_adaptive`——无文本/有长文本/配图 1 与 4 张,四种情形元素框不重叠且不压 `drawing_frame`。
+
+**C2 reflow 必须守护手动调整(计划 §6.4)**
+现 `reflow_deck` 直接把 `manual_overrides` 清零。前端"重排本页/全部"前:若目标页 `manual_overrides=true`,弹窗"重新排版会覆盖本页手动调整。是否继续？";取消则不动该页。
+验收:`assert_reflow_guard`——手动调整后点重排,确认弹窗存在;取消后该页 elements 不变。
+
+**C3 在预览里显示 `layout_warnings`**
+`reflow_deck` 已算出 warnings(如 "legend overlaps drawing_frame"),但预览未展示。预览顶部在有 warnings 时显示警示条(区别于 `needs_reflow` 条)。
+
+**C4 预览图纸用 contain,不拉伸**
+现预览把图纸 `<img>` 直接塞进框 div 会拉伸。立即改为 `object-fit: contain` 居中+留白(预演 `drawing_plate` 概念),避免长方形图纸变形。
+
+### 续做功能（F4 收尾 + F5）
+
+**P1 图纸框交互拖拽/缩放(F4 收尾)**
+预览里 `[data-ppt-drawing-frame]` 支持拖动+8 向缩放 → 调 `set_drawing_frame`(后端已就绪)。改动前走现有 `confirmPptGlobalChange` 弹窗;确认后 `drawing_frame_version+1`、全页标记 `needs_reflow`、所有页预览即时同步。约束:框保持在 slide 内、信息区不被挤没。
+验收:`assert_frame_drag`——拖动框后 `drawing_frame_version` 增、切到他页框坐标一致、所有页 `needs_reflow=true`。
+
+**P2 信息元素手动调整(F5a)**
+图例/说明/配图框支持拖动+缩放,**只影响当前 slide**,落点校验不与 `drawing_frame` 相交(相交则吸附回可用区或拒绝),改后置 `manual_overrides=true`,存 layout。
+验收:`assert_manual_adjust`——拖动图例框→当前页 elements.legend 变、`manual_overrides=true`、他页不变。
+
+**P3 `drawing_plate`(F5b)**
+后端生成统一比例 plate:plate 比例 = 全局 `drawing_frame` 比例;真实图纸 `contain` 居中、可留白、不拉伸;PPT 中插入 plate,使**每页图纸对象 x/y/w/h 完全一致**。预览与导出共用同一 plate 逻辑。
+
+**P4 PPTX 导出(F5c)**
+按 `layout.json` 生成 16:9 pptx(建议 `python-pptx`):每页插入 plate 图 + 图例 + 说明文本 + 配图,坐标用 slide 归一化坐标×尺寸。新增 `POST /api/drawing/deck-layout/export` → 写 `05_output/ppt/drawing_deck/deck.pptx`。
+> 若引入 `python-pptx` 新依赖,先在 brief 回复里说明,不要擅自加重依赖。
+
+**P5 导出硬校验(F5d,红线)**
+导出前校验所有 slide 的图纸对象 `x/y/w/h` 完全一致,否则**拒绝导出**并返回差异页列表。
+验收:`assert_export_frame_consistency`——人为改一页框使其不一致→导出接口返回拒绝。
+
+### 门禁
+```
+python3 -m py_compile _tools/drawing_workbench/deck_layout.py _tools/uploader/server.py
+node --check _tools/uploader/static/workbench/workbench.js
+python3 _tools/tests/drawing_workbench_api_smoke.py
+python3 _tools/tests/drawing_workbench_browser_smoke.py
+```
+新增断言:C1 `assert_reflow_adaptive`、C2 `assert_reflow_guard`、P1 `assert_frame_drag`、P2 `assert_manual_adjust`、P5 `assert_export_frame_consistency`;现有 PPT/制图 smoke 全绿。
+
+### 顺序
+C1 → C2 → C3 → C4 → P1 → P2 → P3 → P4 → P5,各一次提交。P3/P4/P5 是导出闭环,放最后。回推后通知 mac claude 终审。
