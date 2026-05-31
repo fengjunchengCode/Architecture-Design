@@ -460,6 +460,136 @@ function setS1MapMode(AMap, mode) {
   for (var k in btns) { var b = document.querySelector(btns[k]); if (b) b.classList.toggle("active", k === mode); }
 }
 
+function waitForMapPaint(ms = 900) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function s1SnapshotZoom(lat, container) {
+  var minDim = Math.max(320, Math.min(container?.clientWidth || 872, container?.clientHeight || 830));
+  var targetMetersPerPixel = (2000 * 2 * 1.18) / minDim;
+  var equatorMetersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180);
+  var zoom = Math.log2(equatorMetersPerPixel / targetMetersPerPixel);
+  return Math.max(3, Math.min(18, zoom));
+}
+
+async function prepareS1LocationSnapshotView(AMap) {
+  const center = s1CenterPoint();
+  if (!center) throw new Error("缺少 S1 中心点。");
+  if (!state.amap.tiandituKey) throw new Error("未配置天地图 Key，无法生成高清卫星快照。");
+  await ensureS1Map();
+  if (!state.amap.s1Map) throw new Error("S1 地图未加载。");
+
+  const centerWgs = gcj02ToWgs84(center.lng, center.lat);
+  setS1MapMode(AMap, "tianditu");
+  await waitForMapPaint(350);
+
+  const container = document.querySelector("#s1TdtMap");
+  if (!container || !state.amap.s1TdtMap) throw new Error("天地图容器未加载。");
+  const zoom = s1SnapshotZoom(centerWgs[1], container);
+  if (typeof state.amap.s1TdtMap.setZoomAndCenter === "function") {
+    state.amap.s1TdtMap.setZoomAndCenter(zoom, centerWgs);
+  } else {
+    state.amap.s1TdtMap.setCenter(centerWgs);
+    state.amap.s1TdtMap.setZoom(zoom);
+  }
+  if (state.amap.s1TdtMarker) {
+    state.amap.s1TdtMarker.setPosition(centerWgs);
+  }
+  setMapStatus("#s1AmapStatus", "正在准备 2km 高清卫星圈层...", null);
+  await waitForMapPaint(1600);
+  return { container, centerGcj: [center.lng, center.lat], centerWgs, zoom };
+}
+
+function drawS1SnapshotOverlay(ctx, width, height, meta) {
+  const cssWidth = meta.container.clientWidth || width;
+  const scale = width / cssWidth;
+  const metersPerCssPixel = 156543.03392 * Math.cos(meta.centerWgs[1] * Math.PI / 180) / Math.pow(2, meta.zoom);
+  const cx = width / 2;
+  const cy = height / 2;
+  const rings = [500, 1000, 2000];
+
+  ctx.save();
+  ctx.lineWidth = Math.max(2, 2 * scale);
+  ctx.font = `${Math.max(12, 13 * scale)}px Arial, sans-serif`;
+  ctx.textBaseline = "middle";
+  rings.forEach((meters) => {
+    const radius = meters / metersPerCssPixel * scale;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = meters === 2000 ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.82)";
+    ctx.shadowColor = "rgba(0,0,0,.55)";
+    ctx.shadowBlur = 4 * scale;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    const label = meters >= 1000 ? `${meters / 1000}km` : `${meters}m`;
+    const lx = Math.min(width - 78 * scale, cx + radius + 8 * scale);
+    const ly = cy - (meters === 500 ? 8 : meters === 1000 ? 18 : 28) * scale;
+    ctx.fillStyle = "rgba(0,0,0,.52)";
+    ctx.fillRect(lx - 5 * scale, ly - 11 * scale, 54 * scale, 22 * scale);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, lx, ly);
+  });
+
+  ctx.shadowColor = "rgba(0,0,0,.55)";
+  ctx.shadowBlur = 5 * scale;
+  ctx.fillStyle = "#e3342f";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 7 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2 * scale;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#fff";
+  ctx.font = `bold ${Math.max(13, 14 * scale)}px Arial, sans-serif`;
+  ctx.fillText("SITE", cx + 12 * scale, cy - 13 * scale);
+
+  const panelW = 184 * scale;
+  const panelH = 80 * scale;
+  const px = width - panelW - 18 * scale;
+  const py = 18 * scale;
+  ctx.fillStyle = "rgba(20,31,35,.72)";
+  ctx.fillRect(px, py, panelW, panelH);
+  ctx.fillStyle = "#fff";
+  ctx.font = `bold ${Math.max(13, 14 * scale)}px Arial, sans-serif`;
+  ctx.fillText("区位圈层", px + 12 * scale, py + 20 * scale);
+  ctx.font = `${Math.max(11, 12 * scale)}px Arial, sans-serif`;
+  ctx.fillText("500m / 1km / 2km", px + 12 * scale, py + 43 * scale);
+  ctx.fillText("天地图高清卫星", px + 12 * scale, py + 64 * scale);
+  ctx.restore();
+}
+
+function captureS1SnapshotPng(meta) {
+  const canvases = meta.container.querySelectorAll("canvas");
+  if (!canvases.length) throw new Error("截图失败：天地图没有可捕获 canvas。");
+  let width = 0;
+  let height = 0;
+  canvases.forEach((canvas) => {
+    if (canvas.width > width) width = canvas.width;
+    if (canvas.height > height) height = canvas.height;
+  });
+  if (!width || !height) throw new Error("截图失败：canvas 尺寸为 0。");
+
+  const merged = document.createElement("canvas");
+  merged.width = width;
+  merged.height = height;
+  const ctx = merged.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  let drawn = 0;
+  canvases.forEach((canvas) => {
+    try {
+      ctx.drawImage(canvas, 0, 0);
+      drawn += 1;
+    } catch (error) {
+      // A tainted canvas must fail the snapshot instead of producing a blank PNG.
+    }
+  });
+  if (!drawn) throw new Error("截图失败：地图 canvas 受跨域限制，无法合成。");
+  drawS1SnapshotOverlay(ctx, width, height, meta);
+  return merged.toDataURL("image/png");
+}
+
 function initS1MapTools(AMap) {
   state.amap.s1Geocoder = new AMap.Geocoder();
   var bindings = { "#s1MapStd": "standard", "#s1MapTdt": "tianditu" };
@@ -1441,34 +1571,15 @@ async function autoDraftS1() {
     return;
   }
   setAmapStatus("正在生成区位分析快照...", null);
-  // Capture canvas screenshot as base64
-  let screenshotDataUrl = null;
-  try {
-    const containerId = state.amap.s1MapMode === "tianditu" ? "#s1TdtMap" : "#s1AmapMap";
-    const container = document.querySelector(containerId);
-    if (container) {
-      const canvases = container.querySelectorAll("canvas");
-      if (canvases.length > 0) {
-        let w = 0, h = 0;
-        for (let i = 0; i < canvases.length; i++) { if (canvases[i].width > w) w = canvases[i].width; if (canvases[i].height > h) h = canvases[i].height; }
-        if (w > 0 && h > 0) {
-          const merged = document.createElement("canvas"); merged.width = w; merged.height = h;
-          const ctx = merged.getContext("2d");
-          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
-          for (let j = 0; j < canvases.length; j++) { try { ctx.drawImage(canvases[j], 0, 0); } catch(e) {} }
-          screenshotDataUrl = merged.toDataURL("image/png");
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Screenshot capture failed:", e);
-  }
+  const AMap = state.amap.sdk || await ensureAmapSdk();
+  const snapshotMeta = await prepareS1LocationSnapshotView(AMap);
+  const screenshotDataUrl = captureS1SnapshotPng(snapshotMeta);
   const data = await api("/api/s1/auto-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       project: code,
-      map_mode: state.amap.s1MapMode || "standard",
+      map_mode: "tianditu",
       screenshot_data_url: screenshotDataUrl,
     }),
   });

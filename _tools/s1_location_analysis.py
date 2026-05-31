@@ -188,10 +188,10 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
         "poi_summary": extract_poi_summary(ctx),
         "limitations": [
             "POI 数据仅覆盖高德地图已收录的兴趣点，偏远区域可能缺失",
-            "卫星截图为当前视口实时捕获，非标准化影像",
+            "卫星截图为自动 2km 视野实时捕获，影像清晰度取决于天地图瓦片加载状态",
             "精确落边需在 S2 阶段通过控制点配准",
-            "配图上传功能已就绪，可附加现场照片用于 PPT 排版",
-            "区界数据来源为 AMap DistrictSearch，边界精度有限",
+            "高德上下文保存 GCJ-02，天地图截图派生 WGS84，二者通过转换函数同步",
+            "本轮未做视觉道路/水体识别，道路与水体结论需后续视觉或人工复核",
         ],
     }
 

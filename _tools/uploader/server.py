@@ -1058,11 +1058,24 @@ class UploaderHandler(BaseHTTPRequestHandler):
         output_dir = proj / "05_output" / "location_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = None
-        if screenshot_data_url and screenshot_data_url.startswith("data:image/png;base64,"):
+        if not screenshot_data_url.startswith("data:image/png;base64,"):
+            self.send_json(
+                {"ok": False, "error": "未收到有效的天地图截图，已停止生成 location_analysis。"},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+        if screenshot_data_url:
             import base64
-            b64 = screenshot_data_url.split(",", 1)[1]
-            png_path = output_dir / "satellite_2km.png"
-            png_path.write_bytes(base64.b64decode(b64))
+            try:
+                b64 = screenshot_data_url.split(",", 1)[1]
+                png_path = output_dir / "satellite_2km.png"
+                png_path.write_bytes(base64.b64decode(b64))
+            except Exception as exc:
+                self.send_json(
+                    {"ok": False, "error": f"天地图截图保存失败：{exc}"},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
             screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
         # Run analysis script
         args = ["_tools/s1_location_analysis.py", code, "--json", "--write"]
