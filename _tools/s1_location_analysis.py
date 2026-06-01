@@ -120,11 +120,11 @@ def compute_bounds(center_gcj02: str, radius_m: int = 2000) -> dict:
     }
 
 
-def extract_poi_summary(ctx: dict) -> dict:
+def extract_poi_summary(ctx: dict, rings_m: list[int]) -> dict:
     """Extract POI summary for each ring distance."""
     mc = ctx.get("map_context", {})
     result = {}
-    for radius in RINGS_M:
+    for radius in rings_m:
         key = f"poi_{radius}m"
         poi_data = mc.get(key, {})
         ring_summary = {}
@@ -144,7 +144,7 @@ def extract_poi_summary(ctx: dict) -> dict:
     return result
 
 
-def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str) -> dict:
+def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str, radius_m: int) -> dict:
     """Build the structured JSON draft."""
     loc = ctx.get("location", {})
     regeo = ctx.get("map_context", {}).get("regeo", {})
@@ -160,7 +160,8 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
         except (ValueError, IndexError):
             pass
 
-    bounds = compute_bounds(center_gcj02, 2000)
+    rings_m = [radius for radius in RINGS_M if radius <= radius_m]
+    bounds = compute_bounds(center_gcj02, radius_m)
 
     return {
         "schema_version": "1.0",
@@ -168,7 +169,8 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "center_gcj02": center_gcj02,
         "center_wgs84": center_wgs84,
-        "rings_m": RINGS_M,
+        "radius_m": radius_m,
+        "rings_m": rings_m,
         "map_mode": map_mode,
         "bounds_gcj02": bounds.get("gcj02"),
         "bounds_wgs84": bounds.get("wgs84"),
@@ -185,7 +187,7 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
             "township": addr_comp.get("township", ""),
             "adcode": addr_comp.get("adcode", ""),
         },
-        "poi_summary": extract_poi_summary(ctx),
+        "poi_summary": extract_poi_summary(ctx, rings_m),
         "limitations": [
             "POI 数据仅覆盖高德地图已收录的兴趣点，偏远区域可能缺失",
             "卫星截图为自动 2km 视野实时捕获，影像清晰度取决于天地图瓦片加载状态",
@@ -203,6 +205,7 @@ def main() -> int:
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--screenshot-path", default=None, help="Relative path to saved screenshot PNG")
     parser.add_argument("--map-mode", default="standard", help="Map mode when screenshot was taken")
+    parser.add_argument("--radius-m", type=int, choices=[1000, 2000], default=2000)
     args = parser.parse_args()
 
     try:
@@ -213,7 +216,7 @@ def main() -> int:
         output_dir = proj / "05_output" / "location_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        draft = build_draft(ctx, code, args.screenshot_path, args.map_mode)
+        draft = build_draft(ctx, code, args.screenshot_path, args.map_mode, args.radius_m)
         json_path = output_dir / "location_analysis_draft.json"
 
         result: dict = {

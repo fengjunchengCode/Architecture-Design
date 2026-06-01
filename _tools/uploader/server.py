@@ -1052,6 +1052,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
         map_mode = str(payload.get("map_mode", "standard")).strip()
+        radius_m = str(payload.get("radius_m", "2000")).strip()
         screenshot_data_url = str(payload.get("screenshot_data_url", "")).strip()
         # Save screenshot if provided
         proj = project_dir(code)
@@ -1068,7 +1069,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
             import base64
             try:
                 b64 = screenshot_data_url.split(",", 1)[1]
-                png_path = output_dir / "satellite_2km.png"
+                suffix = "1km" if radius_m == "1000" else "2km"
+                png_path = output_dir / f"satellite_{suffix}.png"
                 png_path.write_bytes(base64.b64decode(b64))
             except Exception as exc:
                 self.send_json(
@@ -1082,6 +1084,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         if screenshot_path:
             args.extend(["--screenshot-path", screenshot_path])
         args.extend(["--map-mode", map_mode])
+        args.extend(["--radius-m", radius_m if radius_m in {"1000", "2000"} else "2000"])
         rc, stdout, stderr = run_tool(args)
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})

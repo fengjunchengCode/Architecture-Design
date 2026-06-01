@@ -27,6 +27,8 @@ const state = {
     s1Map: null,
     s1Marker: null,
     s1TdtMap: null,
+    s1TdtImgLayer: null,
+    s1TdtLabelLayer: null,
     s1TdtMarker: null,
     s1MapMode: "standard",
     s1MouseTool: null,
@@ -353,12 +355,14 @@ function ensureTdtMap(AMap, centerWgs, zoom) {
   if (state.amap.s1TdtMap) return;
   var tk = state.amap.tiandituKey;
   if (!tk) return;
+  state.amap.s1TdtImgLayer = new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 });
+  state.amap.s1TdtLabelLayer = new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 });
   // Tianditu map center uses WGS84
   state.amap.s1TdtMap = new AMap.Map("s1TdtMap", {
     center: centerWgs, zoom: zoom || 17, viewMode: "2D",
     layers: [
-      new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 }),
-      new AMap.TileLayer({ tileUrl: "https://t0.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=[z]&TILEROW=[y]&TILECOL=[x]&tk=" + tk, tileSize: 256 })
+      state.amap.s1TdtImgLayer,
+      state.amap.s1TdtLabelLayer
     ],
     WebGLParams: { preserveDrawingBuffer: true },
   });
@@ -464,15 +468,23 @@ function waitForMapPaint(ms = 900) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function s1SnapshotZoom(lat, container) {
+function s1SnapshotZoom(lat, container, radiusM) {
   var minDim = Math.max(320, Math.min(container?.clientWidth || 872, container?.clientHeight || 830));
-  var targetMetersPerPixel = (2000 * 2 * 1.18) / minDim;
+  var targetMetersPerPixel = (radiusM * 2 * 1.18) / minDim;
   var equatorMetersPerPixel = 156543.03392 * Math.cos(lat * Math.PI / 180);
   var zoom = Math.log2(equatorMetersPerPixel / targetMetersPerPixel);
   return Math.max(3, Math.min(18, zoom));
 }
 
-async function prepareS1LocationSnapshotView(AMap) {
+function setTdtLabelLayerVisible(visible) {
+  const layer = state.amap.s1TdtLabelLayer;
+  if (!layer) return;
+  if (visible && typeof layer.show === "function") layer.show();
+  else if (!visible && typeof layer.hide === "function") layer.hide();
+  else if (typeof layer.setOpacity === "function") layer.setOpacity(visible ? 1 : 0);
+}
+
+async function prepareS1LocationSnapshotView(AMap, radiusM) {
   const center = s1CenterPoint();
   if (!center) throw new Error("缺少 S1 中心点。");
   if (!state.amap.tiandituKey) throw new Error("未配置天地图 Key，无法生成高清卫星快照。");
@@ -485,7 +497,7 @@ async function prepareS1LocationSnapshotView(AMap) {
 
   const container = document.querySelector("#s1TdtMap");
   if (!container || !state.amap.s1TdtMap) throw new Error("天地图容器未加载。");
-  const zoom = s1SnapshotZoom(centerWgs[1], container);
+  const zoom = s1SnapshotZoom(centerWgs[1], container, radiusM);
   if (typeof state.amap.s1TdtMap.setZoomAndCenter === "function") {
     state.amap.s1TdtMap.setZoomAndCenter(zoom, centerWgs);
   } else {
@@ -495,9 +507,10 @@ async function prepareS1LocationSnapshotView(AMap) {
   if (state.amap.s1TdtMarker) {
     state.amap.s1TdtMarker.setPosition(centerWgs);
   }
-  setMapStatus("#s1AmapStatus", "正在准备 2km 高清卫星圈层...", null);
+  setTdtLabelLayerVisible(false);
+  setMapStatus("#s1AmapStatus", `正在准备 ${radiusM / 1000}km 高清卫星圈层...`, null);
   await waitForMapPaint(1600);
-  return { container, centerGcj: [center.lng, center.lat], centerWgs, zoom };
+  return { container, centerGcj: [center.lng, center.lat], centerWgs, zoom, radiusM };
 }
 
 function drawS1SnapshotOverlay(ctx, width, height, meta) {
@@ -506,29 +519,93 @@ function drawS1SnapshotOverlay(ctx, width, height, meta) {
   const metersPerCssPixel = 156543.03392 * Math.cos(meta.centerWgs[1] * Math.PI / 180) / Math.pow(2, meta.zoom);
   const cx = width / 2;
   const cy = height / 2;
-  const rings = [500, 1000, 2000];
+  const rings = meta.radiusM >= 2000 ? [500, 1000, 2000] : [500, 1000];
 
   ctx.save();
-  ctx.lineWidth = Math.max(2, 2 * scale);
-  ctx.font = `${Math.max(12, 13 * scale)}px Arial, sans-serif`;
+  ctx.lineWidth = Math.max(2.5, 2.5 * scale);
+  ctx.font = `bold ${Math.max(18, 20 * scale)}px Arial, sans-serif`;
   ctx.textBaseline = "middle";
+  const ringPx = {};
   rings.forEach((meters) => {
     const radius = meters / metersPerCssPixel * scale;
+    ringPx[meters] = radius;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = meters === 2000 ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.82)";
-    ctx.shadowColor = "rgba(0,0,0,.55)";
-    ctx.shadowBlur = 4 * scale;
+    ctx.strokeStyle = "rgba(255,255,255,.96)";
+    ctx.shadowColor = "rgba(0,0,0,.72)";
+    ctx.shadowBlur = 5 * scale;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    const label = meters >= 1000 ? `${meters / 1000}km` : `${meters}m`;
-    const lx = Math.min(width - 78 * scale, cx + radius + 8 * scale);
-    const ly = cy - (meters === 500 ? 8 : meters === 1000 ? 18 : 28) * scale;
-    ctx.fillStyle = "rgba(0,0,0,.52)";
-    ctx.fillRect(lx - 5 * scale, ly - 11 * scale, 54 * scale, 22 * scale);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(label, lx, ly);
   });
+
+  function drawArrow(radius, label, angle) {
+    const start = 58 * scale;
+    const end = radius - 12 * scale;
+    const sx = cx + Math.cos(angle) * start;
+    const sy = cy + Math.sin(angle) * start;
+    const ex = cx + Math.cos(angle) * end;
+    const ey = cy + Math.sin(angle) * end;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,.95)";
+    ctx.fillStyle = "#fff";
+    ctx.lineWidth = 4 * scale;
+    ctx.shadowColor = "rgba(0,0,0,.75)";
+    ctx.shadowBlur = 5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    const head = 13 * scale;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - Math.cos(angle - .42) * head, ey - Math.sin(angle - .42) * head);
+    ctx.lineTo(ex - Math.cos(angle + .42) * head, ey - Math.sin(angle + .42) * head);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = `bold ${Math.max(20, 23 * scale)}px Arial, sans-serif`;
+    ctx.fillText(label, ex + 12 * scale, ey);
+    ctx.restore();
+  }
+
+  function drawRoad(points, label, labelAt) {
+    const maxRadius = ringPx[meta.radiusM] || Math.min(width, height) * .42;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(255,255,255,.9)";
+    ctx.lineWidth = 12 * scale;
+    ctx.shadowColor = "rgba(0,0,0,.62)";
+    ctx.shadowBlur = 7 * scale;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = cx + point[0] * maxRadius;
+      const y = cy + point[1] * maxRadius;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    if (label) {
+      const lp = labelAt || points[Math.floor(points.length / 2)];
+      ctx.font = `bold ${Math.max(18, 20 * scale)}px Arial, sans-serif`;
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, cx + lp[0] * maxRadius + 8 * scale, cy + lp[1] * maxRadius - 10 * scale);
+    }
+    ctx.restore();
+  }
+
+  drawRoad([[-.92, -.12], [-.45, -.08], [-.08, .03], [.42, .20], [.92, .34]], "G317", [-.24, -.02]);
+  drawRoad([[-.08, .08], [.18, -.08], [.38, -.28], [.62, -.47]], "达尔塘路", [.22, -.16]);
+
+  if (ringPx[1000]) drawArrow(ringPx[1000], "1km", -.12);
+  if (ringPx[2000]) drawArrow(ringPx[2000], "2km", .02);
+
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.shadowColor = "rgba(0,0,0,.8)";
+  ctx.shadowBlur = 6 * scale;
+  ctx.font = `bold ${Math.max(22, 26 * scale)}px Arial, sans-serif`;
+  ctx.fillText("500m", cx + (ringPx[500] || 80 * scale) + 14 * scale, cy - 10 * scale);
+  ctx.restore();
 
   ctx.shadowColor = "rgba(0,0,0,.55)";
   ctx.shadowBlur = 5 * scale;
@@ -541,21 +618,8 @@ function drawS1SnapshotOverlay(ctx, width, height, meta) {
   ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.fillStyle = "#fff";
-  ctx.font = `bold ${Math.max(13, 14 * scale)}px Arial, sans-serif`;
-  ctx.fillText("SITE", cx + 12 * scale, cy - 13 * scale);
-
-  const panelW = 184 * scale;
-  const panelH = 80 * scale;
-  const px = width - panelW - 18 * scale;
-  const py = 18 * scale;
-  ctx.fillStyle = "rgba(20,31,35,.72)";
-  ctx.fillRect(px, py, panelW, panelH);
-  ctx.fillStyle = "#fff";
-  ctx.font = `bold ${Math.max(13, 14 * scale)}px Arial, sans-serif`;
-  ctx.fillText("区位圈层", px + 12 * scale, py + 20 * scale);
-  ctx.font = `${Math.max(11, 12 * scale)}px Arial, sans-serif`;
-  ctx.fillText("500m / 1km / 2km", px + 12 * scale, py + 43 * scale);
-  ctx.fillText("天地图高清卫星", px + 12 * scale, py + 64 * scale);
+  ctx.font = `bold ${Math.max(26, 30 * scale)}px Arial, sans-serif`;
+  ctx.fillText("SITE", cx + 16 * scale, cy - 20 * scale);
   ctx.restore();
 }
 
@@ -577,6 +641,7 @@ function captureS1SnapshotPng(meta) {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
   let drawn = 0;
+  ctx.filter = "grayscale(1) contrast(1.12) brightness(.74)";
   canvases.forEach((canvas) => {
     try {
       ctx.drawImage(canvas, 0, 0);
@@ -585,6 +650,7 @@ function captureS1SnapshotPng(meta) {
       // A tainted canvas must fail the snapshot instead of producing a blank PNG.
     }
   });
+  ctx.filter = "none";
   if (!drawn) throw new Error("截图失败：地图 canvas 受跨域限制，无法合成。");
   drawS1SnapshotOverlay(ctx, width, height, meta);
   return merged.toDataURL("image/png");
@@ -1154,6 +1220,23 @@ function summarizeAutoDraft(data) {
   `;
 }
 
+function renderS1SnapshotPreview(data) {
+  const panel = $("#s1SnapshotPreview");
+  if (!panel) return;
+  if (!data?.ok || !data.screenshot_path) {
+    panel.innerHTML = data?.error ? `<p class="snapshot-error">${escapeHtml(data.error)}</p>` : "";
+    return;
+  }
+  const src = `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}`;
+  panel.innerHTML = `
+    <div class="snapshot-preview-head">
+      <b>区位分析预览</b>
+      <span>${escapeHtml(data.screenshot_path)}</span>
+    </div>
+    <img src="${src}" alt="S1 区位分析快照">
+  `;
+}
+
 function summarizeGeneric(data) {
   if (typeof data === "string") {
     return `<div class="summary-card warn"><h3>提示</h3><p>${escapeHtml(data)}</p></div>`;
@@ -1572,18 +1655,26 @@ async function autoDraftS1() {
   }
   setAmapStatus("正在生成区位分析快照...", null);
   const AMap = state.amap.sdk || await ensureAmapSdk();
-  const snapshotMeta = await prepareS1LocationSnapshotView(AMap);
-  const screenshotDataUrl = captureS1SnapshotPng(snapshotMeta);
+  const radiusM = Number($("#s1SnapshotRadius")?.value || 2000);
+  const snapshotMeta = await prepareS1LocationSnapshotView(AMap, radiusM === 1000 ? 1000 : 2000);
+  let screenshotDataUrl;
+  try {
+    screenshotDataUrl = captureS1SnapshotPng(snapshotMeta);
+  } finally {
+    setTdtLabelLayerVisible(true);
+  }
   const data = await api("/api/s1/auto-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       project: code,
       map_mode: "tianditu",
+      radius_m: snapshotMeta.radiusM,
       screenshot_data_url: screenshotDataUrl,
     }),
   });
   setAmapStatus(data.ok ? "区位分析快照已生成" : data.error || "生成失败", data.ok);
+  renderS1SnapshotPreview(data);
   writeOutput(data);
 }
 

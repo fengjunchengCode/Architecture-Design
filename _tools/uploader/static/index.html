@@ -170,9 +170,17 @@
                   <button id="checkAmap">检查高德 Key</button>
                   <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
                 </div>
+                <label>
+                  <span>区位分析范围</span>
+                  <select id="s1SnapshotRadius">
+                    <option value="2000" selected>2km</option>
+                    <option value="1000">1km</option>
+                  </select>
+                </label>
                 <div class="inline-actions">
                   <button id="autoDraftS1" class="primary">生成 S1 区位分析草稿</button>
                 </div>
+                <div id="s1SnapshotPreview" class="s1-snapshot-preview"></div>
                 <article class="bucket required" data-bucket="location_map">
                   <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
                   <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
