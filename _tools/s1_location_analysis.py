@@ -177,7 +177,7 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
         "screenshot_path": screenshot_path,
         "data_sources": {
             "amap_context": "s1_map_context.json",
-            "satellite": "canvas screenshot" if screenshot_path else "none",
+            "satellite": "saved satellite snapshot" if screenshot_path else "none",
         },
         "location": {
             "formatted_address": regeo.get("formatted_address", ""),
@@ -190,7 +190,7 @@ def build_draft(ctx: dict, code: str, screenshot_path: str | None, map_mode: str
         "poi_summary": extract_poi_summary(ctx, rings_m),
         "limitations": [
             "POI 数据仅覆盖高德地图已收录的兴趣点，偏远区域可能缺失",
-            "卫星截图为自动 2km 视野实时捕获，影像清晰度取决于天地图瓦片加载状态",
+            f"卫星截图为自动 {radius_m // 1000}km 视野实时捕获，影像清晰度取决于天地图瓦片加载状态",
             "精确落边需在 S2 阶段通过控制点配准",
             "高德上下文保存 GCJ-02，天地图截图派生 WGS84，二者通过转换函数同步",
             "本轮未做视觉道路/水体识别，道路与水体结论需后续视觉或人工复核",
@@ -226,6 +226,8 @@ def main() -> int:
             "output_dir": str(output_dir.relative_to(proj)).replace("\\", "/"),
             "screenshot_path": args.screenshot_path,
             "json_path": str(json_path.relative_to(proj)).replace("\\", "/"),
+            "radius_m": args.radius_m,
+            "rings_m": draft.get("rings_m", []),
             "summary": f"区位：{ctx.get('map_context', {}).get('regeo', {}).get('address_component', {}).get('district', '')}",
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }

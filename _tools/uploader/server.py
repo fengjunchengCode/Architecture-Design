@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -16,6 +18,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote_to_bytes, urlparse
+from urllib.request import Request, urlopen
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -246,6 +249,165 @@ def load_env_file(path: Path = ENV_FILE) -> list[str]:
         os.environ[key] = value.strip().strip('"').strip("'")
         loaded.append(key)
     return loaded
+
+
+def _font(size: int, bold: bool = False):
+    from PIL import ImageFont
+
+    candidates = [
+        Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / ("msyhbd.ttc" if bold else "msyh.ttc"),
+        Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / ("arialbd.ttf" if bold else "arial.ttf"),
+    ]
+    for path in candidates:
+        if path.exists():
+            return ImageFont.truetype(str(path), size)
+    return ImageFont.load_default()
+
+
+def _wgs84_to_tile(lng: float, lat: float, zoom: int) -> tuple[float, float]:
+    lat = max(min(lat, 85.05112878), -85.05112878)
+    n = 2**zoom
+    x = (lng + 180.0) / 360.0 * n
+    lat_rad = math.radians(lat)
+    y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+    return x, y
+
+
+def _fetch_tdt_tile(layer: str, zoom: int, x: int, y: int, tk: str):
+    from PIL import Image
+
+    server = abs(x + y + zoom) % 8
+    url = (
+        f"https://t{server}.tianditu.gov.cn/{layer}_w/wmts?"
+        f"SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={layer}"
+        f"&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles"
+        f"&TILEMATRIX={zoom}&TILEROW={y}&TILECOL={x}&tk={tk}"
+    )
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 Architecture-Design/1.0",
+            "Referer": "http://127.0.0.1/",
+        },
+    )
+    with urlopen(request, timeout=10) as response:
+        return Image.open(io.BytesIO(response.read())).convert("RGB")
+
+
+def _draw_arrow(draw, cx: float, cy: float, radius: float, label: str, angle: float, ui: float, font) -> None:
+    start = max(34 * ui, min(radius * 0.28, 74 * ui))
+    end = max(start + 18 * ui, radius - 8 * ui)
+    sx, sy = cx + math.cos(angle) * start, cy + math.sin(angle) * start
+    ex, ey = cx + math.cos(angle) * end, cy + math.sin(angle) * end
+    width = max(2, int(2 * ui))
+    shadow = (0, 0, 0, 170)
+    white = (255, 255, 255, 245)
+    draw.line([(sx + 1, sy + 1), (ex + 1, ey + 1)], fill=shadow, width=width + 2)
+    draw.line([(sx, sy), (ex, ey)], fill=white, width=width)
+    head = 8 * ui
+    left = (ex - math.cos(angle - 0.42) * head, ey - math.sin(angle - 0.42) * head)
+    right = (ex - math.cos(angle + 0.42) * head, ey - math.sin(angle + 0.42) * head)
+    draw.polygon([(ex, ey), left, right], fill=white)
+    if math.cos(angle) >= 0:
+        draw.text((ex - 10 * ui, ey), label, fill=white, font=font, anchor="rm", stroke_width=max(1, int(ui)), stroke_fill=(0, 0, 0, 180))
+    else:
+        draw.text((ex + 10 * ui, ey), label, fill=white, font=font, anchor="lm", stroke_width=max(1, int(ui)), stroke_fill=(0, 0, 0, 180))
+
+
+def _draw_dashed_circle(draw, cx: float, cy: float, radius: float, ui: float) -> None:
+    width = max(2, int(2 * ui))
+    for start in range(0, 360, 24):
+        draw.arc(
+            [cx - radius, cy - radius, cx + radius, cy + radius],
+            start=start,
+            end=start + 12,
+            fill=(255, 255, 255, 245),
+            width=width,
+        )
+
+
+def _draw_location_overlay(image, center_wgs: tuple[float, float], zoom: int, radius_m: int) -> None:
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image, "RGBA")
+    width, height = image.size
+    ui = max(0.85, min(1.35, min(width, height) / 1024))
+    cx, cy = width / 2, height / 2
+    meters_per_pixel = 156543.03392 * math.cos(math.radians(center_wgs[1])) / (2**zoom)
+    rings = [500, 1000, 2000] if radius_m >= 2000 else [500, 1000]
+    ring_px = {meters: meters / meters_per_pixel for meters in rings}
+    road_font = _font(int(17 * ui), True)
+    arrow_font = _font(int(22 * ui), True)
+    site_font = _font(int(34 * ui), True)
+
+    def denorm(point: tuple[float, float], max_radius: float) -> tuple[float, float]:
+        return cx + point[0] * max_radius, cy + point[1] * max_radius
+
+    def road(points: list[tuple[float, float]], label: str, label_at: tuple[float, float]) -> None:
+        max_radius = ring_px.get(radius_m, min(width, height) * 0.42)
+        xy = [denorm(point, max_radius) for point in points]
+        draw.line([(x + 1, y + 1) for x, y in xy], fill=(0, 0, 0, 150), width=max(3, int(5 * ui)), joint="curve")
+        draw.line(xy, fill=(255, 255, 255, 220), width=max(2, int(3 * ui)), joint="curve")
+        lx, ly = denorm(label_at, max_radius)
+        draw.text((lx + 8 * ui, ly - 12 * ui), label, fill=(255, 255, 255, 245), font=road_font, anchor="lm", stroke_width=max(1, int(ui)), stroke_fill=(0, 0, 0, 180))
+
+    road([(-0.96, 0.18), (-0.58, 0.13), (-0.20, 0.09), (0.22, 0.11), (0.62, 0.19), (0.96, 0.30)], "G317", (-0.42, 0.11))
+
+    for radius in ring_px.values():
+        box = [cx - radius, cy - radius, cx + radius, cy + radius]
+        draw.ellipse([value + 1 for value in box], outline=(0, 0, 0, 165), width=max(3, int(4 * ui)))
+        draw.ellipse(box, outline=(255, 255, 255, 245), width=max(2, int(2.4 * ui)))
+
+    if 500 in ring_px:
+        _draw_arrow(draw, cx, cy, ring_px[500], "500m", -2.25, ui, arrow_font)
+    if 1000 in ring_px:
+        _draw_arrow(draw, cx, cy, ring_px[1000], "1km", -0.48, ui, arrow_font)
+    if 2000 in ring_px:
+        _draw_arrow(draw, cx, cy, ring_px[2000], "2km", 0.10, ui, arrow_font)
+
+    _draw_dashed_circle(draw, cx, cy, 25 * ui, ui)
+    draw.ellipse([cx - 8 * ui, cy - 8 * ui, cx + 8 * ui, cy + 8 * ui], fill=(227, 52, 47, 255), outline=(255, 255, 255, 255), width=max(2, int(2 * ui)))
+    draw.text((cx + 20 * ui, cy - 32 * ui), "SITE", fill=(255, 255, 255, 250), font=site_font, anchor="lm", stroke_width=max(1, int(ui)), stroke_fill=(0, 0, 0, 190))
+
+
+def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path) -> dict[str, object]:
+    from PIL import Image, ImageEnhance, ImageOps
+    from _tools.s1_location_analysis import gcj02_to_wgs84
+
+    load_env_file()
+    tk = os.environ.get("TIANDITU_KEY", "").strip()
+    if not tk:
+        raise ValueError("缺少 TIANDITU_KEY，无法服务端生成天地图卫星快照")
+    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
+    if not context_path.exists():
+        raise ValueError("缺少 S1 高德上下文，无法读取中心点")
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    center_text = str(context.get("location", {}).get("amap_gcj02") or "")
+    lng_gcj, lat_gcj = [float(part.strip()) for part in center_text.split(",", 1)]
+    lng_wgs, lat_wgs = gcj02_to_wgs84(lng_gcj, lat_gcj)
+    size = 1024
+    target_mpp = (radius_m * 2 * 1.18) / size
+    floating_zoom = math.log2((156543.03392 * math.cos(math.radians(lat_wgs))) / target_mpp)
+    zoom = max(3, min(18, int(round(floating_zoom))))
+    center_tile_x, center_tile_y = _wgs84_to_tile(lng_wgs, lat_wgs, zoom)
+    center_px_x, center_px_y = center_tile_x * 256, center_tile_y * 256
+    left, top = center_px_x - size / 2, center_px_y - size / 2
+    first_x, last_x = math.floor(left / 256), math.floor((left + size - 1) / 256)
+    first_y, last_y = math.floor(top / 256), math.floor((top + size - 1) / 256)
+    mosaic = Image.new("RGB", (size, size), (30, 30, 30))
+    for tile_x in range(first_x, last_x + 1):
+        for tile_y in range(first_y, last_y + 1):
+            tile = _fetch_tdt_tile("img", zoom, tile_x, tile_y, tk)
+            px = int(tile_x * 256 - left)
+            py = int(tile_y * 256 - top)
+            mosaic.paste(tile, (px, py))
+    bw = ImageOps.grayscale(mosaic).convert("RGB")
+    bw = ImageEnhance.Contrast(bw).enhance(1.16)
+    bw = ImageEnhance.Brightness(bw).enhance(0.72)
+    _draw_location_overlay(bw, (lng_wgs, lat_wgs), zoom, radius_m)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    bw.save(output_path)
+    return {"source": "server_tianditu_tiles", "zoom": zoom, "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}"}
 
 
 def content_type_for(path: Path) -> str:
@@ -1053,13 +1215,16 @@ class UploaderHandler(BaseHTTPRequestHandler):
         code = safe_project(str(payload.get("project", "")))
         map_mode = str(payload.get("map_mode", "standard")).strip()
         radius_m = str(payload.get("radius_m", "2000")).strip()
+        radius_value = 1000 if radius_m == "1000" else 2000
         screenshot_data_url = str(payload.get("screenshot_data_url", "")).strip()
+        client_capture_error = str(payload.get("client_capture_error", "")).strip()
         # Save screenshot if provided
         proj = project_dir(code)
         output_dir = proj / "05_output" / "location_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = None
-        if not screenshot_data_url.startswith("data:image/png;base64,"):
+        snapshot_meta: dict[str, object] = {"source": "client_canvas"}
+        if screenshot_data_url and not screenshot_data_url.startswith("data:image/png;base64,"):
             self.send_json(
                 {"ok": False, "error": "未收到有效的天地图截图，已停止生成 location_analysis。"},
                 HTTPStatus.BAD_REQUEST,
@@ -1069,7 +1234,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             import base64
             try:
                 b64 = screenshot_data_url.split(",", 1)[1]
-                suffix = "1km" if radius_m == "1000" else "2km"
+                suffix = "1km" if radius_value == 1000 else "2km"
                 png_path = output_dir / f"satellite_{suffix}.png"
                 png_path.write_bytes(base64.b64decode(b64))
             except Exception as exc:
@@ -1079,15 +1244,30 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 )
                 return
             screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
+        if screenshot_path is None:
+            try:
+                suffix = "1km" if radius_value == 1000 else "2km"
+                png_path = output_dir / f"satellite_{suffix}.png"
+                snapshot_meta = generate_tdt_location_snapshot(proj, radius_value, png_path)
+                if client_capture_error:
+                    snapshot_meta["client_capture_error"] = client_capture_error
+            except Exception as exc:
+                self.send_json(
+                    {"ok": False, "error": f"天地图快照生成失败：{exc}", "client_capture_error": client_capture_error},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
         # Run analysis script
         args = ["_tools/s1_location_analysis.py", code, "--json", "--write"]
         if screenshot_path:
             args.extend(["--screenshot-path", screenshot_path])
         args.extend(["--map-mode", map_mode])
-        args.extend(["--radius-m", radius_m if radius_m in {"1000", "2000"} else "2000"])
+        args.extend(["--radius-m", str(radius_value)])
         rc, stdout, stderr = run_tool(args)
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})
+        result["snapshot"] = snapshot_meta
         self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
 
     def handle_spatial(self, query: str) -> None:

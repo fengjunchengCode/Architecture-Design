@@ -217,8 +217,30 @@ button:disabled,input:disabled,select:disabled{
 .snapshot-preview-head{display:grid; gap:3px; font-size:12px; color:var(--muted)}
 .snapshot-preview-head b{font-size:14px; color:var(--text)}
 .snapshot-preview-head span{word-break:break-all}
-.s1-snapshot-preview img{width:100%; max-height:260px; object-fit:contain; border:1px solid var(--line); border-radius:6px; background:#fff}
+.snapshot-preview-button{
+  width:100%; min-height:0; padding:0; border:1px solid var(--line);
+  border-radius:6px; background:#fff; overflow:hidden; display:block;
+}
+.snapshot-preview-button:hover{border-color:var(--accent)}
+.s1-snapshot-preview img{width:100%; max-height:300px; object-fit:contain; display:block; background:#fff}
+.snapshot-preview-tip{font-size:12px; color:var(--muted)}
+.snapshot-result-link{display:inline-block; margin-top:8px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
+.snapshot-result-link img{display:block; max-width:400px; width:100%; height:auto}
 .snapshot-error{margin:0; color:var(--accent-2); font-size:13px; line-height:1.45}
+.snapshot-lightbox{
+  position:fixed; inset:0; z-index:200; background:rgba(22,20,18,.82);
+  padding:24px; place-items:center;
+}
+.snapshot-lightbox.open{display:grid}
+.snapshot-lightbox[hidden]{display:none}
+.snapshot-lightbox-panel{
+  width:min(96vw,1280px); max-height:94vh; display:grid; grid-template-rows:auto minmax(0,1fr);
+  gap:10px; background:#111; border:1px solid rgba(255,255,255,.28); border-radius:8px;
+  box-shadow:0 24px 80px rgba(0,0,0,.45); padding:12px;
+}
+.snapshot-lightbox-head{display:flex; align-items:center; justify-content:space-between; gap:12px; color:#fff}
+.snapshot-lightbox-head button{min-height:34px; padding:6px 12px; border-color:rgba(255,255,255,.42); background:rgba(255,255,255,.10); color:#fff}
+.snapshot-lightbox-panel img{max-width:100%; max-height:calc(94vh - 76px); object-fit:contain; background:#fff; justify-self:center}
 .amap-head{display:flex; justify-content:space-between; gap:10px; align-items:center}
 .amap-head span,.map-hint,.map-fallback{color:var(--muted); font-size:12px}
 .amap-map{width:100%; min-height:300px; border:1px solid var(--line); background:#fff; border-radius:6px; overflow:hidden; position:relative}

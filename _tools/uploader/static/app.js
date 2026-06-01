@@ -623,6 +623,134 @@ function drawS1SnapshotOverlay(ctx, width, height, meta) {
   ctx.restore();
 }
 
+function drawS1SnapshotOverlayRefined(ctx, width, height, meta) {
+  const cssWidth = meta.container.clientWidth || width;
+  const scale = width / cssWidth;
+  const cssMin = Math.max(1, Math.min(width, height) / scale);
+  const ui = Math.max(.85, Math.min(1.35, cssMin / 820)) * scale;
+  const metersPerCssPixel = 156543.03392 * Math.cos(meta.centerWgs[1] * Math.PI / 180) / Math.pow(2, meta.zoom);
+  const cx = width / 2;
+  const cy = height / 2;
+  const rings = meta.radiusM >= 2000 ? [500, 1000, 2000] : [500, 1000];
+  const ringPx = {};
+  rings.forEach((meters) => {
+    ringPx[meters] = meters / metersPerCssPixel * scale;
+  });
+
+  function pointFromNorm(point, radius) {
+    return [cx + point[0] * radius, cy + point[1] * radius];
+  }
+
+  function drawRoad(points, label, labelAt) {
+    const maxRadius = ringPx[meta.radiusM] || Math.min(width, height) * .42;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(255,255,255,.86)";
+    ctx.lineWidth = Math.max(2 * scale, 3 * ui);
+    ctx.shadowColor = "rgba(0,0,0,.62)";
+    ctx.shadowBlur = 4 * ui;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const [x, y] = pointFromNorm(point, maxRadius);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    if (label) {
+      const lp = labelAt || points[Math.floor(points.length / 2)];
+      const [lx, ly] = pointFromNorm(lp, maxRadius);
+      ctx.font = `bold ${Math.round(17 * ui)}px Arial, sans-serif`;
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "rgba(0,0,0,.8)";
+      ctx.shadowBlur = 5 * ui;
+      ctx.fillText(label, lx + 8 * ui, ly - 12 * ui);
+    }
+    ctx.restore();
+  }
+
+  function drawRing(radius) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,.96)";
+    ctx.shadowColor = "rgba(0,0,0,.72)";
+    ctx.shadowBlur = 5 * ui;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawArrow(radius, label, angle) {
+    const start = Math.max(34 * ui, Math.min(radius * .28, 74 * ui));
+    const end = Math.max(start + 18 * ui, radius - 8 * ui);
+    const sx = cx + Math.cos(angle) * start;
+    const sy = cy + Math.sin(angle) * start;
+    const ex = cx + Math.cos(angle) * end;
+    const ey = cy + Math.sin(angle) * end;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,.95)";
+    ctx.fillStyle = "#fff";
+    ctx.lineWidth = Math.max(1.5 * scale, 2 * ui);
+    ctx.shadowColor = "rgba(0,0,0,.75)";
+    ctx.shadowBlur = 4 * ui;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    const head = 8 * ui;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - Math.cos(angle - .42) * head, ey - Math.sin(angle - .42) * head);
+    ctx.lineTo(ex - Math.cos(angle + .42) * head, ey - Math.sin(angle + .42) * head);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = `bold ${Math.round(22 * ui)}px Arial, sans-serif`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = Math.cos(angle) >= 0 ? "right" : "left";
+    ctx.fillText(label, ex + (Math.cos(angle) >= 0 ? -10 : 10) * ui, ey);
+    ctx.restore();
+  }
+
+  function drawSite() {
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.55)";
+    ctx.shadowBlur = 5 * ui;
+    ctx.strokeStyle = "rgba(255,255,255,.94)";
+    ctx.lineWidth = 2 * ui;
+    ctx.setLineDash([7 * ui, 6 * ui]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 25 * ui, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#e3342f";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8 * ui, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2 * ui;
+    ctx.stroke();
+    ctx.shadowColor = "rgba(0,0,0,.82)";
+    ctx.shadowBlur = 6 * ui;
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.round(34 * ui)}px Arial, sans-serif`;
+    ctx.textBaseline = "middle";
+    ctx.fillText("SITE", cx + 20 * ui, cy - 32 * ui);
+    ctx.restore();
+  }
+
+  drawRoad([[-.96, .18], [-.58, .13], [-.20, .09], [.22, .11], [.62, .19], [.96, .30]], "G317", [-.42, .11]);
+
+  ctx.save();
+  ctx.lineWidth = Math.max(2 * scale, 2.4 * ui);
+  rings.forEach((meters) => drawRing(ringPx[meters]));
+  ctx.restore();
+
+  if (ringPx[500]) drawArrow(ringPx[500], "500m", -2.25);
+  if (ringPx[1000]) drawArrow(ringPx[1000], "1km", -.48);
+  if (ringPx[2000]) drawArrow(ringPx[2000], "2km", .10);
+  drawSite();
+}
+
 function captureS1SnapshotPng(meta) {
   const canvases = meta.container.querySelectorAll("canvas");
   if (!canvases.length) throw new Error("截图失败：天地图没有可捕获 canvas。");
@@ -652,7 +780,7 @@ function captureS1SnapshotPng(meta) {
   });
   ctx.filter = "none";
   if (!drawn) throw new Error("截图失败：地图 canvas 受跨域限制，无法合成。");
-  drawS1SnapshotOverlay(ctx, width, height, meta);
+  drawS1SnapshotOverlayRefined(ctx, width, height, meta);
   return merged.toDataURL("image/png");
 }
 
@@ -1237,6 +1365,95 @@ function renderS1SnapshotPreview(data) {
   `;
 }
 
+function summarizeAutoDraftV2(data) {
+  const cacheKey = encodeURIComponent(data.generated_at || Date.now());
+  const screenshotUrl = data.ok && data.screenshot_path
+    ? `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}&t=${cacheKey}`
+    : null;
+  const radiusLabel = data.radius_m ? `${Number(data.radius_m) / 1000}km` : "未记录";
+  return `
+    <div class="summary-card ${data.ok ? "ok" : "warn"}">
+      <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project_code)}
+        ${resultRow("分析范围", radiusLabel)}
+        ${resultRow("输出目录", data.output_dir || "无")}
+        ${resultRow("截图", data.screenshot_path || "未捕获")}
+        ${resultRow("JSON", data.json_path || "无")}
+      </div>
+      ${screenshotUrl ? `<div class="result-section"><b>卫星截图预览</b><br><a class="snapshot-result-link" href="${screenshotUrl}" target="_blank" rel="noreferrer"><img src="${screenshotUrl}" alt="satellite screenshot"></a></div>` : ""}
+      ${data.summary ? `<div class="result-section"><b>摘要</b><p>${escapeHtml(data.summary)}</p></div>` : ""}
+      <p class="result-next">${data.ok ? "快照已保存到 05_output/location_analysis/，包含 satellite_1km/2km.png 和 location_analysis_draft.json。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
+    </div>
+  `;
+}
+
+function ensureSnapshotLightbox() {
+  let modal = $("#snapshotLightbox");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "snapshotLightbox";
+  modal.className = "snapshot-lightbox";
+  modal.hidden = true;
+  modal.innerHTML = `
+    <div class="snapshot-lightbox-panel" role="dialog" aria-modal="true" aria-label="S1 区位分析预览">
+      <div class="snapshot-lightbox-head">
+        <b></b>
+        <button type="button" data-snapshot-close aria-label="关闭">关闭</button>
+      </div>
+      <img alt="S1 区位分析快照">
+    </div>
+  `;
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-snapshot-close]")) {
+      modal.hidden = true;
+      modal.classList.remove("open");
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.hidden) {
+      modal.hidden = true;
+      modal.classList.remove("open");
+    }
+  });
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openSnapshotLightbox(src, title) {
+  const modal = ensureSnapshotLightbox();
+  const img = modal.querySelector("img");
+  const head = modal.querySelector(".snapshot-lightbox-head b");
+  if (img) img.src = src;
+  if (head) head.textContent = title || "S1 区位分析预览";
+  modal.hidden = false;
+  modal.classList.add("open");
+}
+
+function renderS1SnapshotPreviewV2(data) {
+  const panel = $("#s1SnapshotPreview");
+  if (!panel) return;
+  if (!data?.ok || !data.screenshot_path) {
+    panel.innerHTML = data?.error ? `<p class="snapshot-error">${escapeHtml(data.error)}</p>` : "";
+    return;
+  }
+  const cacheKey = encodeURIComponent(data.generated_at || Date.now());
+  const src = `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}&t=${cacheKey}`;
+  const radiusLabel = data.radius_m ? `${Number(data.radius_m) / 1000}km` : "";
+  panel.innerHTML = `
+    <div class="snapshot-preview-head">
+      <b>区位分析预览</b>
+      <span>${escapeHtml([radiusLabel, data.screenshot_path].filter(Boolean).join(" · "))}</span>
+    </div>
+    <button type="button" class="snapshot-preview-button" title="点击放大预览">
+      <img src="${src}" alt="S1 区位分析快照">
+    </button>
+    <span class="snapshot-preview-tip">点击图片放大查看</span>
+  `;
+  const button = panel.querySelector(".snapshot-preview-button");
+  if (button) button.addEventListener("click", () => openSnapshotLightbox(src, `S1 区位分析预览 ${radiusLabel}`.trim()));
+}
+
 function summarizeGeneric(data) {
   if (typeof data === "string") {
     return `<div class="summary-card warn"><h3>提示</h3><p>${escapeHtml(data)}</p></div>`;
@@ -1249,7 +1466,7 @@ function summarizeGeneric(data) {
   if ("control_points" in data && "count" in data && data.path) return summarizeControlPoints(data);
   if ("migration" in data || (Array.isArray(data.items) && "candidate_set_id_current" in data)) return summarizeMigration(data);
   if ("saved" in data && "bucket" in data) return summarizeUpload(data);
-  if ("auto_draft" in data) return summarizeAutoDraft(data);
+  if ("auto_draft" in data) return summarizeAutoDraftV2(data);
   if (data.provider?.name === "amap_webservice" && !("location" in data)) {
     return `
       <div class="summary-card ${data.provider.configured ? "ok" : "warn"}">
@@ -1657,9 +1874,12 @@ async function autoDraftS1() {
   const AMap = state.amap.sdk || await ensureAmapSdk();
   const radiusM = Number($("#s1SnapshotRadius")?.value || 2000);
   const snapshotMeta = await prepareS1LocationSnapshotView(AMap, radiusM === 1000 ? 1000 : 2000);
-  let screenshotDataUrl;
+  let screenshotDataUrl = "";
+  let clientCaptureError = "";
   try {
     screenshotDataUrl = captureS1SnapshotPng(snapshotMeta);
+  } catch (error) {
+    clientCaptureError = error.message || String(error);
   } finally {
     setTdtLabelLayerVisible(true);
   }
@@ -1671,10 +1891,11 @@ async function autoDraftS1() {
       map_mode: "tianditu",
       radius_m: snapshotMeta.radiusM,
       screenshot_data_url: screenshotDataUrl,
+      client_capture_error: clientCaptureError,
     }),
   });
   setAmapStatus(data.ok ? "区位分析快照已生成" : data.error || "生成失败", data.ok);
-  renderS1SnapshotPreview(data);
+  renderS1SnapshotPreviewV2(data);
   writeOutput(data);
 }
 
