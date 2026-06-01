@@ -407,3 +407,21 @@ python3 _tools/tests/drawing_workbench_browser_smoke.py
 
 ### 顺序
 C1 → C2 → C3 → C4 → C5 → P1 → P2 → P3 → P4 → P5,各一次提交。说明:**C1(说明在上图例在下+自适应)和 C5(字体加粗放大上色)是本轮用户最在意的两条,先做**;P3/P4/P5 导出闭环放最后。**核心要求:agent 必须先用代码确定性地排好一版"像原 PPT"的版式(C1+C5),用户再在预览工作台手动微调(P2)。** 回推后通知 mac claude 终审。
+
+---
+
+## 12. 预览修正（mac claude 审 phase-2 回推 `6b4f6d7`,2 条 bug）
+
+> phase-2(C1–C5/P1–P5)已全部落地。用户实测发现两个预览渲染 bug,本节修。单线程,各一次提交,门禁同上。
+
+**Q1 预览没显示已编辑的图纸内容(只显示底图/旧 SVG)**
+根因:`renderPptPreview`(workbench.js:1259)图纸源 = `state.svgExists ? state.svgUrl : loadedBaseUrl`,即**服务端导出的 SVG(要 agent 跑完才有)或底图**,**没渲染用户刚画的对象**(活矢量在 `#sketchOverlay`,由 `state.objects` 实时渲染)。
+修:预览图纸区改为**渲染实时矢量**——底图 + `state.objects.map(renderObjectSvg)`(与编辑画布同源),包进 `<svg viewBox="0 0 1 1">`,按 `contain` letterbox 进 `drawing_frame`,所见即所得。无对象时退底图,皆无时才显示"暂无图纸"。导出 plate(P3)也应基于同一实时矢量,保证预览=导出。
+验收:`assert_preview_shows_objects`——画一个对象→开 PPT 预览→`[data-ppt-drawing-frame]` 内存在该对象的渲染(如带 `data-object-id` 的图形),而非仅一张底图 `<img>`。
+
+**Q2 预览图例带进了"同样式合并"等编辑提示**
+根因:`renderFunctionalZoneLegendPreview` 含编辑助手提示——`nameHint`"同一样式下存在多个名称，最终图例将按样式合并"(2211)、`invisibleHint`"有 N 个不可见对象未进入图例"(2239);预览(1263 `legendHtml`)复用同函数把提示也带出来。(`renderGenericLegendPreview` 无此问题。)
+修:给图例渲染加 `forPreview`(或 `clean`)选项;PPT 预览传入 → **省略 `nameHint`/`invisibleHint` 等编辑期提示**,只渲染最终的色块+标签(+可留 `x N` 计数)。制图模式仍显示提示。
+验收:`assert_preview_legend_clean`——功能分区下造"同样式不同名"多个对象,PPT 预览图例内**无** `.zone-legend-hint` 与 `.zone-legend-invisible-hint`;制图模式图例仍有。
+
+顺序:Q1 → Q2,各一次提交。回推后 mac claude 终审。
