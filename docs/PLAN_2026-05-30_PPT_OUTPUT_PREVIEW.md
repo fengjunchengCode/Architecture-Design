@@ -425,3 +425,13 @@ C1 → C2 → C3 → C4 → C5 → P1 → P2 → P3 → P4 → P5,各一次提�
 验收:`assert_preview_legend_clean`——功能分区下造"同样式不同名"多个对象,PPT 预览图例内**无** `.zone-legend-hint` 与 `.zone-legend-invisible-hint`;制图模式图例仍有。
 
 顺序:Q1 → Q2,各一次提交。回推后 mac claude 终审。
+
+**Q3 预览里加显眼的"自动排版"按钮(现有重排功能埋在右侧检查器,预览里找不到)**
+现状:重排已实现——`#pptReflowCurrent`/`#pptReflowAll`(index.html:371-372,文案"重排本页/全部重排")在右侧"PPT出图"检查器区;`reflowDeckLayout`(workbench.js:1086)已带手动覆盖确认弹窗(`hasManualOverrides` → `window.confirm("重新排版会覆盖…手动调整。是否继续？")`,1112-1120)。问题:用户**在 PPT 预览视图里**新增文字/图例后,这两个按钮不在预览面板内、也没叫"自动排版",找不到、无提示,以为"没有自动排版"。
+修:
+- 在 PPT 预览面板(`#pptPreviewPanel`,slide 上方做个小工具条)加一个**显眼的"自动排版"按钮**,点击 = `reflowDeckLayout("current")`(复用现有逻辑与**手动覆盖确认弹窗**,即"若用户改过文字大小/图例位置则提示风险"——此守护已实现,直接复用)。
+- 可选轻提示:当前页 `needs_reflow` 或检测到说明文本/图例对象变化导致布局可能过时时,在预览顶部显示"内容已更新，建议点自动排版"的提示条(非强制,不自动改)。
+- 不改变"重排只动 legend/text/supporting、不动 drawing_frame/template"的既有规则。
+验收:`assert_preview_autolayout_button`——PPT 预览面板内存在"自动排版"按钮;点击调用 reflow-current 并使当前页 `needs_reflow=false`;当前页 `manual_overrides=true` 时点击会弹确认(取消则布局不变)。
+
+顺序补充:Q3 在 Q1/Q2 之后,一次提交。
