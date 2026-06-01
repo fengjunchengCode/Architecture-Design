@@ -637,39 +637,6 @@ function drawS1SnapshotOverlayRefined(ctx, width, height, meta) {
     ringPx[meters] = meters / metersPerCssPixel * scale;
   });
 
-  function pointFromNorm(point, radius) {
-    return [cx + point[0] * radius, cy + point[1] * radius];
-  }
-
-  function drawRoad(points, label, labelAt) {
-    const maxRadius = ringPx[meta.radiusM] || Math.min(width, height) * .42;
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "rgba(255,255,255,.86)";
-    ctx.lineWidth = Math.max(2 * scale, 3 * ui);
-    ctx.shadowColor = "rgba(0,0,0,.62)";
-    ctx.shadowBlur = 4 * ui;
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      const [x, y] = pointFromNorm(point, maxRadius);
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    if (label) {
-      const lp = labelAt || points[Math.floor(points.length / 2)];
-      const [lx, ly] = pointFromNorm(lp, maxRadius);
-      ctx.font = `bold ${Math.round(17 * ui)}px Arial, sans-serif`;
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "rgba(0,0,0,.8)";
-      ctx.shadowBlur = 5 * ui;
-      ctx.fillText(label, lx + 8 * ui, ly - 12 * ui);
-    }
-    ctx.restore();
-  }
-
   function drawRing(radius) {
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -737,8 +704,6 @@ function drawS1SnapshotOverlayRefined(ctx, width, height, meta) {
     ctx.fillText("SITE", cx + 20 * ui, cy - 32 * ui);
     ctx.restore();
   }
-
-  drawRoad([[-.96, .18], [-.58, .13], [-.20, .09], [.22, .11], [.62, .19], [.96, .30]], "G317", [-.42, .11]);
 
   ctx.save();
   ctx.lineWidth = Math.max(2 * scale, 2.4 * ui);

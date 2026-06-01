@@ -336,22 +336,8 @@ def _draw_location_overlay(image, center_wgs: tuple[float, float], zoom: int, ra
     meters_per_pixel = 156543.03392 * math.cos(math.radians(center_wgs[1])) / (2**zoom)
     rings = [500, 1000, 2000] if radius_m >= 2000 else [500, 1000]
     ring_px = {meters: meters / meters_per_pixel for meters in rings}
-    road_font = _font(int(17 * ui), True)
     arrow_font = _font(int(22 * ui), True)
     site_font = _font(int(34 * ui), True)
-
-    def denorm(point: tuple[float, float], max_radius: float) -> tuple[float, float]:
-        return cx + point[0] * max_radius, cy + point[1] * max_radius
-
-    def road(points: list[tuple[float, float]], label: str, label_at: tuple[float, float]) -> None:
-        max_radius = ring_px.get(radius_m, min(width, height) * 0.42)
-        xy = [denorm(point, max_radius) for point in points]
-        draw.line([(x + 1, y + 1) for x, y in xy], fill=(0, 0, 0, 150), width=max(3, int(5 * ui)), joint="curve")
-        draw.line(xy, fill=(255, 255, 255, 220), width=max(2, int(3 * ui)), joint="curve")
-        lx, ly = denorm(label_at, max_radius)
-        draw.text((lx + 8 * ui, ly - 12 * ui), label, fill=(255, 255, 255, 245), font=road_font, anchor="lm", stroke_width=max(1, int(ui)), stroke_fill=(0, 0, 0, 180))
-
-    road([(-0.96, 0.18), (-0.58, 0.13), (-0.20, 0.09), (0.22, 0.11), (0.62, 0.19), (0.96, 0.30)], "G317", (-0.42, 0.11))
 
     for radius in ring_px.values():
         box = [cx - radius, cy - radius, cx + radius, cy + radius]
