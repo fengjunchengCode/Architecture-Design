@@ -1257,7 +1257,7 @@
     const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
     const elements = (slide && slide.elements) || {};
     const drawingMedia = renderPptDrawingMedia();
-    const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
+    const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview({ forPreview: true }) : renderGenericLegendPreview();
     const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
     const warnings = Array.isArray(slide && slide.layout_warnings)
       ? slide.layout_warnings.filter(Boolean)
@@ -2220,7 +2220,8 @@
     return { groups: Array.from(groups.values()), invisibleCount };
   }
 
-  function renderFunctionalZoneLegendPreview() {
+  function renderFunctionalZoneLegendPreview(options = {}) {
+    const forPreview = !!options.forPreview;
     const { groups, invisibleCount } = buildFunctionalZoneLegendGroups(state.objects);
     if (groups.length === 0 && invisibleCount === 0) {
       return '<p class="zone-legend-empty">暂无功能分区</p>';
@@ -2237,7 +2238,9 @@
         groupName = uniqueLabels[0];
       } else {
         groupName = `${uniqueLabels[0]} 等 ${uniqueLabels.length} 类`;
-        nameHint = '<p class="zone-legend-hint">同一样式下存在多个名称，最终图例将按样式合并</p>';
+        if (!forPreview) {
+          nameHint = '<p class="zone-legend-hint">同一样式下存在多个名称，最终图例将按样式合并</p>';
+        }
       }
       const count = group.objects.length;
       const style = group.style;
@@ -2264,7 +2267,7 @@
         </div>
       `;
     }).join("");
-    const invisibleHint = invisibleCount > 0
+    const invisibleHint = !forPreview && invisibleCount > 0
       ? `<p class="zone-legend-invisible-hint">有 ${invisibleCount} 个不可见对象未进入图例</p>`
       : "";
     return `${items}${invisibleHint}`;

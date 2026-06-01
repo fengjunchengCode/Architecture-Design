@@ -1022,7 +1022,7 @@ def assert_ppt_preview_basics(page) -> None:
         arg={"project": TEST_PROJECT, "expected": text},
         timeout=10000,
     )
-    page.click("#togglePptPreview")
+    assert_preview_legend_clean(page)
     assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should become visible"
     box = page.locator("#pptSlidePreview").bounding_box()
     assert box and abs((box["width"] / box["height"]) - (16 / 9)) < 0.03, f"PPT slide ratio should be 16:9, got {box}"
@@ -1056,6 +1056,35 @@ def assert_ppt_preview_basics(page) -> None:
 def assert_preview_shows_objects(page) -> None:
     rendered_object = page.locator("[data-ppt-drawing-frame='true'] [data-object-id='obj-legacy']")
     assert rendered_object.count() >= 1, "PPT preview should render live drawing objects inside the drawing frame"
+
+
+def assert_preview_legend_clean(page) -> None:
+    page.evaluate("() => window.DrawingWorkbenchTest.createObject('closed_path', [[0.12, 0.12], [0.24, 0.12], [0.18, 0.24]])")
+    set_selected_zone_label(page, "预览分区 A")
+    page.evaluate("() => window.DrawingWorkbenchTest.createObject('closed_path', [[0.28, 0.12], [0.4, 0.12], [0.34, 0.24]])")
+    set_selected_zone_label(page, "预览分区 B")
+    page.evaluate("() => window.DrawingWorkbenchTest.createObject('closed_path', [[0.44, 0.12], [0.56, 0.12], [0.5, 0.24]])")
+    set_selected_zone_label(page, "预览隐藏分区")
+    page.click('[data-style-segment="fill_mode"][data-style-value="none"]')
+    page.click('[data-style-segment="border_style"][data-style-value="none"]')
+    page.wait_for_function(
+        """() => document.querySelectorAll('#zoneLegendPreview .zone-legend-hint').length > 0
+            && document.querySelectorAll('#zoneLegendPreview .zone-legend-invisible-hint').length > 0""",
+        timeout=10000,
+    )
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should become visible for legend cleanup"
+    legend = page.locator("[data-ppt-element='legend']")
+    assert legend.locator(".zone-legend-count", has_text="x 2").count() >= 1, (
+        "PPT preview should keep final merged legend counts"
+    )
+    assert legend.locator(".zone-legend-hint").count() == 0, "PPT preview should omit edit-only merge hints"
+    assert legend.locator(".zone-legend-invisible-hint").count() == 0, "PPT preview should omit edit-only invisible hints"
+
+
+def set_selected_zone_label(page, label: str) -> None:
+    page.fill("#objectLabel", label)
+    page.eval_on_selector("#objectLabel", "(el) => el.dispatchEvent(new Event('change', { bubbles: true }))")
 
 
 def assert_layout_warnings_visible(page) -> None:
