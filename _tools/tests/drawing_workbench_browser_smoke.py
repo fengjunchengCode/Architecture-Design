@@ -40,6 +40,8 @@ def prepare_project() -> Path:
     base_dir = proj_dir / "05_output" / "drawings" / "base"
     base_dir.mkdir(parents=True)
     Image.new("RGB", (900, 600), (245, 242, 232)).save(base_dir / "master_plan.jpg", "JPEG")
+    Image.new("RGB", (1024, 1024), (42, 42, 42)).save(base_dir / "location_analysis_2km.png", "PNG")
+    Image.new("RGB", (900, 600), (235, 238, 232)).save(base_dir / "civil_defense_base.jpg", "JPEG")
     semantic_dir = proj_dir / "05_output" / "drawings" / "semantic"
     semantic_dir.mkdir(parents=True)
     legacy_fz = {
@@ -576,6 +578,34 @@ def assert_line_legend_straight(page, drawing_type: str) -> None:
     assert not curved_paths, f"{drawing_type}: line legend swatch still uses curved path(s): {curved_paths}"
 
 
+def assert_non_arrow_line_presets_scoped(page, drawing_type: str) -> None:
+    if drawing_type not in {"planting_design", "landscape_analysis"}:
+        return
+    if page.locator('[data-tool-id="open_path"]').count() == 0:
+        return
+    page.click('[data-tool-id="open_path"]')
+    options = page.eval_on_selector_all("#objectType option", "(nodes) => nodes.map((node) => node.value)")
+    forbidden_preset_ids = [
+        "vehicle-orange-solid",
+        "pedestrian-cobalt-solid",
+        "underground-blue-dashed",
+        "fire-red-line",
+        "runoff-deep-blue",
+    ]
+    for object_type in options or [""]:
+        if object_type:
+            page.select_option("#objectType", object_type)
+        assert page.locator("#styleStartArrow").count() == 0, f"{drawing_type}/{object_type}: start arrow control should be hidden"
+        assert page.locator("#styleEndArrow").count() == 0, f"{drawing_type}/{object_type}: end arrow control should be hidden"
+        for preset_id in forbidden_preset_ids:
+            assert page.locator(f'[data-style-preset-apply="{preset_id}"]').count() == 0, (
+                f"{drawing_type}/{object_type}: arrow preset {preset_id} leaked into non-arrow line tool"
+            )
+        assert page.locator("[data-style-preset-swatch] polygon").count() == 0, (
+            f"{drawing_type}/{object_type}: preset preview should not draw arrowhead polygons"
+        )
+
+
 def assert_dash_scale(page, drawing_type: str) -> None:
     page.click('[data-tool-id="open_path"]')
     page.click('[data-style-segment="stroke_style"][data-style-value="dashed"]')
@@ -903,6 +933,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
         return
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-presets='true']").count() == 1, f"{drawing_type}: style presets panel missing"
+    assert page.locator("#stylePresetImportFile").count() == 0, f"{drawing_type}: preset import picker should not render"
     assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
         f"{drawing_type}: repo presets missing"
     )
@@ -936,8 +967,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
     page.click("[data-style-preset-apply][data-preset-name='Smoke preset']")
     value = page.eval_on_selector("#styleStrokeColor", "(el) => el.value.toUpperCase()")
     assert value == "#123456", f"{drawing_type}: applying saved preset did not restore color, got {value}"
-    page.reload(wait_until="networkidle")
-    page.wait_for_function("window.DrawingWorkbenchTest", timeout=15000)
+    page.evaluate("() => window.DrawingWorkbenchTest.reloadStylePresets()")
     page.click(f'[data-drawing-type="{drawing_type}"]')
     page.click('[data-tool-id="open_path"]')
     assert page.locator("[data-style-preset-apply][data-preset-name='Smoke preset']").count() == 1, (
@@ -951,6 +981,7 @@ def assert_style_presets(page, drawing_type: str) -> None:
 
 def assert_functional_zone_style_presets(page) -> None:
     assert page.locator("[data-style-presets='true']").count() == 1, "functional_zoning: style presets panel missing"
+    assert page.locator("#stylePresetImportFile").count() == 0, "functional_zoning: preset import picker should not render"
     assert page.locator("[data-style-preset-apply][data-preset-source='repo']").count() >= 1, (
         "functional_zoning: repo presets missing"
     )
@@ -978,6 +1009,333 @@ def assert_functional_zone_style_presets(page) -> None:
     page.click("[data-style-preset-apply][data-preset-name='FZ smoke preset']")
     value = page.eval_on_selector("#styleFillColor", "(el) => el.value.toUpperCase()")
     assert value == "#ABCDEF", f"functional_zoning: applying saved preset did not restore fill color, got {value}"
+
+
+def assert_ppt_preview_basics(page) -> None:
+    text = "PPT smoke text"
+    page.fill("#pptSlideText", text)
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project, expected}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": text},
+        timeout=10000,
+    )
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should become visible"
+    box = page.locator("#pptSlidePreview").bounding_box()
+    assert box and abs((box["width"] / box["height"]) - (16 / 9)) < 0.03, f"PPT slide ratio should be 16:9, got {box}"
+    assert page.locator("[data-ppt-drawing-frame='true']").count() == 1, "PPT preview should render one global drawing frame"
+    assert page.locator("[data-ppt-element='text']", has_text=text).count() == 1, "PPT preview should render saved slide text"
+    media = page.locator("[data-ppt-drawing-frame='true'] [data-ppt-drawing-media='true']")
+    assert media.count() == 1, "PPT preview should mark drawing media for contain checks"
+    assert page.locator("[data-ppt-drawing-plate='true']").count() == 1, "PPT preview should render a drawing plate"
+    object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
+    assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
+    assert_title_and_accent_global(page)
+    dialogs: list[str] = []
+
+    def handle_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", handle_dialog)
+    page.click('[data-ppt-template="drawing_right"]')
+    page.wait_for_timeout(100)
+    assert dialogs and "全部图纸页" in dialogs[-1], f"global frame warning missing expected copy: {dialogs!r}"
+    page.remove_listener("dialog", handle_dialog)
+    assert_layout_warnings_visible(page)
+    assert_reflow_guard(page)
+    assert_frame_drag(page)
+    assert_manual_adjust(page)
+    assert not page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should hide when returning to drawing mode"
+
+
+def assert_layout_warnings_visible(page) -> None:
+    page.evaluate(
+        """async (project) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            layout.slides.functional_zoning.layout_warnings = ['warning smoke: info column compressed'];
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        TEST_PROJECT,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    assert page.locator("[data-ppt-layout-warning='true']", has_text="warning smoke").count() == 1, (
+        "PPT preview should surface layout_warnings"
+    )
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_title_and_accent_global(page) -> None:
+    heading_text = "车行流线设置：主入口与慢行系统分离。"
+    page.fill("#pptSlideText", heading_text)
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project, expected}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": heading_text},
+        timeout=10000,
+    )
+    layout = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    accent = (layout.get("typography_accent") or "").upper()
+    assert accent == "#D9882B", f"typography_accent should default to amber orange, got {accent}"
+    assert page.locator("[data-ppt-title='true']").count() == 1, "PPT title should render as an independent header"
+    assert page.locator("[data-ppt-element='text'] [data-ppt-title='true']").count() == 0, (
+        "PPT title must not be nested in the text box"
+    )
+    title_style = page.locator("[data-ppt-title='true']").evaluate(
+        """(node) => {
+            const style = getComputedStyle(node);
+            return {
+                fontFamily: style.fontFamily,
+                fontSize: style.fontSize,
+                color: style.color,
+                fontWeight: style.fontWeight,
+            };
+        }"""
+    )
+    heading_color = page.locator("[data-ppt-text-heading='true']").first.evaluate("(node) => getComputedStyle(node).color")
+    assert heading_color == "rgb(217, 136, 43)", f"heading accent should use global amber, got {heading_color}"
+
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('traffic_analysis')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'traffic_analysis'",
+        timeout=15000,
+    )
+    page.fill("#pptSlideText", "交通组织：车行与人行路径清晰。")
+    page.click("#savePptSlideText")
+    page.wait_for_function(
+        """({project}) =>
+            fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.traffic_analysis.text.includes('交通组织'))
+        """,
+        arg={"project": TEST_PROJECT},
+        timeout=10000,
+    )
+    other_title_style = page.locator("[data-ppt-title='true']").evaluate(
+        """(node) => {
+            const style = getComputedStyle(node);
+            return {
+                fontFamily: style.fontFamily,
+                fontSize: style.fontSize,
+                color: style.color,
+                fontWeight: style.fontWeight,
+            };
+        }"""
+    )
+    other_heading_color = page.locator("[data-ppt-text-heading='true']").first.evaluate("(node) => getComputedStyle(node).color")
+    assert other_title_style == title_style, f"title style must be deck-global: {title_style} vs {other_title_style}"
+    assert other_heading_color == heading_color, f"heading accent must be deck-global: {heading_color} vs {other_heading_color}"
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('functional_zoning')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=15000,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=20000,
+    )
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen after typography comparison"
+
+
+def assert_reflow_guard(page) -> None:
+    manual_x = 0.731
+    page.evaluate(
+        """async ({project, manualX}) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            const slide = layout.slides.functional_zoning;
+            slide.manual_overrides = true;
+            slide.elements.text.x = manualX;
+            slide.elements.text.y = 0.211;
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        {"project": TEST_PROJECT, "manualX": manual_x},
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for reflow guard"
+    dialogs: list[str] = []
+
+    def dismiss_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", dismiss_dialog)
+    page.click("#pptReflowCurrent")
+    page.wait_for_timeout(200)
+    page.remove_listener("dialog", dismiss_dialog)
+    assert dialogs and "手动调整" in dialogs[-1], f"manual reflow warning missing: {dialogs!r}"
+    layout = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    slide = layout["slides"]["functional_zoning"]
+    assert slide["manual_overrides"] is True, f"cancelled reflow should keep manual flag: {slide}"
+    assert abs(slide["elements"]["text"]["x"] - manual_x) < 0.0001, f"cancelled reflow moved text box: {slide}"
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_frame_drag(page) -> None:
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for frame drag"
+    assert page.locator("[data-ppt-frame-handle]").count() == 8, "global drawing frame should expose 8 resize handles"
+    before = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    before_version = int(before["drawing_frame_version"])
+    before_frame = before["drawing_frame"]
+    dialogs: list[str] = []
+
+    def accept_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.accept()
+
+    page.on("dialog", accept_dialog)
+    frame_box = page.locator("[data-ppt-drawing-frame='true']").bounding_box()
+    assert frame_box, "global drawing frame should have a visible box"
+    page.mouse.move(frame_box["x"] + frame_box["width"] / 2, frame_box["y"] + frame_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(frame_box["x"] + frame_box["width"] / 2 + 34, frame_box["y"] + frame_box["height"] / 2 + 18, steps=5)
+    page.mouse.up()
+    page.remove_listener("dialog", accept_dialog)
+    assert dialogs and "全部图纸页" in dialogs[-1], f"global frame drag warning missing: {dialogs!r}"
+    page.wait_for_function(
+        """({project, beforeVersion}) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout.drawing_frame_version > beforeVersion
+                && Object.values(data.layout.slides).every((slide) => slide.needs_reflow === true))""",
+        arg={"project": TEST_PROJECT, "beforeVersion": before_version},
+        timeout=10000,
+    )
+    after = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    assert after["drawing_frame"] != before_frame, f"drag should change global drawing frame: {after}"
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('traffic_analysis')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'traffic_analysis'",
+        timeout=15000,
+    )
+    traffic_frame = page.locator("[data-ppt-drawing-frame='true']").evaluate(
+        """(node) => ({
+            x: parseFloat(node.style.left) / 100,
+            y: parseFloat(node.style.top) / 100,
+            w: parseFloat(node.style.width) / 100,
+            h: parseFloat(node.style.height) / 100,
+        })"""
+    )
+    for key in ("x", "y", "w", "h"):
+        assert abs(traffic_frame[key] - after["drawing_frame"][key]) < 0.001, (
+            f"traffic preview should use same global frame {after['drawing_frame']}, got {traffic_frame}"
+        )
+    page.evaluate("() => window.DrawingWorkbenchTest.switchDrawingType('functional_zoning')")
+    page.wait_for_function(
+        "() => window.DrawingWorkbenchTest && window.DrawingWorkbenchTest.getActiveDrawingType() === 'functional_zoning'",
+        timeout=15000,
+    )
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
+
+
+def assert_manual_adjust(page) -> None:
+    page.click("#togglePptPreview")
+    assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview should reopen for manual adjustment"
+    before = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    before_current = before["slides"]["functional_zoning"]["elements"]["legend"]
+    before_other = before["slides"]["traffic_analysis"]["elements"]["legend"]
+    legend_box = page.locator("[data-ppt-element='legend']").bounding_box()
+    assert legend_box, "legend box should be visible for manual adjustment"
+    page.mouse.move(legend_box["x"] + legend_box["width"] / 2, legend_box["y"] + legend_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(legend_box["x"] + legend_box["width"] / 2 + 28, legend_box["y"] + legend_box["height"] / 2 + 16, steps=4)
+    page.mouse.up()
+    page.wait_for_function(
+        """({project, beforeX}) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => {
+                const slide = data.layout.slides.functional_zoning;
+                return slide.manual_overrides === true && Math.abs(slide.elements.legend.x - beforeX) > 0.001;
+            })""",
+        arg={"project": TEST_PROJECT, "beforeX": before_current["x"]},
+        timeout=10000,
+    )
+    after = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    assert after["slides"]["traffic_analysis"]["elements"]["legend"] == before_other, (
+        "manual legend move should only affect current slide"
+    )
+    page.click("[data-ppt-element='text']")
+    assert page.locator("#pptTextFontSize").count() == 1, "text typography size control should render"
+    page.fill("#pptTextFontSize", "16")
+    page.eval_on_selector(
+        "#pptTextColor",
+        """(el) => {
+            el.value = '#345678';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+    )
+    page.wait_for_function(
+        """(project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => {
+                const body = data.layout.slides.functional_zoning.typography.body;
+                return body.size === 16 && body.color === '#345678';
+            })""",
+        arg=TEST_PROJECT,
+        timeout=10000,
+    )
+    body_color = page.locator("[data-ppt-element='text'] .ppt-text-body").first.evaluate("(node) => getComputedStyle(node).color")
+    assert body_color == "rgb(52, 86, 120)", f"manual text color should render, got {body_color}"
+    page.click("#togglePptPreview")
+    page.wait_for_function("document.querySelector('#pptPreviewPanel')?.hidden === true", timeout=5000)
 
 
 def assert_elevation_inverted(page, drawing_type: str) -> None:
@@ -1029,8 +1387,8 @@ def main() -> int:
     server = subprocess.Popen(
         [sys.executable, str(REPO_ROOT / "_tools" / "uploader" / "server.py"), "--port", str(PORT), "--no-browser"],
         cwd=str(REPO_ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         env=env,
     )
 
@@ -1068,6 +1426,7 @@ def main() -> int:
                 if drawing_type == "functional_zoning":
                     assert_fz_regression(page)
                     assert_functional_zone_style_presets(page)
+                    assert_ppt_preview_basics(page)
                     drive_path_interaction(page, drawing_type, "closed_path")
                 if drawing_type != "functional_zoning":
                     dom_tools = page.eval_on_selector_all("[data-tool-id]", "(nodes) => nodes.map((n) => n.dataset.toolId)")
@@ -1124,11 +1483,14 @@ def main() -> int:
                 )
                 assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "planting_design":
+                    assert_non_arrow_line_presets_scoped(page, drawing_type)
                     assert_dash_scale(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                     assert_legend_non_fz(page, drawing_type)
                     assert_line_legend_straight(page, drawing_type)
+                if drawing_type == "landscape_analysis":
+                    assert_non_arrow_line_presets_scoped(page, drawing_type)
                 if drawing_type == "planting_design":
                     assert_text_tool(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
@@ -1151,10 +1513,9 @@ def main() -> int:
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
 
-                with page.expect_response(lambda r: "/api/drawing/save" in r.url and r.status == 200, timeout=15000):
-                    page.click("#workbenchSave")
-                with page.expect_response(lambda r: "/api/drawing/load" in r.url and r.status == 200, timeout=15000):
-                    page.click("#workbenchLoad")
+                save_result = page.evaluate("() => window.DrawingWorkbenchTest.saveCurrentDrawing()")
+                assert save_result and save_result.get("ok"), f"{drawing_type}: save hook failed: {save_result}"
+                page.evaluate("() => window.DrawingWorkbenchTest.loadCurrentDrawing()")
                 page.wait_for_function(
                     "(count) => window.DrawingWorkbenchTest.getObjects().length >= count",
                     arg=len(after_objects),

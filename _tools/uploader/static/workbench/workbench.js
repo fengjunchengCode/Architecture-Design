@@ -225,6 +225,11 @@
     clipboard: null,
     stylePresets: [],
     stylePresetPath: "",
+    stylePresetLoadError: "",
+    deckLayout: null,
+    deckLayoutPath: "",
+    pptPreviewMode: false,
+    pptSelectedElement: "",
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -435,11 +440,11 @@
     const key = draftKey(toolId, objectType);
     const selected = selectedObject();
     if (selected && selected.type === objectType) {
-      return Model.cloneStyle(Model.normalizeStyleHints(selected.style_hints, objectType));
+      return sanitizeArrowStyle(Model.normalizeStyleHints(selected.style_hints, objectType), toolId, objectType);
     }
-    if (state.styleDrafts[key]) return Model.cloneStyle(state.styleDrafts[key]);
-    if (state.lastStyles[objectType]) return Model.cloneStyle(state.lastStyles[objectType]);
-    return Model.defaultStyleForObjectType(objectType);
+    if (state.styleDrafts[key]) return sanitizeArrowStyle(state.styleDrafts[key], toolId, objectType);
+    if (state.lastStyles[objectType]) return sanitizeArrowStyle(state.lastStyles[objectType], toolId, objectType);
+    return sanitizeArrowStyle(Model.defaultStyleForObjectType(objectType), toolId, objectType);
   }
 
   function draftGeometryFor(objectType, toolId = normalizeActiveTool()) {
@@ -725,6 +730,8 @@
     renderWorkspaceMeta();
     renderSpecificTools();
     renderAvailability();
+    renderPptControls();
+    renderPptPreview();
   }
 
   function renderWorkspaceMeta() {
@@ -866,11 +873,25 @@
   }
 
   function shouldShowArrowControls(toolId, objectType) {
-    return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+    return canUseArrowStyle(toolId, objectType);
   }
 
   function shouldRenderArrowHeads(obj) {
     return obj && (obj.type === "turning_radius" || obj.type === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(obj.type));
+  }
+
+  function canUseArrowStyle(toolId, objectType) {
+    return toolId === "turning_radius" || toolId === "slope_arrow" || FLOW_ARROW_OBJECT_TYPES.has(objectType);
+  }
+
+  function sanitizeArrowStyle(style, toolId, objectType) {
+    const next = Model.cloneStyle(style || {});
+    if (!canUseArrowStyle(toolId, objectType)) {
+      next.start_arrow = false;
+      next.end_arrow = false;
+      next.arrow_size = null;
+    }
+    return next;
   }
 
   function currentToolSpec() {
@@ -998,10 +1019,12 @@
         ? data.presets.filter((item) => item && item.id && item.name && item.kind && item.hints)
         : [];
       state.stylePresetPath = data.path || "";
+      state.stylePresetLoadError = "";
     } catch (err) {
       console.warn("[workbench] style preset load failed", err);
       state.stylePresets = [];
       state.stylePresetPath = "";
+      state.stylePresetLoadError = err.message || "样式预设加载失败";
     }
   }
 
@@ -1013,6 +1036,7 @@
     });
     state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
     state.stylePresetPath = data.path || state.stylePresetPath;
+    state.stylePresetLoadError = "";
   }
 
   async function deleteStylePresetFromLibrary(id) {
@@ -1023,16 +1047,492 @@
     });
     state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
     state.stylePresetPath = data.path || state.stylePresetPath;
+    state.stylePresetLoadError = "";
   }
 
-  async function importStylePresetLibrary(library) {
-    const data = await api("/api/drawing/style-presets/import", {
+  async function loadDeckLayout() {
+    const project = projectCode();
+    if (!project) {
+      state.deckLayout = null;
+      state.deckLayoutPath = "";
+      renderPptControls();
+      renderPptPreview();
+      return null;
+    }
+    const params = new URLSearchParams({ project });
+    const data = await api(`/api/drawing/deck-layout?${params}`);
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  async function saveDeckLayout(payload = {}) {
+    const project = projectCode();
+    if (!project) throw new Error("请先打开或创建项目。");
+    const data = await api("/api/drawing/deck-layout/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ library }),
+      body: JSON.stringify({ project, ...payload }),
     });
-    state.stylePresets = Array.isArray(data.presets) ? data.presets : [];
-    state.stylePresetPath = data.path || state.stylePresetPath;
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  async function reflowDeckLayout(scope = "current") {
+    const project = projectCode();
+    if (!project) throw new Error("请先打开或创建项目。");
+    if (hasManualReflowTarget(scope) && !confirmManualReflow(scope)) {
+      setPptStatus("已取消重新排版，保留本页手动调整。", true);
+      return state.deckLayout;
+    }
+    const data = await api("/api/drawing/deck-layout/reflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project,
+        scope,
+        drawing_type: drawingType(),
+      }),
+    });
+    state.deckLayout = data.layout || null;
+    state.deckLayoutPath = data.path || "";
+    renderPptControls();
+    renderPptPreview();
+    return state.deckLayout;
+  }
+
+  function hasManualReflowTarget(scope = "current") {
+    if (!state.deckLayout || !state.deckLayout.slides) return false;
+    if (scope === "all") {
+      return Object.values(state.deckLayout.slides).some((slide) => slide && slide.manual_overrides === true);
+    }
+    const slide = currentPptSlide();
+    return !!(slide && slide.manual_overrides === true);
+  }
+
+  function confirmManualReflow(scope = "current") {
+    const target = scope === "all" ? "全部图纸页中已有手动调整的页面" : "本页";
+    return window.confirm(`重新排版会覆盖${target}手动调整。是否继续？`);
+  }
+
+  function currentPptSlide() {
+    const slides = (state.deckLayout && state.deckLayout.slides) || {};
+    return slides[drawingType()] || null;
+  }
+
+  function boxStyle(box) {
+    const data = box || { x: 0, y: 0, w: 0, h: 0 };
+    return `left:${Number(data.x || 0) * 100}%;top:${Number(data.y || 0) * 100}%;width:${Number(data.w || 0) * 100}%;height:${Number(data.h || 0) * 100}%;`;
+  }
+
+  function safeCssColor(value, fallback = "#D9882B") {
+    const text = String(value || "").trim();
+    return /^#[0-9A-Fa-f]{6}$/.test(text) ? text : fallback;
+  }
+
+  function pptTitleStyle() {
+    const style = (state.deckLayout && state.deckLayout.title_style) || {};
+    const font = style.font || "Microsoft YaHei";
+    const size = Number(style.size) || 24;
+    const color = safeCssColor(style.color, "#111111");
+    const weight = style.weight || "700";
+    return `font-family:${escapeHtml(font)}, \"PingFang SC\", Arial, sans-serif;font-size:${size}px;color:${color};font-weight:${escapeHtml(weight)};`;
+  }
+
+  function renderPptHeader(slide) {
+    const title = (slide && slide.title) || drawingConfig().label || "图纸";
+    return `
+      <div class="ppt-el ppt-title-header" data-ppt-header="true">
+        <div class="ppt-title-kicker">设计理念与总平面</div>
+        <div class="ppt-title-kicker-en">Design Philosophy and Master Plan</div>
+        <div class="ppt-title-main" data-ppt-title="true" style="${pptTitleStyle()}">${escapeHtml(title)}</div>
+      </div>
+    `;
+  }
+
+  function renderPptFrameHandles() {
+    return ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
+      .map((handle) => `<span class="ppt-frame-handle" data-ppt-frame-handle="${handle}" aria-hidden="true"></span>`)
+      .join("");
+  }
+
+  function renderPptElementHandles() {
+    return ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
+      .map((handle) => `<span class="ppt-element-handle" data-ppt-element-handle="${handle}" aria-hidden="true"></span>`)
+      .join("");
+  }
+
+  function renderPptTextContent(slide) {
+    const text = (slide && slide.text) || "暂无图纸说明。";
+    const body = (slide && slide.typography && slide.typography.body) || {};
+    const bodyStyle = `font-size:${Number(body.size || 12)}px;color:${safeCssColor(body.color, "#3A3732")};font-weight:${escapeHtml(body.weight || "400")};`;
+    const lines = String(text).split(/\n+/).filter((line) => line.trim());
+    if (!lines.length) return `<p class="ppt-text-body" style="${bodyStyle}">暂无图纸说明。</p>`;
+    return lines
+      .map((line) => {
+        const escaped = escapeHtml(line.trim());
+        const colonMatch = escaped.match(/^([^：:]{1,28}[：:])(.*)$/);
+        let html = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong data-ppt-text-heading="true">$1</strong>');
+        if (colonMatch) {
+          html = `<span data-ppt-text-heading="true" class="ppt-text-heading">${colonMatch[1]}</span>${colonMatch[2]}`;
+        }
+        return `<p class="ppt-text-body" style="${bodyStyle}">${html}</p>`;
+      })
+      .join("");
+  }
+
+  function supportingImageById(id) {
+    const images = state.supportingImages[drawingType()] || [];
+    return images.find((image) => image.id === id) || null;
+  }
+
+  function setPptStatus(message, ok = true) {
+    const el = $("#pptLayoutStatus");
+    if (!el) return;
+    el.textContent = message;
+    el.style.color = ok ? "var(--muted3)" : "var(--accent-2)";
+  }
+
+  function renderPptControls() {
+    const textarea = $("#pptSlideText");
+    const slide = currentPptSlide();
+    if (textarea && document.activeElement !== textarea) {
+      textarea.value = slide ? slide.text || "" : "";
+    }
+    const body = (slide && slide.typography && slide.typography.body) || {};
+    const sizeInput = $("#pptTextFontSize");
+    if (sizeInput && document.activeElement !== sizeInput) sizeInput.value = String(body.size || 12);
+    const colorInput = $("#pptTextColor");
+    if (colorInput && document.activeElement !== colorInput) colorInput.value = safeCssColor(body.color, "#3A3732");
+    const accentInput = $("#pptAccentColor");
+    if (accentInput && document.activeElement !== accentInput) accentInput.value = safeCssColor(state.deckLayout && state.deckLayout.typography_accent, "#D9882B");
+    document.querySelectorAll("[data-ppt-template]").forEach((button) => {
+      button.classList.toggle("active", !!state.deckLayout && button.dataset.pptTemplate === state.deckLayout.template_side);
+    });
+    const toggle = $("#togglePptPreview");
+    if (toggle) {
+      toggle.classList.toggle("primary", state.pptPreviewMode);
+      toggle.setAttribute("aria-pressed", state.pptPreviewMode ? "true" : "false");
+      toggle.textContent = state.pptPreviewMode ? "返回制图" : "PPT预览";
+    }
+    if (!state.deckLayout) {
+      setPptStatus("尚未加载PPT预览。", false);
+      return;
+    }
+    const frame = state.deckLayout.drawing_frame || {};
+    const needs = slide && slide.needs_reflow;
+    const side = state.deckLayout.template_side === "drawing_right" ? "信息左 / 图纸右" : "图纸左 / 信息右";
+    setPptStatus(
+      `${side}；图纸框 x=${Number(frame.x || 0).toFixed(2)} y=${Number(frame.y || 0).toFixed(2)} w=${Number(frame.w || 0).toFixed(2)} h=${Number(frame.h || 0).toFixed(2)}${needs ? "；本页需重新排版" : ""}`,
+      !needs,
+    );
+  }
+
+  function renderPptPreview() {
+    const panel = $("#pptPreviewPanel");
+    const canvas = $("#workbenchCanvas");
+    const zoom = $(".wb3-zoom");
+    const dock = $(".wb3-dock");
+    const slideEl = $("#pptSlidePreview");
+    if (!panel || !canvas || !slideEl) return;
+    panel.hidden = !state.pptPreviewMode;
+    canvas.hidden = state.pptPreviewMode;
+    if (zoom) zoom.hidden = state.pptPreviewMode;
+    if (dock) dock.hidden = state.pptPreviewMode;
+    if (!state.pptPreviewMode) return;
+    if (!state.deckLayout) {
+      slideEl.innerHTML = projectCode()
+        ? '<div class="ppt-empty-note">正在加载PPT预览...</div>'
+        : '<div class="ppt-empty-note">请先打开项目。</div>';
+      return;
+    }
+    const slide = currentPptSlide();
+    const accent = safeCssColor(state.deckLayout.typography_accent, "#D9882B");
+    slideEl.style.setProperty("--ppt-accent", accent);
+    const plate = state.deckLayout.drawing_plate || {};
+    slideEl.style.setProperty("--ppt-plate-aspect", String(Number(plate.aspect_ratio) || 1.6));
+    const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
+    const elements = (slide && slide.elements) || {};
+    const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
+    const drawingMedia = drawingSrc
+      ? `<img data-ppt-drawing-media="true" src="${escapeHtml(drawingSrc)}" alt="${escapeHtml(drawingConfig().label || "图纸")}">`
+      : '<div class="ppt-empty-note">暂无图纸输出；将先使用底图或等待agent生成SVG。</div>';
+    const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
+    const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
+    const warnings = Array.isArray(slide && slide.layout_warnings)
+      ? slide.layout_warnings.filter(Boolean)
+      : [];
+    const warningHtml = warnings.length
+      ? `<div class="ppt-warning-banner" data-ppt-layout-warning="true">排版提醒：${escapeHtml(warnings.join("；"))}</div>`
+      : "";
+    const supportHtml = supportBoxes
+      .map((box) => {
+        const image = supportingImageById(box.id);
+        const src = image ? supportingImageUrl(image) : "";
+        return `
+          <div class="ppt-el ppt-supporting-img" data-ppt-element="supporting_image" data-ppt-supporting-id="${escapeHtml(box.id)}" style="${boxStyle(box)}">
+            ${src ? `<img src="${escapeHtml(src)}" alt="${escapeHtml(image.caption || image.original_name || "配图")}">` : '<div class="ppt-empty-note">配图</div>'}
+            ${renderPptElementHandles()}
+          </div>
+        `;
+      })
+      .join("");
+    slideEl.innerHTML = `
+      ${renderPptHeader(slide)}
+      ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
+      ${warningHtml}
+      <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
+        <div class="ppt-drawing-plate" data-ppt-drawing-plate="true">
+          ${drawingMedia}
+        </div>
+        <span class="ppt-frame-label">全局图纸框</span>
+        ${renderPptFrameHandles()}
+      </div>
+      <div class="ppt-el ppt-info-box ppt-legend-box" data-ppt-element="legend" style="${boxStyle(elements.legend)}">
+        <h4>图例</h4>
+        ${legendHtml}
+        ${renderPptElementHandles()}
+      </div>
+      <div class="ppt-el ppt-info-box" data-ppt-element="text" style="${boxStyle(elements.text)}">
+        ${renderPptTextContent(slide)}
+        ${renderPptElementHandles()}
+      </div>
+      ${supportHtml}
+    `;
+    bindPptFrameInteractions(slideEl);
+    bindPptElementInteractions(slideEl);
+  }
+
+  function setBoxStyle(el, box) {
+    el.style.left = `${Number(box.x || 0) * 100}%`;
+    el.style.top = `${Number(box.y || 0) * 100}%`;
+    el.style.width = `${Number(box.w || 0) * 100}%`;
+    el.style.height = `${Number(box.h || 0) * 100}%`;
+  }
+
+  function clampPptFrame(box) {
+    return clampPptBox(box, 0.22, 0.22);
+  }
+
+  function clampPptBox(box, minW = 0.06, minH = 0.05) {
+    const next = {
+      x: Number(box.x) || 0,
+      y: Number(box.y) || 0,
+      w: Math.max(minW, Number(box.w) || minW),
+      h: Math.max(minH, Number(box.h) || minH),
+    };
+    next.w = Math.min(0.92, next.w);
+    next.h = Math.min(0.9, next.h);
+    next.x = Math.min(Math.max(0, next.x), 1 - next.w);
+    next.y = Math.min(Math.max(0, next.y), 1 - next.h);
+    return {
+      x: Number(next.x.toFixed(4)),
+      y: Number(next.y.toFixed(4)),
+      w: Number(next.w.toFixed(4)),
+      h: Number(next.h.toFixed(4)),
+    };
+  }
+
+  function resizePptFrame(start, mode, dx, dy) {
+    const next = { ...start };
+    if (mode.includes("w")) {
+      next.x = start.x + dx;
+      next.w = start.w - dx;
+    }
+    if (mode.includes("e")) next.w = start.w + dx;
+    if (mode.includes("n")) {
+      next.y = start.y + dy;
+      next.h = start.h - dy;
+    }
+    if (mode.includes("s")) next.h = start.h + dy;
+    return clampPptFrame(next);
+  }
+
+  function bindPptFrameInteractions(slideEl) {
+    const frameEl = slideEl.querySelector("[data-ppt-drawing-frame='true']");
+    if (!frameEl || frameEl.dataset.pptFrameBound === "true") return;
+    frameEl.dataset.pptFrameBound = "true";
+    frameEl.addEventListener("mousedown", (event) => {
+      if (!state.deckLayout) return;
+      const handle = event.target.closest("[data-ppt-frame-handle]");
+      const mode = handle ? handle.dataset.pptFrameHandle || "se" : "move";
+      if (!confirmPptGlobalChange()) return;
+      event.preventDefault();
+      const slideRect = slideEl.getBoundingClientRect();
+      const startFrame = { ...(state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 }) };
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let nextFrame = startFrame;
+      const onMove = (moveEvent) => {
+        const dx = (moveEvent.clientX - startX) / slideRect.width;
+        const dy = (moveEvent.clientY - startY) / slideRect.height;
+        nextFrame = mode === "move"
+          ? clampPptFrame({ ...startFrame, x: startFrame.x + dx, y: startFrame.y + dy })
+          : resizePptFrame(startFrame, mode, dx, dy);
+        setBoxStyle(frameEl, nextFrame);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        saveDeckLayout({ drawing_frame: nextFrame })
+          .then(() => setStatus("已更新全局PPT图纸框，所有图纸页已标记为需重新排版。"))
+          .catch((err) => {
+            setStatus(err.message, false);
+            setBoxStyle(frameEl, startFrame);
+          });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
+  function avoidDrawingFrame(box) {
+    const frame = (state.deckLayout && state.deckLayout.drawing_frame) || null;
+    let next = clampPptBox(box);
+    if (!frame || !boxesOverlap(next, frame)) return next;
+    const frameRight = frame.x + frame.w;
+    const frameBottom = frame.y + frame.h;
+    if (next.x < frame.x) next.x = Math.max(0, frame.x - next.w - 0.012);
+    else next.x = Math.min(1 - next.w, frameRight + 0.012);
+    if (boxesOverlap(next, frame)) {
+      if (next.y < frame.y) next.y = Math.max(0, frame.y - next.h - 0.012);
+      else next.y = Math.min(1 - next.h, frameBottom + 0.012);
+    }
+    return clampPptFrame(next);
+  }
+
+  function boxesOverlap(a, b) {
+    return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+  }
+
+  function selectedPptElementPatch(elementKey, box) {
+    const slide = currentPptSlide() || {};
+    const elements = JSON.parse(JSON.stringify(slide.elements || {}));
+    if (elementKey.startsWith("supporting_image:")) {
+      const id = elementKey.split(":")[1];
+      elements.supporting_images = (elements.supporting_images || []).map((item) =>
+        item.id === id ? { ...box, id } : item
+      );
+    } else {
+      elements[elementKey] = box;
+    }
+    return elements;
+  }
+
+  function bindPptElementInteractions(slideEl) {
+    slideEl.querySelectorAll("[data-ppt-element]").forEach((el) => {
+      if (el.dataset.pptElementBound === "true" || el.dataset.pptDrawingFrame === "true") return;
+      el.dataset.pptElementBound = "true";
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        state.pptSelectedElement = el.dataset.pptElement === "supporting_image"
+          ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+          : el.dataset.pptElement || "";
+        renderPptSelection(slideEl);
+        renderPptControls();
+      });
+      el.addEventListener("mousedown", (event) => {
+        const elementType = el.dataset.pptElement;
+        if (!elementType || elementType === "text" && event.target.closest("textarea,input")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        state.pptSelectedElement = elementType === "supporting_image"
+          ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+          : elementType;
+        renderPptSelection(slideEl);
+        const handle = event.target.closest("[data-ppt-element-handle]");
+        const mode = handle ? handle.dataset.pptElementHandle || "se" : "move";
+        const slideRect = slideEl.getBoundingClientRect();
+        const current = {
+          x: parseFloat(el.style.left) / 100,
+          y: parseFloat(el.style.top) / 100,
+          w: parseFloat(el.style.width) / 100,
+          h: parseFloat(el.style.height) / 100,
+        };
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let nextBox = current;
+        const onMove = (moveEvent) => {
+          const dx = (moveEvent.clientX - startX) / slideRect.width;
+          const dy = (moveEvent.clientY - startY) / slideRect.height;
+          nextBox = mode === "move"
+            ? avoidDrawingFrame({ ...current, x: current.x + dx, y: current.y + dy })
+            : avoidDrawingFrame(resizePptFrame(current, mode, dx, dy));
+          setBoxStyle(el, nextBox);
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          saveDeckLayout({
+            drawing_type: drawingType(),
+            slide: {
+              elements: selectedPptElementPatch(state.pptSelectedElement, nextBox),
+              manual_overrides: true,
+            },
+          }).catch((err) => setStatus(err.message, false));
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+    renderPptSelection(slideEl);
+  }
+
+  function renderPptSelection(slideEl) {
+    slideEl.querySelectorAll("[data-ppt-element]").forEach((el) => {
+      const key = el.dataset.pptElement === "supporting_image"
+        ? `supporting_image:${el.dataset.pptSupportingId || ""}`
+        : el.dataset.pptElement || "";
+      el.classList.toggle("ppt-el-selected", key === state.pptSelectedElement);
+    });
+  }
+
+  function confirmPptGlobalChange() {
+    return window.confirm("图纸位置和大小会应用到全部图纸页，并可能影响现有图例、文本、配图排版。是否继续？");
+  }
+
+  async function saveCurrentPptText() {
+    const input = $("#pptSlideText");
+    await saveDeckLayout({
+      drawing_type: drawingType(),
+      slide: { text: input ? input.value : "" },
+    });
+    setStatus("已保存PPT图纸说明。");
+  }
+
+  async function saveCurrentPptTypography() {
+    const slide = currentPptSlide() || {};
+    const typography = JSON.parse(JSON.stringify(slide.typography || {}));
+    typography.body = typography.body || {};
+    const size = Number($("#pptTextFontSize")?.value || typography.body.size || 12);
+    typography.body.size = Math.max(8, Math.min(22, Math.round(size)));
+    typography.body.color = safeCssColor($("#pptTextColor")?.value, typography.body.color || "#3A3732");
+    await saveDeckLayout({
+      drawing_type: drawingType(),
+      slide: { typography, manual_overrides: true },
+    });
+    setStatus("已更新本页PPT说明文字样式。");
+  }
+
+  async function savePptAccent() {
+    const color = safeCssColor($("#pptAccentColor")?.value, "#D9882B");
+    await saveDeckLayout({ typography_accent: color });
+    setStatus("已更新全局PPT品牌色。");
+  }
+
+  async function applyPptTemplate(templateSide) {
+    if (!templateSide || !state.deckLayout || templateSide === state.deckLayout.template_side) return;
+    if (!confirmPptGlobalChange()) {
+      renderPptControls();
+      return;
+    }
+    await saveDeckLayout({ template_side: templateSide });
+    setStatus("已更新全局PPT版式，所有页面已标记为需重新排版。");
   }
 
   function presetMatchesContext(preset, specKey, context = {}) {
@@ -1042,10 +1542,6 @@
     const objectType = context.objectType || "";
     if (specKey === "functional_zone") return kind === "functional_zone" || kind === "all";
     if (!kind || kind === "all" || kind === specKey || kind === toolId || kind === objectType) return true;
-    if (toolId === "open_path" && ["vehicle_flow", "pedestrian_flow", "underground_flow", "fire_route_line", "runoff_line", "ecological_ditch_line"].includes(kind)) return true;
-    if (toolId === "closed_path" && ["planting_zone", "facility_zone", "sponge_zone", "accessible_facility_zone", "civil_defense_zone"].includes(kind)) return true;
-    if (toolId === "circle" && ["landscape_node", "trash_collection_point", "accessible_point"].includes(kind)) return true;
-    if (toolId === "triangle" && kind === "entrance_marker") return true;
     return false;
   }
 
@@ -1060,8 +1556,12 @@
 
   function renderStylePresetSwatch(preset, specKey, context) {
     const geometry = presetGeometryFor(specKey, context);
-    const objectType = preset.kind || context.objectType || specKey;
-    const style = Model.normalizeStyleHints({ ...(preset.hints || {}) }, objectType);
+    const objectType = context.objectType || preset.objectType || preset.kind || specKey;
+    const style = sanitizeArrowStyle(
+      Model.normalizeStyleHints({ ...(preset.hints || {}) }, objectType),
+      context.toolId || specKey,
+      objectType,
+    );
     return `
       <svg data-style-preset-swatch viewBox="0 0 24 16" aria-hidden="true">
         ${renderGenericLegendSwatch({
@@ -1082,12 +1582,15 @@
 
   function renderStylePresetControls(specKey, style, context = {}) {
     const presets = allStylePresetsFor(specKey, context);
+    const loadError = state.stylePresetLoadError || "";
     return `
       <div class="style-section-title">预设</div>
       <div class="zone-tool-group style-presets" data-style-presets="true">
         <div class="style-preset-list">
           ${
-            presets.length
+            loadError
+              ? `<span class="control-empty">预设加载失败：${escapeHtml(loadError)}</span>`
+              : presets.length
               ? presets
                   .map(
                     (preset) => `
@@ -1113,9 +1616,6 @@
         <div class="style-preset-save">
           <input id="stylePresetName" placeholder="另存当前样式">
           <button type="button" id="saveStylePreset">保存</button>
-        </div>
-        <div class="style-preset-import">
-          <input id="stylePresetImportFile" type="file" accept=".json,application/json">
         </div>
       </div>
     `;
@@ -1479,23 +1979,6 @@
         }
       });
     }
-    const importPresetFile = $("#stylePresetImportFile");
-    if (importPresetFile) {
-      importPresetFile.addEventListener("change", async () => {
-        const file = importPresetFile.files && importPresetFile.files[0];
-        if (!file) return;
-        try {
-          const library = JSON.parse(await file.text());
-          await importStylePresetLibrary(library);
-          renderSpecificTools();
-          setStatus(`已导入样式预设到 ${state.stylePresetPath || "JSON"}。`);
-        } catch (err) {
-          setStatus(err.message || "导入样式预设失败。", false);
-        } finally {
-          importPresetFile.value = "";
-        }
-      });
-    }
     document.querySelectorAll("[data-style-segment]").forEach((button) => {
       button.addEventListener("click", () => {
         const key = button.dataset.styleSegment;
@@ -1597,7 +2080,7 @@
   function updateActiveStyle(toolId, objectType, patch) {
     const key = draftKey(toolId, objectType);
     const current = draftStyleFor(objectType, toolId);
-    const next = Model.normalizeStyleHints({ ...current, ...patch }, objectType);
+    const next = sanitizeArrowStyle(Model.normalizeStyleHints({ ...current, ...patch }, objectType), toolId, objectType);
     state.styleDrafts[key] = Model.cloneStyle(next);
     state.lastStyles[objectType] = Model.cloneStyle(next);
     const selected = selectedObject();
@@ -1765,7 +2248,11 @@
       .filter((obj) => obj.type !== "functional_zone")
       .map((obj) => ({
         ...obj,
-        style_hints: Model.normalizeStyleHints(obj.style_hints || {}, obj.type),
+        style_hints: sanitizeArrowStyle(
+          Model.normalizeStyleHints(obj.style_hints || {}, obj.type),
+          obj.type,
+          obj.type,
+        ),
       }))
       .filter((obj) => {
         const style = obj.style_hints || {};
@@ -1843,11 +2330,12 @@
           ${dashArrayValue ? `stroke-dasharray="${dashArrayValue}"` : ""}
         />`;
     }
-    const arrow = style.end_arrow
+    const showEndArrow = style.end_arrow && canUseArrowStyle(group.type, group.type);
+    const arrow = showEndArrow
       ? `<polygon points="21,8 17,5.5 17,10.5" fill="${stroke}"></polygon>`
       : "";
     return `
-      <line x1="3" y1="8" x2="${style.end_arrow ? 18 : 21}" y2="8"
+      <line x1="3" y1="8" x2="${showEndArrow ? 18 : 21}" y2="8"
         stroke="${stroke}"
         stroke-width="${strokeWidth}"
         stroke-linecap="${style.stroke_style === "dashed" ? "butt" : "round"}"
@@ -1880,6 +2368,7 @@
     const container = $("#zoneLegendPreview");
     if (!container) return;
     container.innerHTML = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
+    if (state.pptPreviewMode) renderPptPreview();
   }
 
   function selectedObject() {
@@ -1971,6 +2460,10 @@
       "#clearDraft",
       "#sendToAgent",
       "#exportDrawing",
+      "#togglePptPreview",
+      "#savePptSlideText",
+      "#pptReflowCurrent",
+      "#pptReflowAll",
       "#canvasZoomOut",
       "#canvasZoomReset",
       "#canvasZoomIn",
@@ -2182,7 +2675,10 @@
     renderObjectList();
     refreshLegendPreview();
     renderAvailability();
-    loadSupportingImages(drawingType()).catch((err) => setStatus(err.message, false));
+    loadDeckLayout().catch((err) => setPptStatus(err.message, false));
+    loadSupportingImages(drawingType())
+      .then(() => renderPptPreview())
+      .catch((err) => setStatus(err.message, false));
     if (hasBaseImage) {
       setStatus(data.exists ? "已加载已保存的草图。" : "已初始化空白草图。");
       requestAnimationFrame(() => renderCanvasLayers("load-drawing-raf"));
@@ -2346,6 +2842,7 @@
     state.supportingImages[type] = Array.isArray(data.images) ? data.images : [];
     state.supportingLoaded[type] = true;
     if (type === drawingType()) renderSpecificTools();
+    if (type === drawingType()) renderPptPreview();
   }
 
   async function uploadSupportingImage() {
@@ -3819,6 +4316,32 @@
 
     $("#workbenchLoad").addEventListener("click", () => loadDrawing().catch((err) => setStatus(err.message, false)));
     $("#workbenchSave").addEventListener("click", () => saveDrawing().catch((err) => setStatus(err.message, false)));
+    $("#togglePptPreview")?.addEventListener("click", () => {
+      state.pptPreviewMode = !state.pptPreviewMode;
+      renderPptControls();
+      renderPptPreview();
+      if (state.pptPreviewMode && !state.deckLayout) {
+        setPptStatus("正在加载PPT预览...", true);
+        loadDeckLayout().catch((err) => setPptStatus(err.message, false));
+      }
+    });
+    $("#savePptSlideText")?.addEventListener("click", () => saveCurrentPptText().catch((err) => setStatus(err.message, false)));
+    $("#pptTextFontSize")?.addEventListener("change", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));
+    $("#pptTextColor")?.addEventListener("input", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));
+    $("#pptAccentColor")?.addEventListener("input", () => savePptAccent().catch((err) => setStatus(err.message, false)));
+    $("#pptReflowCurrent")?.addEventListener("click", () =>
+      reflowDeckLayout("current")
+        .then(() => setStatus("已重新排版当前PPT页。"))
+        .catch((err) => setStatus(err.message, false)),
+    );
+    $("#pptReflowAll")?.addEventListener("click", () =>
+      reflowDeckLayout("all")
+        .then(() => setStatus("已重新排版全部PPT页。"))
+        .catch((err) => setStatus(err.message, false)),
+    );
+    document.querySelectorAll("[data-ppt-template]").forEach((button) => {
+      button.addEventListener("click", () => applyPptTemplate(button.dataset.pptTemplate).catch((err) => setStatus(err.message, false)));
+    });
     $("#uploadBaseImage").addEventListener("click", () => uploadBaseImage().catch((err) => setStatus(err.message, false)));
     $("#sendToAgent").addEventListener("click", () => sendToAgent().catch((err) => setTaskStatus(err.message, false)));
     $("#exportDrawing").addEventListener("click", () => exportDrawing().catch((err) => setStatus(err.message, false)));
@@ -4002,6 +4525,22 @@
     },
     getActiveDrawingType() {
       return drawingType();
+    },
+    async switchDrawingType(next) {
+      await setCurrentDrawing(next, { skipDirty: true });
+      return drawingType();
+    },
+    async reloadStylePresets() {
+      await loadStylePresets();
+      renderDrawingWorkspace();
+      return JSON.parse(JSON.stringify(state.stylePresets || []));
+    },
+    async saveCurrentDrawing() {
+      return saveDrawing();
+    },
+    async loadCurrentDrawing() {
+      await loadDrawing();
+      return JSON.parse(JSON.stringify(state.objects));
     },
   };
 

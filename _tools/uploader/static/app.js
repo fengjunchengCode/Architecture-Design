@@ -1336,6 +1336,7 @@ function summarizeAutoDraftV2(data) {
     ? `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}&t=${cacheKey}`
     : null;
   const radiusLabel = data.radius_m ? `${Number(data.radius_m) / 1000}km` : "未记录";
+  const workbenchUrl = data.ok && data.drawing_workbench_url ? data.drawing_workbench_url : "";
   return `
     <div class="summary-card ${data.ok ? "ok" : "warn"}">
       <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
@@ -1345,10 +1346,12 @@ function summarizeAutoDraftV2(data) {
         ${resultRow("输出目录", data.output_dir || "无")}
         ${resultRow("截图", data.screenshot_path || "未捕获")}
         ${resultRow("JSON", data.json_path || "无")}
+        ${resultRow("工作台底图", data.drawing_base_path || "未同步")}
       </div>
       ${screenshotUrl ? `<div class="result-section"><b>卫星截图预览</b><br><a class="snapshot-result-link" href="${screenshotUrl}" target="_blank" rel="noreferrer"><img src="${screenshotUrl}" alt="satellite screenshot"></a></div>` : ""}
       ${data.summary ? `<div class="result-section"><b>摘要</b><p>${escapeHtml(data.summary)}</p></div>` : ""}
-      <p class="result-next">${data.ok ? "快照已保存到 05_output/location_analysis/，包含 satellite_1km/2km.png 和 location_analysis_draft.json。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
+      ${workbenchUrl ? `<div class="result-section"><a class="button-link" href="${escapeHtml(workbenchUrl)}">进入区位分析工作台</a></div>` : ""}
+      <p class="result-next">${data.ok ? "快照已保存到 05_output/location_analysis/，并已同步为图纸工作台底图。道路和水体需要在工作台中绘制或复核。" : escapeHtml(data.error || "请先生成 S1 高德上下文。")}</p>
     </div>
   `;
 }
@@ -1405,6 +1408,7 @@ function renderS1SnapshotPreviewV2(data) {
   const cacheKey = encodeURIComponent(data.generated_at || Date.now());
   const src = `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}&t=${cacheKey}`;
   const radiusLabel = data.radius_m ? `${Number(data.radius_m) / 1000}km` : "";
+  const workbenchUrl = data.drawing_workbench_url || `/?project=${encodeURIComponent(data.project_code)}&page=workbench&drawing=location_analysis`;
   panel.innerHTML = `
     <div class="snapshot-preview-head">
       <b>区位分析预览</b>
@@ -1413,7 +1417,10 @@ function renderS1SnapshotPreviewV2(data) {
     <button type="button" class="snapshot-preview-button" title="点击放大预览">
       <img src="${src}" alt="S1 区位分析快照">
     </button>
-    <span class="snapshot-preview-tip">点击图片放大查看</span>
+    <div class="snapshot-preview-actions">
+      <span class="snapshot-preview-tip">点击图片放大查看</span>
+      <a class="button-link" href="${escapeHtml(workbenchUrl)}">进入区位分析工作台</a>
+    </div>
   `;
   const button = panel.querySelector(".snapshot-preview-button");
   if (button) button.addEventListener("click", () => openSnapshotLightbox(src, `S1 区位分析预览 ${radiusLabel}`.trim()));

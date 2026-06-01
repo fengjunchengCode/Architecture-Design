@@ -35,6 +35,15 @@ from _tools.drawing_workbench.registry import (
     default_base_path_for,
     default_object_style,
 )
+from _tools.drawing_workbench.deck_layout import (
+    export_deck_pptx,
+    layout_rel_path,
+    load_deck_layout,
+    reflow_deck,
+    save_deck_layout,
+    set_drawing_frame,
+    set_template_side,
+)
 from _tools.drawing_workbench.schema import (
     drawing_output_paths,
     empty_drawing,
@@ -396,6 +405,67 @@ def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path)
     return {"source": "server_tianditu_tiles", "zoom": zoom, "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}"}
 
 
+def sync_location_analysis_drawing(proj: Path, code: str, screenshot_rel: str, radius_m: int) -> dict[str, object]:
+    """Use the generated S1 snapshot as the editable workbench base image."""
+    from PIL import Image
+
+    suffix = "1km" if radius_m == 1000 else "2km"
+    source_path = (proj / screenshot_rel).resolve()
+    if proj.resolve() not in source_path.parents or not source_path.exists():
+        raise ValueError("区位分析截图不存在，无法同步到图纸工作台")
+
+    base_rel = f"05_output/drawings/base/location_analysis_{suffix}.png"
+    base_path = proj / base_rel
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+    base_path.write_bytes(source_path.read_bytes())
+
+    with Image.open(base_path) as image:
+        natural_width, natural_height = image.size
+
+    rels = drawing_output_paths("location_analysis")
+    semantic_path = proj / rels["semantic"]
+    semantic_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if semantic_path.exists():
+        try:
+            drawing = normalize_drawing(json.loads(semantic_path.read_text(encoding="utf-8")), project_code=code)
+        except Exception:
+            drawing = empty_drawing(
+                project_code=code,
+                drawing_type="location_analysis",
+                base_path=base_rel,
+                natural_width=natural_width,
+                natural_height=natural_height,
+                base_source="sat_export",
+            )
+    else:
+        drawing = empty_drawing(
+            project_code=code,
+            drawing_type="location_analysis",
+            base_path=base_rel,
+            natural_width=natural_width,
+            natural_height=natural_height,
+            base_source="sat_export",
+        )
+
+    drawing["base_image"] = {
+        "path": base_rel,
+        "natural_width": natural_width,
+        "natural_height": natural_height,
+        "source": "sat_export",
+    }
+    drawing = normalize_drawing(drawing, project_code=code)
+    semantic_path.write_text(json.dumps(drawing, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "drawing_type": "location_analysis",
+        "drawing_base_path": base_rel,
+        "drawing_semantic_path": rels["semantic"],
+        "drawing_object_count": len(drawing.get("objects", [])),
+        "drawing_workbench_url": f"/?project={code}&page=workbench&drawing=location_analysis",
+    }
+
+
 def content_type_for(path: Path) -> str:
     mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
     if path.suffix.lower() == ".svg":
@@ -514,6 +584,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_drawing_registry()
             elif parsed.path == "/api/drawing/style-presets":
                 self.handle_style_presets_load()
+            elif parsed.path == "/api/drawing/deck-layout":
+                self.handle_deck_layout_load(parsed.query)
             elif parsed.path == "/api/drawing/load":
                 self.handle_drawing_load(parsed.query)
             elif parsed.path == "/api/drawing/supporting/list":
@@ -570,6 +642,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_style_presets_delete()
             elif parsed.path == "/api/drawing/style-presets/import":
                 self.handle_style_presets_import()
+            elif parsed.path == "/api/drawing/deck-layout/save":
+                self.handle_deck_layout_save()
+            elif parsed.path == "/api/drawing/deck-layout/reflow":
+                self.handle_deck_layout_reflow()
+            elif parsed.path == "/api/drawing/deck-layout/export":
+                self.handle_deck_layout_export()
             elif parsed.path == "/api/style/save":
                 self.handle_style_save()
             else:
@@ -736,6 +814,79 @@ class UploaderHandler(BaseHTTPRequestHandler):
         next_library = write_style_preset_library(list(merged.values()))
         rel = str(style_presets_path().relative_to(REPO_ROOT)).replace("\\", "/")
         self.send_json({"ok": True, "path": rel, "imported": len(imported), **next_library})
+
+    def handle_deck_layout_load(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        self.send_json({
+            "ok": True,
+            "project": code,
+            "path": layout_rel_path(),
+            "exists": (proj / layout_rel_path()).exists(),
+            "layout": layout,
+        })
+
+    def handle_deck_layout_save(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        if isinstance(payload.get("layout"), dict):
+            layout = payload["layout"]
+        drawing_type = str(payload.get("drawing_type") or "").strip()
+        if drawing_type:
+            if drawing_type not in DRAWING_TYPES:
+                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+            slide_patch = payload.get("slide") if isinstance(payload.get("slide"), dict) else {}
+            slide = (layout.get("slides") or {}).get(drawing_type) or {}
+            if "text" in slide_patch:
+                slide["text"] = str(slide_patch.get("text") or "")
+            if "title" in slide_patch:
+                slide["title"] = str(slide_patch.get("title") or "")
+            if isinstance(slide_patch.get("typography"), dict):
+                slide["typography"] = slide_patch["typography"]
+            if isinstance(slide_patch.get("elements"), dict):
+                slide["elements"] = slide_patch["elements"]
+            if "manual_overrides" in slide_patch:
+                slide["manual_overrides"] = bool(slide_patch.get("manual_overrides"))
+            layout.setdefault("slides", {})[drawing_type] = slide
+        if isinstance(payload.get("title_style"), dict):
+            layout["title_style"] = payload["title_style"]
+        if "typography_accent" in payload:
+            layout["typography_accent"] = str(payload.get("typography_accent") or "")
+        if "template_side" in payload:
+            layout = set_template_side(layout, str(payload.get("template_side") or ""))
+        if isinstance(payload.get("drawing_frame"), dict):
+            layout = set_drawing_frame(layout, payload["drawing_frame"])
+        saved = save_deck_layout(proj, layout, code)
+        self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
+
+    def handle_deck_layout_reflow(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        scope = str(payload.get("scope") or "current")
+        drawing_type = str(payload.get("drawing_type") or "").strip()
+        if scope == "all":
+            drawing_type_arg = None
+        else:
+            if drawing_type not in DRAWING_TYPES:
+                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+            drawing_type_arg = drawing_type
+        layout = reflow_deck(proj, layout, drawing_type=drawing_type_arg)
+        saved = save_deck_layout(proj, layout, code)
+        self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
+
+    def handle_deck_layout_export(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        layout = load_deck_layout(proj, code)
+        result = export_deck_pptx(proj, layout, code)
+        self.send_json({"ok": True, "project": code, **result})
 
     def handle_supporting_list(self, query: str) -> None:
         params = parse_qs(query)
@@ -1209,19 +1360,30 @@ class UploaderHandler(BaseHTTPRequestHandler):
         output_dir = proj / "05_output" / "location_analysis"
         output_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = None
-        snapshot_meta: dict[str, object] = {"source": "client_canvas"}
-        if screenshot_data_url and not screenshot_data_url.startswith("data:image/png;base64,"):
-            self.send_json(
-                {"ok": False, "error": "未收到有效的天地图截图，已停止生成 location_analysis。"},
-                HTTPStatus.BAD_REQUEST,
-            )
-            return
-        if screenshot_data_url:
+        snapshot_meta: dict[str, object] = {}
+        suffix = "1km" if radius_value == 1000 else "2km"
+        png_path = output_dir / f"satellite_{suffix}.png"
+        try:
+            snapshot_meta = generate_tdt_location_snapshot(proj, radius_value, png_path)
+            if client_capture_error:
+                snapshot_meta["client_capture_error"] = client_capture_error
+            if screenshot_data_url:
+                snapshot_meta["client_capture_ignored"] = "server_tianditu_tiles used for fixed-size radius snapshot"
+            screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
+        except Exception as server_exc:
+            if not screenshot_data_url or not screenshot_data_url.startswith("data:image/png;base64,"):
+                self.send_json(
+                    {
+                        "ok": False,
+                        "error": f"天地图快照生成失败：{server_exc}",
+                        "client_capture_error": client_capture_error,
+                    },
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
             import base64
             try:
                 b64 = screenshot_data_url.split(",", 1)[1]
-                suffix = "1km" if radius_value == 1000 else "2km"
-                png_path = output_dir / f"satellite_{suffix}.png"
                 png_path.write_bytes(base64.b64decode(b64))
             except Exception as exc:
                 self.send_json(
@@ -1229,20 +1391,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
-            screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
-        if screenshot_path is None:
-            try:
-                suffix = "1km" if radius_value == 1000 else "2km"
-                png_path = output_dir / f"satellite_{suffix}.png"
-                snapshot_meta = generate_tdt_location_snapshot(proj, radius_value, png_path)
-                if client_capture_error:
-                    snapshot_meta["client_capture_error"] = client_capture_error
-            except Exception as exc:
-                self.send_json(
-                    {"ok": False, "error": f"天地图快照生成失败：{exc}", "client_capture_error": client_capture_error},
-                    HTTPStatus.BAD_REQUEST,
-                )
-                return
+            snapshot_meta = {
+                "source": "client_canvas_fallback",
+                "server_error": str(server_exc),
+            }
+            if client_capture_error:
+                snapshot_meta["client_capture_error"] = client_capture_error
             screenshot_path = str(png_path.relative_to(proj)).replace("\\", "/")
         # Run analysis script
         args = ["_tools/s1_location_analysis.py", code, "--json", "--write"]
@@ -1254,7 +1408,13 @@ class UploaderHandler(BaseHTTPRequestHandler):
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
         result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})
         result["snapshot"] = snapshot_meta
-        self.send_json(result, HTTPStatus.OK if rc == 0 else HTTPStatus.BAD_REQUEST)
+        if result["ok"] and screenshot_path:
+            try:
+                result.update(sync_location_analysis_drawing(proj, code, screenshot_path, radius_value))
+            except Exception as exc:
+                result["ok"] = False
+                result["error"] = f"区位分析底图同步到图纸工作台失败：{exc}"
+        self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
 
     def handle_spatial(self, query: str) -> None:
         params = parse_qs(query)

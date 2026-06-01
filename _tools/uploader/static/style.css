@@ -223,6 +223,8 @@ button:disabled,input:disabled,select:disabled{
 }
 .snapshot-preview-button:hover{border-color:var(--accent)}
 .s1-snapshot-preview img{width:100%; max-height:300px; object-fit:contain; display:block; background:#fff}
+.snapshot-preview-actions{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
+.snapshot-preview-actions .button-link{width:auto; min-height:34px; padding:7px 10px}
 .snapshot-preview-tip{font-size:12px; color:var(--muted)}
 .snapshot-result-link{display:inline-block; margin-top:8px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
 .snapshot-result-link img{display:block; max-width:400px; width:100%; height:auto}
