@@ -55,6 +55,27 @@
       fill_color: "#DCE8C8",
       stroke_color: "#7AA35A",
     },
+    location_road_line: {
+      fill_mode: "none",
+      stroke_color: "#FFFFFF",
+      stroke_width: 0.004,
+      legend_enabled: false,
+      inline_text: {
+        enabled: true,
+        text: "",
+        font_size: 0.022,
+        position: 0.5,
+        offset: [0, -0.018],
+      },
+    },
+    location_water_area: {
+      fill_mode: "translucent",
+      fill_color: "#2F8FA3",
+      fill_opacity: 0.48,
+      stroke_color: "#7FC7D9",
+      stroke_width: 0.003,
+      legend_enabled: false,
+    },
     planting_zone: {
       fill_mode: "translucent",
       fill_color: "#7CB342",

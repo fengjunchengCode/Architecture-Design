@@ -19,6 +19,14 @@ DRAWING_REGISTRY: dict[str, dict[str, Any]] = {
         "object_types": ["functional_zone"],
         "tools": ["closed_path"],
     },
+    "location_analysis": {
+        "label": "区位分析",
+        "status": "enabled",
+        "category": "context_b",
+        "default_base_path": "05_output/drawings/base/location_analysis_2km.png",
+        "object_types": ["location_road_line", "location_water_area", "text_label"],
+        "tools": ["open_path", "closed_path", "text_label"],
+    },
     "planting_design": {
         "label": "绿化设计图",
         "status": "enabled",
@@ -105,6 +113,16 @@ DRAWING_TYPES: set[str] = set(DRAWING_REGISTRY.keys())
 OBJECT_TYPE_REGISTRY: dict[str, dict[str, Any]] = {
     "functional_zone": {
         "label": "功能区",
+        "geometry": "path",
+        "closed": True,
+    },
+    "location_road_line": {
+        "label": "区位道路",
+        "geometry": "path",
+        "closed": False,
+    },
+    "location_water_area": {
+        "label": "区位水体",
         "geometry": "path",
         "closed": True,
     },
@@ -282,6 +300,27 @@ _OBJECT_STYLE_OVERRIDES: dict[str, dict[str, Any]] = {
         "fill_mode": "translucent",
         "fill_color": "#DCE8C8",
         "stroke_color": "#7AA35A",
+    },
+    "location_road_line": {
+        "fill_mode": "none",
+        "stroke_color": "#FFFFFF",
+        "stroke_width": 0.004,
+        "legend_enabled": False,
+        "inline_text": {
+            "enabled": True,
+            "text": "",
+            "font_size": 0.022,
+            "position": 0.5,
+            "offset": [0, -0.018],
+        },
+    },
+    "location_water_area": {
+        "fill_mode": "translucent",
+        "fill_color": "#2F8FA3",
+        "fill_opacity": 0.48,
+        "stroke_color": "#7FC7D9",
+        "stroke_width": 0.003,
+        "legend_enabled": False,
     },
     "planting_zone": {
         "fill_mode": "translucent",
