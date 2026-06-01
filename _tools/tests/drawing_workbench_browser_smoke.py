@@ -1034,6 +1034,7 @@ def assert_ppt_preview_basics(page) -> None:
     assert page.locator("[data-ppt-drawing-plate='true']").count() == 1, "PPT preview should render a drawing plate"
     object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
     assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
+    assert_preview_autolayout_button(page)
     assert_title_and_accent_global(page)
     dialogs: list[str] = []
 
@@ -1085,6 +1086,97 @@ def assert_preview_legend_clean(page) -> None:
 def set_selected_zone_label(page, label: str) -> None:
     page.fill("#objectLabel", label)
     page.eval_on_selector("#objectLabel", "(el) => el.dispatchEvent(new Event('change', { bubbles: true }))")
+
+
+def assert_preview_autolayout_button(page) -> None:
+    button = page.locator("#pptPreviewPanel #pptPreviewAutolayout")
+    assert button.count() == 1, "PPT preview should expose an auto layout button inside the preview panel"
+    assert "自动排版" in button.inner_text(), "preview auto layout button should use user-facing 自动排版 copy"
+
+    page.evaluate(
+        """async (project) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            const slide = layout.slides.functional_zoning;
+            slide.needs_reflow = true;
+            slide.manual_overrides = false;
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        TEST_PROJECT,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    page.click("#pptPreviewAutolayout")
+    page.wait_for_function(
+        """(project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout.slides.functional_zoning.needs_reflow === false)""",
+        arg=TEST_PROJECT,
+        timeout=10000,
+    )
+
+    manual_x = 0.742
+    page.evaluate(
+        """async ({project, manualX}) => {
+            const current = await fetch(`/api/drawing/deck-layout?project=${project}`).then((r) => r.json());
+            const layout = current.layout;
+            const slide = layout.slides.functional_zoning;
+            slide.needs_reflow = true;
+            slide.manual_overrides = true;
+            slide.elements.legend.x = manualX;
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        {"project": TEST_PROJECT, "manualX": manual_x},
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
+    dialogs: list[str] = []
+
+    def dismiss_dialog(dialog) -> None:
+        dialogs.append(dialog.message)
+        dialog.dismiss()
+
+    page.on("dialog", dismiss_dialog)
+    page.click("#pptPreviewAutolayout")
+    page.wait_for_timeout(200)
+    page.remove_listener("dialog", dismiss_dialog)
+    assert dialogs and "手动调整" in dialogs[-1], f"preview auto layout should reuse manual override warning: {dialogs!r}"
+    layout = page.evaluate(
+        """async (project) => fetch(`/api/drawing/deck-layout?project=${project}`)
+            .then((r) => r.json())
+            .then((data) => data.layout)""",
+        TEST_PROJECT,
+    )
+    slide = layout["slides"]["functional_zoning"]
+    assert slide["manual_overrides"] is True, f"cancelled preview auto layout should keep manual flag: {slide}"
+    assert abs(slide["elements"]["legend"]["x"] - manual_x) < 0.0001, (
+        f"cancelled preview auto layout should keep manual legend layout: {slide}"
+    )
+    slide["manual_overrides"] = False
+    slide["needs_reflow"] = False
+    page.evaluate(
+        """async ({project, layout}) => {
+            await fetch('/api/drawing/deck-layout/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, layout }),
+            });
+        }""",
+        {"project": TEST_PROJECT, "layout": layout},
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
+    page.click("#togglePptPreview")
 
 
 def assert_layout_warnings_visible(page) -> None:

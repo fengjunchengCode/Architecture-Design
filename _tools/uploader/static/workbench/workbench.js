@@ -4363,6 +4363,11 @@
         .then(() => setStatus("已重新排版当前PPT页。"))
         .catch((err) => setStatus(err.message, false)),
     );
+    $("#pptPreviewAutolayout")?.addEventListener("click", () =>
+      reflowDeckLayout("current")
+        .then(() => setStatus("已自动排版当前PPT页。"))
+        .catch((err) => setStatus(err.message, false)),
+    );
     $("#pptReflowAll")?.addEventListener("click", () =>
       reflowDeckLayout("all")
         .then(() => setStatus("已重新排版全部PPT页。"))
