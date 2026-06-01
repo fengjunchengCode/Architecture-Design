@@ -186,14 +186,15 @@ def main() -> int:
         reg = api_get("/api/drawing/registry")
         assert reg.get("ok"), f"registry not ok: {reg}"
         drawings = reg.get("drawings", {})
-        expected_types = [
-            "functional_zoning", "planting_design", "landscape_analysis",
-            "traffic_analysis", "fire_route", "vertical_analysis",
-            "supporting_facilities", "sponge_city", "accessibility_design",
-            "civil_defense",
+        required_types = [
+            "functional_zoning", "location_analysis", "planting_design",
+            "landscape_analysis", "traffic_analysis", "fire_route",
+            "vertical_analysis", "supporting_facilities", "sponge_city",
+            "accessibility_design", "civil_defense",
         ]
-        for dt in expected_types:
+        for dt in required_types:
             assert dt in drawings, f"missing drawing type: {dt}"
+        expected_types = list(drawings.keys())
         print(f"OK: registry has {len(drawings)} drawing types")
 
         # Test load for each drawing type
@@ -275,6 +276,11 @@ def main() -> int:
                 "geometry": {"kind": "path", "closed": True, "coords": [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3]]},
                 "label": "test",
             },
+            "location_analysis": {
+                "type": "location_road_line",
+                "geometry": {"kind": "path", "closed": False, "coords": [[0.1, 0.2], [0.4, 0.35]]},
+                "label": "test",
+            },
             "planting_design": {
                 "type": "planting_zone",
                 "geometry": {"kind": "path", "closed": True, "coords": [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3]]},
@@ -323,12 +329,16 @@ def main() -> int:
         }
 
         for dt, obj in payloads.items():
+            base_paths = {
+                "civil_defense": "05_output/drawings/base/civil_defense_base.jpg",
+                "location_analysis": "05_output/drawings/base/location_analysis_2km.png",
+            }
             drawing = {
                 "schema_version": "1.2",
                 "drawing_type": dt,
                 "project_code": TEST_PROJECT,
                 "base_image": {
-                    "path": "05_output/drawings/base/civil_defense_base.jpg" if dt == "civil_defense" else "05_output/drawings/base/master_plan.jpg",
+                    "path": base_paths.get(dt, "05_output/drawings/base/master_plan.jpg"),
                     "natural_width": 100,
                     "natural_height": 100,
                     "source": "user_upload",

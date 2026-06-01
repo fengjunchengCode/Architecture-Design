@@ -170,6 +170,17 @@
                   <button id="checkAmap">检查高德 Key</button>
                   <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
                 </div>
+                <label>
+                  <span>区位分析范围</span>
+                  <select id="s1SnapshotRadius">
+                    <option value="2000" selected>2km</option>
+                    <option value="1000">1km</option>
+                  </select>
+                </label>
+                <div class="inline-actions">
+                  <button id="autoDraftS1" class="primary">生成 S1 区位分析草稿</button>
+                </div>
+                <div id="s1SnapshotPreview" class="s1-snapshot-preview"></div>
                 <article class="bucket required" data-bucket="location_map">
                   <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
                   <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
@@ -183,12 +194,32 @@
               </aside>
               <section class="amap-panel" id="s1AmapPanel">
                 <div class="amap-head">
-                  <b>内嵌高德地图</b>
+                  <b>内嵌地图</b>
                   <span id="s1AmapStatus">等待中心点</span>
+                </div>
+                <div class="amap-toolbar-row">
+                  <div class="amap-search-wrap">
+                    <input id="s1AmapSearch" placeholder="搜索地名，如：布达拉宫" autocomplete="off">
+                    <div id="s1AmapSearchResults" class="amap-search-results" hidden></div>
+                  </div>
+                </div>
+                <div class="amap-toolbar-row">
+                  <div class="amap-toggle-group">
+                    <button id="s1MapStd" class="amap-toggle-btn active" title="标准地图">标准</button>
+                    <button id="s1MapTdt" class="amap-toggle-btn" title="天地图高清卫星">高清卫星</button>
+                  </div>
+                  <button id="s1Map3D" class="amap-sm-btn" title="切换3D视角">3D</button>
+                  <button id="s1DistrictBtn" class="amap-sm-btn" title="显示行政区边界">区界</button>
+                  <button id="s1DrawBtn" class="amap-sm-btn" title="标记范围">标范围</button>
+                  <button id="s1ScreenshotBtn" class="amap-sm-btn" title="截图保存">截图</button>
                 </div>
                 <div class="amap-map" id="s1AmapMap">
                   <div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div>
                 </div>
+                <div class="amap-map" id="s1TdtMap" style="display:none">
+                  <div class="map-empty">天地图高清卫星</div>
+                </div>
+                <p class="amap-geocoder-result" id="s1AmapGeocoder"></p>
                 <p class="map-hint" id="s1AmapHint">点击地图会把 GCJ-02 坐标写入上方中心点输入框。</p>
               </section>
             </div>

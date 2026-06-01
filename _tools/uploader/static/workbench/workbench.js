@@ -1246,7 +1246,9 @@
     if (dock) dock.hidden = state.pptPreviewMode;
     if (!state.pptPreviewMode) return;
     if (!state.deckLayout) {
-      slideEl.innerHTML = '<div class="ppt-empty-note">请先打开项目并加载PPT预览。</div>';
+      slideEl.innerHTML = projectCode()
+        ? '<div class="ppt-empty-note">正在加载PPT预览...</div>'
+        : '<div class="ppt-empty-note">请先打开项目。</div>';
       return;
     }
     const slide = currentPptSlide();
@@ -4351,6 +4353,7 @@
       renderPptControls();
       renderPptPreview();
       if (state.pptPreviewMode && !state.deckLayout) {
+        setPptStatus("正在加载PPT预览...", true);
         loadDeckLayout().catch((err) => setPptStatus(err.message, false));
       }
     });

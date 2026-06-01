@@ -25,7 +25,7 @@ BASE_SOURCES = {"user_upload", "cad_export", "sat_export", "render"}
 GEOMETRY_KINDS = {"path", "circle", "triangle", "point", "text"}
 SEGMENT_KINDS = {"line", "quadratic"}
 CONFIDENCE_LEVELS = {"low", "medium", "high"}
-OBJECT_SOURCES = {"user_sketch", "vision_inferred", "cad_extracted"}
+OBJECT_SOURCES = {"user_sketch", "agent_visual_draft", "vision_inferred", "cad_extracted"}
 QUADRATIC_SAMPLE_STEPS = 16
 
 # Legacy geometry kinds accepted on read

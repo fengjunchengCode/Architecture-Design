@@ -213,11 +213,41 @@ button:disabled,input:disabled,select:disabled{
 .spatial-box{border:1px solid var(--line); background:#fff; padding:14px; display:grid; gap:12px}
 .amap-panel{border:1px solid var(--line); background:rgba(247,243,234,.48); border-radius:6px; padding:10px; display:grid; gap:8px}
 .amap-panel.disabled{opacity:.74}
+.s1-snapshot-preview{display:grid; gap:8px}
+.snapshot-preview-head{display:grid; gap:3px; font-size:12px; color:var(--muted)}
+.snapshot-preview-head b{font-size:14px; color:var(--text)}
+.snapshot-preview-head span{word-break:break-all}
+.snapshot-preview-button{
+  width:100%; min-height:0; padding:0; border:1px solid var(--line);
+  border-radius:6px; background:#fff; overflow:hidden; display:block;
+}
+.snapshot-preview-button:hover{border-color:var(--accent)}
+.s1-snapshot-preview img{width:100%; max-height:300px; object-fit:contain; display:block; background:#fff}
+.snapshot-preview-actions{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
+.snapshot-preview-actions .button-link{width:auto; min-height:34px; padding:7px 10px}
+.snapshot-preview-tip{font-size:12px; color:var(--muted)}
+.snapshot-result-link{display:inline-block; margin-top:8px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
+.snapshot-result-link img{display:block; max-width:400px; width:100%; height:auto}
+.snapshot-error{margin:0; color:var(--accent-2); font-size:13px; line-height:1.45}
+.snapshot-lightbox{
+  position:fixed; inset:0; z-index:200; background:rgba(22,20,18,.82);
+  padding:24px; place-items:center;
+}
+.snapshot-lightbox.open{display:grid}
+.snapshot-lightbox[hidden]{display:none}
+.snapshot-lightbox-panel{
+  width:min(96vw,1280px); max-height:94vh; display:grid; grid-template-rows:auto minmax(0,1fr);
+  gap:10px; background:#111; border:1px solid rgba(255,255,255,.28); border-radius:8px;
+  box-shadow:0 24px 80px rgba(0,0,0,.45); padding:12px;
+}
+.snapshot-lightbox-head{display:flex; align-items:center; justify-content:space-between; gap:12px; color:#fff}
+.snapshot-lightbox-head button{min-height:34px; padding:6px 12px; border-color:rgba(255,255,255,.42); background:rgba(255,255,255,.10); color:#fff}
+.snapshot-lightbox-panel img{max-width:100%; max-height:calc(94vh - 76px); object-fit:contain; background:#fff; justify-self:center}
 .amap-head{display:flex; justify-content:space-between; gap:10px; align-items:center}
 .amap-head span,.map-hint,.map-fallback{color:var(--muted); font-size:12px}
 .amap-map{width:100%; min-height:300px; border:1px solid var(--line); background:#fff; border-radius:6px; overflow:hidden; position:relative}
 .s2-map-panel .amap-map{min-height:340px}
-#s1AmapMap{min-height:max(420px,calc(100vh - var(--top-h) - 96px))}
+#s1AmapMap,#s1TdtMap{min-height:max(420px,calc(100vh - var(--top-h) - 96px))}
 .map-empty{position:absolute; inset:0; display:grid; place-items:center; padding:18px; color:var(--muted); font-size:13px; text-align:center; line-height:1.55}
 .map-hint{margin:0; line-height:1.45}
 .map-hint.warn{color:var(--accent-2)}
@@ -225,6 +255,23 @@ button:disabled,input:disabled,select:disabled{
 .active-candidate{border:1px dashed var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:7px 8px; font-size:13px; line-height:1.45}
 .amap-label{border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:4px; padding:2px 5px; font-size:12px; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px rgba(31,111,91,.16)}
 .s2-control-panel{position:sticky; top:18px; max-height:calc(100vh - 36px); overflow:auto}
+
+/* ===== AMAP TOOLBAR: search + toggle ===== */
+.amap-toolbar-row{display:flex; gap:8px; align-items:center}
+.amap-search-wrap{flex:1; position:relative}
+.amap-search-wrap input{width:100%; border:1px solid var(--line); border-radius:5px; padding:5px 9px; font:inherit; font-size:12px; background:#fff}
+.amap-search-wrap input:focus{border-color:var(--accent); outline:none}
+.amap-search-results{position:absolute; top:100%; left:0; right:0; z-index:20; background:#fff; border:1px solid var(--line); border-radius:0 0 5px 5px; max-height:220px; overflow:auto; box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.amap-search-results:empty{display:none}
+.amap-search-item{padding:6px 10px; font-size:12px; cursor:pointer; border-bottom:1px solid rgba(0,0,0,.05)}
+.amap-search-item:hover{background:rgba(31,111,91,.06)}
+.amap-search-item .sr-name{font-weight:600; color:var(--ink)}
+.amap-search-item .sr-addr{color:var(--muted); font-size:11px; margin-top:1px}
+.amap-toggle-group{display:flex; border:1px solid var(--line); border-radius:5px; overflow:hidden; flex-shrink:0}
+.amap-toggle-btn{padding:5px 10px; font-size:11px; border:none; background:#fff; cursor:pointer; color:var(--muted); transition:background .15s, color .15s}
+.amap-toggle-btn:not(:last-child){border-right:1px solid var(--line)}
+.amap-toggle-btn.active{background:var(--accent); color:#fff}
+.amap-toggle-btn:hover:not(.active){background:rgba(31,111,91,.06)}
 
 /* ===== BOX HEAD / ACTIONS ===== */
 .box-head,.inline-actions,.action-row,.page-actions,.result-title{display:flex; justify-content:space-between; gap:10px; align-items:center}
@@ -343,7 +390,7 @@ pre{margin:12px 0 0; max-height:300px; overflow:auto; border:1px solid var(--lin
   .cad-zoom-controls,.cad-preview-actions .primary{width:100%}
   .cad-zoom-controls button{flex:1}
   .s2-control-panel,.s2-workbench .cad-preview-panel{position:static; max-height:none}
-  .amap-map,.s2-map-panel .amap-map{min-height:320px}
+  .amap-map,.s2-map-panel .amap-map,#s1TdtMap{min-height:320px}
   .cad-preview-frame{min-height:320px; max-height:520px}
   .s2-workbench .cad-candidate-list{grid-template-columns:1fr; max-height:none}
 }
@@ -355,3 +402,10 @@ pre{margin:12px 0 0; max-height:300px; overflow:auto; border:1px solid var(--lin
   .studio-badge{display:none}
   .studio-title .crumb{max-width:200px}
 }
+
+/* ===== AMAP SMALL BUTTONS ===== */
+.amap-sm-btn{padding:4px 8px; font-size:11px; border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer; color:var(--muted); transition:background .15s, color .15s; flex-shrink:0}
+.amap-sm-btn:hover{background:rgba(31,111,91,.06); color:var(--ink)}
+.amap-sm-btn.active{background:var(--accent); color:#fff; border-color:var(--accent)}
+.amap-geocoder-result{margin:0; font-size:11px; color:var(--accent); min-height:1em; line-height:1.4}
+.amap-toolbar-row+.amap-toolbar-row{margin-top:4px}

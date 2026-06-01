@@ -40,6 +40,8 @@ def prepare_project() -> Path:
     base_dir = proj_dir / "05_output" / "drawings" / "base"
     base_dir.mkdir(parents=True)
     Image.new("RGB", (900, 600), (245, 242, 232)).save(base_dir / "master_plan.jpg", "JPEG")
+    Image.new("RGB", (1024, 1024), (42, 42, 42)).save(base_dir / "location_analysis_2km.png", "PNG")
+    Image.new("RGB", (900, 600), (235, 238, 232)).save(base_dir / "civil_defense_base.jpg", "JPEG")
     semantic_dir = proj_dir / "05_output" / "drawings" / "semantic"
     semantic_dir.mkdir(parents=True)
     legacy_fz = {
