@@ -1256,10 +1256,7 @@
     slideEl.style.setProperty("--ppt-plate-aspect", String(Number(plate.aspect_ratio) || 1.6));
     const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
     const elements = (slide && slide.elements) || {};
-    const drawingSrc = state.svgExists && state.svgUrl ? `${state.svgUrl}&_=${Date.now()}` : state.loadedBaseUrl || "";
-    const drawingMedia = drawingSrc
-      ? `<img data-ppt-drawing-media="true" src="${escapeHtml(drawingSrc)}" alt="${escapeHtml(drawingConfig().label || "图纸")}">`
-      : '<div class="ppt-empty-note">暂无图纸输出；将先使用底图或等待agent生成SVG。</div>';
+    const drawingMedia = renderPptDrawingMedia();
     const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview() : renderGenericLegendPreview();
     const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
     const warnings = Array.isArray(slide && slide.layout_warnings)
@@ -1304,6 +1301,38 @@
     `;
     bindPptFrameInteractions(slideEl);
     bindPptElementInteractions(slideEl);
+  }
+
+  function renderPptDrawingMedia() {
+    const baseUrl = state.loadedBaseUrl || "";
+    const selectedId = state.selectedId;
+    state.selectedId = null;
+    let objectSvg = "";
+    try {
+      objectSvg = state.objects.map(renderObjectSvg).filter(Boolean).join("");
+    } finally {
+      state.selectedId = selectedId;
+    }
+    if (!baseUrl && !objectSvg) {
+      return '<div class="ppt-empty-note">暂无图纸内容；请先加载底图或绘制对象。</div>';
+    }
+    const baseImage = baseUrl
+      ? `<image href="${escapeHtml(baseUrl)}" x="0" y="0" width="1" height="1" preserveAspectRatio="none"></image>`
+      : '<rect x="0" y="0" width="1" height="1" fill="#f7f4ed"></rect>';
+    return `
+      <svg
+        class="ppt-drawing-vector"
+        data-ppt-drawing-media="true"
+        data-ppt-drawing-vector="true"
+        viewBox="0 0 1 1"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="${escapeHtml(drawingConfig().label || "图纸")}"
+      >
+        ${baseImage}
+        ${objectSvg}
+      </svg>
+    `;
   }
 
   function setBoxStyle(el, box) {
