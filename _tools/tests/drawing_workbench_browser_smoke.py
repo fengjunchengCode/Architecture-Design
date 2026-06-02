@@ -1385,6 +1385,53 @@ def assert_move_and_paste(page, drawing_type: str) -> None:
     )
 
 
+def assert_fire_route_open_paths_move_by_body(page, drawing_type: str) -> None:
+    if drawing_type != "fire_route":
+        return
+    stage = page.locator("#workbenchStage").bounding_box()
+    assert stage, f"{drawing_type}: stage missing for open path body move"
+
+    for tool, pts in [
+        ("open_path", [[0.18, 0.46], [0.76, 0.50]]),
+        ("turning_radius", [[0.22, 0.68], [0.72, 0.42]]),
+    ]:
+        page.click(f'[data-tool-id="{tool}"]')
+        created = page.evaluate(
+            "({tool, pts}) => window.DrawingWorkbenchTest.createObject(tool, pts)",
+            {"tool": tool, "pts": pts},
+        )
+        obj_id = created["id"]
+        before = [point[:] for point in (created.get("geometry") or {}).get("coords", [])]
+        assert len(before) >= 2, f"{drawing_type}/{tool}: missing path coords"
+        body = [
+            before[0][0] + (before[1][0] - before[0][0]) * 0.34,
+            before[0][1] + (before[1][1] - before[0][1]) * 0.34,
+        ]
+        sx = stage["x"] + body[0] * stage["width"]
+        sy = stage["y"] + body[1] * stage["height"] + 14
+        page.mouse.move(sx, sy)
+        page.mouse.down()
+        page.mouse.move(sx + 76, sy + 42, steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(140)
+        moved = page.evaluate(
+            "(id) => window.DrawingWorkbenchTest.getObjects().find((obj) => obj.id === id)",
+            obj_id,
+        )
+        moved_coords = (moved.get("geometry") or {}).get("coords", [])
+        dx = moved_coords[0][0] - before[0][0]
+        dy = moved_coords[0][1] - before[0][1]
+        assert abs(dx) > 0.025 and abs(dy) > 0.025, (
+            f"{drawing_type}/{tool}: dragging the selected line body should move the whole object; "
+            f"before={before}, after={moved_coords}, dx={dx}, dy={dy}"
+        )
+        for old, new in zip(before, moved_coords):
+            assert abs((new[0] - old[0]) - dx) < 0.002 and abs((new[1] - old[1]) - dy) < 0.002, (
+                f"{drawing_type}/{tool}: line body drag should translate all coords uniformly; "
+                f"before={before}, after={moved_coords}"
+            )
+
+
 def assert_style_presets(page, drawing_type: str) -> None:
     if page.locator('[data-tool-id="open_path"]').count() == 0:
         return
@@ -2183,6 +2230,7 @@ def main() -> int:
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)
                 if drawing_type == "fire_route":
+                    assert_fire_route_open_paths_move_by_body(page, drawing_type)
                     assert_labelbox_white_draggable(page, drawing_type)
                     after_objects = page.evaluate("window.DrawingWorkbenchTest.getObjects()")
                     assert_no_bad_kinds(after_objects, drawing_type)

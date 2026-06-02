@@ -3754,7 +3754,7 @@
           d="${pathD}"
           fill="none"
           stroke="transparent"
-          stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+          stroke-width="${getOpenPathHitStrokeWidth(safeStyle)}"
           pointer-events="stroke"
         ></path>
       `;
@@ -3766,7 +3766,7 @@
         points="${(points || []).map((point) => point.join(",")).join(" ")}"
         fill="none"
         stroke="transparent"
-        stroke-width="${getZoneHitStrokeWidth(safeStyle)}"
+        stroke-width="${getOpenPathHitStrokeWidth(safeStyle)}"
         pointer-events="stroke"
       ></polyline>
     `;
@@ -4057,6 +4057,16 @@
     const shortSide = Math.min(rect.width, rect.height);
     // 约 2px 屏幕容差，按短边换算为 viewBox 单位
     const tolerance = shortSide > 0 ? 2 / shortSide : 0.02;
+    return baseWidth + tolerance;
+  }
+
+  function getOpenPathHitStrokeWidth(style) {
+    const baseWidth = style.stroke_width || ZONE_EDIT_WIDTH;
+    const stage = $("#workbenchStage");
+    if (!stage) return baseWidth + 0.035;
+    const rect = stage.getBoundingClientRect();
+    const shortSide = Math.min(rect.width, rect.height);
+    const tolerance = shortSide > 0 ? 34 / shortSide : 0.055;
     return baseWidth + tolerance;
   }
 
