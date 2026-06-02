@@ -22,6 +22,12 @@ DWG/DXF 地形资料进入 S2 时必须优先运行 `python _tools/dwg_probe.py 
 
 尤其是 UI 和 workflow 修改：先定义用户路径和验收标准，再实现；不得在需求仍有歧义时直接扩写复杂界面或新增状态机。
 
+## 本地服务管理
+
+本地上传/工作台 UI 默认只保留一个服务进程：`python _tools/uploader/server.py --port 8765 --no-browser`。不得为了规避旧进程问题同时保留多个 uploader 端口；如发现 `8766`、`8796`、`18767` 或其他旧端口仍在运行，应停止旧进程，只保留当前确认使用的 `8765`。
+
+每次修改并提交影响 `_tools/uploader/server.py`、`_tools/uploader/static/`、`_tools/drawing_workbench/` 或前端工作台行为的代码后，必须重启本地 `server.py` 服务，让浏览器连接到最新代码。重启后至少检查一次监听端口和进程命令行，确认只有一个 uploader 服务进程在运行。
+
 ## 上下文边界
 
 默认只读取以下权威入口：
