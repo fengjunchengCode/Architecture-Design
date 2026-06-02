@@ -81,3 +81,36 @@ Implemented S2 Tianditu satellite basemap, env self-check, redline scale handle,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: S2 semantics, undo, PPT preview fixes
+
+**Date**: 2026-06-02
+**Task**: S2 semantics, undo, PPT preview fixes
+**Branch**: `main`
+
+### Summary
+
+Implemented S2 diagnostic Tianditu errors, OSM/AMap road-water semantic overlays, S2 undo/redo interactions, S1 semantic candidates, PPT preview aspect preservation, visual screenshots, and regression gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1196d98` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
