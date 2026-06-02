@@ -422,6 +422,38 @@ def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path)
     return {"source": "server_tianditu_tiles", "zoom": zoom, "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}"}
 
 
+def validate_s1_map_context_for_auto_draft(proj: Path) -> None:
+    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
+    if not context_path.exists():
+        raise FileNotFoundError("s1_map_context.json 不存在，请先生成 S1 高德上下文")
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    if context.get("status") != "ok":
+        raise ValueError(f"上下文状态为 {context.get('status')}，请先重新生成 S1 高德上下文")
+    center_text = str(context.get("location", {}).get("amap_gcj02") or "")
+    parts = [part.strip() for part in center_text.split(",", 1)]
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise ValueError("S1 高德上下文缺少中心点，请先重新生成 S1 高德上下文")
+    float(parts[0])
+    float(parts[1])
+
+
+def s1_auto_draft_error_payload(
+    code: str,
+    stage: str,
+    error: object,
+    **extra: object,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "ok": False,
+        "auto_draft": True,
+        "project_code": code,
+        "error_stage": stage,
+        "error": str(error),
+    }
+    payload.update(extra)
+    return payload
+
+
 def generate_tdt_site_basemap(proj: Path, output_path: Path) -> dict[str, object]:
     from PIL import Image, ImageEnhance
 
@@ -2311,6 +2343,19 @@ class UploaderHandler(BaseHTTPRequestHandler):
         suffix = "1km" if radius_value == 1000 else "2km"
         png_path = output_dir / f"satellite_{suffix}.png"
         try:
+            validate_s1_map_context_for_auto_draft(proj)
+        except Exception as exc:
+            self.send_json(
+                s1_auto_draft_error_payload(
+                    code,
+                    "s1_map_context",
+                    exc,
+                    required_action="generate_s1_amap_context",
+                ),
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+        try:
             snapshot_meta = generate_tdt_location_snapshot(proj, radius_value, png_path)
             if client_capture_error:
                 snapshot_meta["client_capture_error"] = client_capture_error
@@ -2320,11 +2365,12 @@ class UploaderHandler(BaseHTTPRequestHandler):
         except Exception as server_exc:
             if not screenshot_data_url or not screenshot_data_url.startswith("data:image/png;base64,"):
                 self.send_json(
-                    {
-                        "ok": False,
-                        "error": f"天地图快照生成失败：{server_exc}",
-                        "client_capture_error": client_capture_error,
-                    },
+                    s1_auto_draft_error_payload(
+                        code,
+                        "snapshot",
+                        f"天地图快照生成失败：{server_exc}",
+                        client_capture_error=client_capture_error,
+                    ),
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
@@ -2334,7 +2380,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 png_path.write_bytes(base64.b64decode(b64))
             except Exception as exc:
                 self.send_json(
-                    {"ok": False, "error": f"天地图截图保存失败：{exc}"},
+                    s1_auto_draft_error_payload(code, "snapshot", f"天地图截图保存失败：{exc}"),
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
@@ -2353,13 +2399,25 @@ class UploaderHandler(BaseHTTPRequestHandler):
         args.extend(["--radius-m", str(radius_value)])
         rc, stdout, stderr = run_tool(args)
         result = json.loads(stdout) if stdout.strip().startswith("{") else {"stdout": stdout}
-        result.update({"ok": rc == 0 and result.get("ok", False), "returncode": rc, "stderr": stderr})
+        if rc != 0 or not result.get("ok", False):
+            result.update(
+                s1_auto_draft_error_payload(
+                    code,
+                    str(result.get("error_stage") or "analysis"),
+                    result.get("error") or stderr or stdout or "S1 区位分析脚本失败",
+                    returncode=rc,
+                    stderr=stderr,
+                )
+            )
+        else:
+            result.update({"ok": True, "returncode": rc, "stderr": stderr})
         result["snapshot"] = snapshot_meta
         if result["ok"] and screenshot_path:
             try:
                 result.update(sync_location_analysis_drawing(proj, code, screenshot_path, radius_value))
             except Exception as exc:
                 result["ok"] = False
+                result["error_stage"] = "drawing_sync"
                 result["error"] = f"区位分析底图同步到图纸工作台失败：{exc}"
         self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
 

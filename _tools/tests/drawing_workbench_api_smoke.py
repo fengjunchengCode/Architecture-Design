@@ -20,6 +20,10 @@ if str(REPO_ROOT) not in sys.path:
 TEST_PROJECT = "99-ZZ-WBTEST"
 PORT = 18765
 BASE = f"http://127.0.0.1:{PORT}"
+MINIMAL_PNG_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
 
 
 def api_get(path: str) -> dict:
@@ -364,6 +368,31 @@ def assert_location_analysis_semantic_candidates(proj_dir: Path) -> None:
     )
 
 
+def assert_s1_auto_draft_missing_context_error(proj_dir: Path) -> None:
+    context_path = proj_dir / "05_output" / "amap" / "s1_map_context.json"
+    original_context = context_path.read_text(encoding="utf-8")
+    context_path.unlink()
+    try:
+        result = api_post_error(
+            "/api/s1/auto-draft",
+            {
+                "project": TEST_PROJECT,
+                "map_mode": "tianditu",
+                "radius_m": "2000",
+                "screenshot_data_url": MINIMAL_PNG_DATA_URL,
+            },
+        )
+    finally:
+        context_path.write_text(original_context, encoding="utf-8")
+
+    body = result.get("body") or {}
+    assert result["status"] == 400, f"missing S1 context should be rejected before draft generation: {result}"
+    assert body.get("ok") is False and body.get("auto_draft") is True, f"auto draft error contract wrong: {body}"
+    assert body.get("error_stage") == "s1_map_context", f"missing context should identify the failure stage: {body}"
+    assert "请先生成 S1 高德上下文" in (body.get("error") or ""), f"missing context copy should be explicit: {body}"
+    assert "生成失败" not in (body.get("error") or ""), f"API must not collapse the real error into generic copy: {body}"
+
+
 def assert_reflow_adaptive(proj_dir: Path) -> None:
     drawing_type = "planting_design"
     frame = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]["drawing_frame"]
@@ -642,6 +671,8 @@ def main() -> int:
         assert_site_context_api(proj_dir)
         assert_s2_basemap_diagnostics_contract(proj_dir)
         print("OK: S2 site context API load/save/schema works")
+        assert_s1_auto_draft_missing_context_error(proj_dir)
+        print("OK: S1 auto draft reports missing context explicitly")
         assert_location_analysis_semantic_candidates(proj_dir)
         print("OK: S1 location analysis semantic candidates work")
 

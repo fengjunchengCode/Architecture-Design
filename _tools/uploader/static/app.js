@@ -2109,9 +2109,10 @@ function summarizeAutoDraft(data) {
   const screenshotUrl = data.ok && data.screenshot_path
     ? `/api/project-file?project=${encodeURIComponent(data.project_code)}&path=${encodeURIComponent(data.screenshot_path)}`
     : null;
+  const failureTitle = data.error_stage === "s1_map_context" ? "缺少 S1 高德上下文" : "区位分析未生成";
   return `
     <div class="summary-card ${data.ok ? "ok" : "warn"}">
-      <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
+      <h3>${data.ok ? "S1 区位分析快照已生成" : failureTitle}</h3>
       <div class="result-grid">
         ${resultRow("项目", data.project_code)}
         ${resultRow("输出目录", data.output_dir || "无")}
@@ -2149,9 +2150,10 @@ function summarizeAutoDraftV2(data) {
     : null;
   const radiusLabel = data.radius_m ? `${Number(data.radius_m) / 1000}km` : "未记录";
   const workbenchUrl = data.ok && data.drawing_workbench_url ? data.drawing_workbench_url : "";
+  const failureTitle = data.error_stage === "s1_map_context" ? "缺少 S1 高德上下文" : "区位分析未生成";
   return `
     <div class="summary-card ${data.ok ? "ok" : "warn"}">
-      <h3>${data.ok ? "S1 区位分析快照已生成" : "区位分析生成失败"}</h3>
+      <h3>${data.ok ? "S1 区位分析快照已生成" : failureTitle}</h3>
       <div class="result-grid">
         ${resultRow("项目", data.project_code)}
         ${resultRow("分析范围", radiusLabel)}
@@ -2685,6 +2687,7 @@ async function autoDraftS1() {
     return;
   }
   setAmapStatus("正在生成区位分析快照...", null);
+  setMapStatus("#s1AmapStatus", "正在生成区位分析快照...", null);
   const AMap = state.amap.sdk || await ensureAmapSdk();
   const radiusM = Number($("#s1SnapshotRadius")?.value || 2000);
   const snapshotMeta = await prepareS1LocationSnapshotView(AMap, radiusM === 1000 ? 1000 : 2000);
@@ -2697,18 +2700,29 @@ async function autoDraftS1() {
   } finally {
     setTdtLabelLayerVisible(true);
   }
-  const data = await api("/api/s1/auto-draft", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project: code,
-      map_mode: "tianditu",
-      radius_m: snapshotMeta.radiusM,
-      screenshot_data_url: screenshotDataUrl,
-      client_capture_error: clientCaptureError,
-    }),
-  });
-  setAmapStatus(data.ok ? "区位分析快照已生成" : data.error || "生成失败", data.ok);
+  let data;
+  try {
+    data = await api("/api/s1/auto-draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project: code,
+        map_mode: "tianditu",
+        radius_m: snapshotMeta.radiusM,
+        screenshot_data_url: screenshotDataUrl,
+        client_capture_error: clientCaptureError,
+      }),
+    });
+  } catch (error) {
+    if (error.data?.auto_draft) {
+      data = error.data;
+    } else {
+      throw error;
+    }
+  }
+  const statusText = data.ok ? "区位分析快照已生成" : data.error || "草稿未生成";
+  setAmapStatus(statusText, data.ok);
+  setMapStatus("#s1AmapStatus", statusText, data.ok);
   renderS1SnapshotPreviewV2(data);
   writeOutput(data);
 }
@@ -3236,8 +3250,10 @@ function bind() {
     writeOutput(err.message);
   }));
   $("#autoDraftS1").addEventListener("click", () => autoDraftS1().catch((err) => {
-    setAmapStatus("草稿生成失败", false);
-    writeOutput(err.message);
+    const message = err.message || "草稿未生成";
+    setAmapStatus(message, false);
+    setMapStatus("#s1AmapStatus", message, false);
+    writeOutput(err.data?.auto_draft ? err.data : message);
   }));
   $("#centerLocation").addEventListener("change", () => {
     const parsed = parsedLocation($("#centerLocation").value);
