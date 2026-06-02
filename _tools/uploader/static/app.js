@@ -19,6 +19,17 @@ const state = {
   controlPointsStale: false,
   migrationReport: null,
   cadPreviewZoom: 1,
+  siteContext: {
+    redline: null,
+    surroundings: { roads: [], land_uses: [], notes: [] },
+    entrances: [],
+    transform: { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 },
+    addEntranceMode: false,
+    drag: null,
+    renderedPoints: [],
+    siteContextPath: "",
+    northManual: false,
+  },
   s1Location: "",
   amap: {
     config: null,
@@ -175,6 +186,183 @@ function s1CenterPoint() {
   return parsedLocation($("#centerLocation")?.value || state.s1Location);
 }
 
+function normalizedAngle(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return ((number % 360) + 360) % 360;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function setSiteContextStatus(text, ok = null) {
+  const el = $("#siteContextStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("site-context-status-ok", ok === true);
+  el.classList.toggle("site-context-status-warn", ok === false);
+}
+
+function siteRoadNames() {
+  return (state.siteContext.surroundings.roads || [])
+    .map((road) => String(road?.name || "").trim())
+    .filter(Boolean);
+}
+
+function defaultSiteTransform(redline) {
+  const raw = redline?.default_transform || {};
+  return {
+    x: clampNumber(raw.x, -0.5, 1.5, 0.5),
+    y: clampNumber(raw.y, -0.5, 1.5, 0.5),
+    scale: clampNumber(raw.scale, 0.2, 3, 1),
+    rotation_deg: normalizedAngle(raw.rotation_deg),
+  };
+}
+
+function syncSiteControlInputs() {
+  const transform = state.siteContext.transform;
+  const rotation = $("#redlineRotation");
+  const scale = $("#redlineScale");
+  if (rotation) rotation.value = String(Math.round(transform.rotation_deg * 10) / 10);
+  if (scale) scale.value = String(Math.round(transform.scale * 100) / 100);
+  const north = $("#siteNorthDeg");
+  if (north && !state.siteContext.northManual) {
+    north.value = String(Math.round(transform.rotation_deg * 10) / 10);
+  }
+}
+
+function setSiteTransform(next, options = {}) {
+  const prevRotation = state.siteContext.transform.rotation_deg;
+  state.siteContext.transform = {
+    x: clampNumber(next.x, -0.25, 1.25, state.siteContext.transform.x),
+    y: clampNumber(next.y, -0.25, 1.25, state.siteContext.transform.y),
+    scale: clampNumber(next.scale, 0.2, 3, state.siteContext.transform.scale),
+    rotation_deg: normalizedAngle(next.rotation_deg),
+  };
+  if (!state.siteContext.northManual) {
+    const north = $("#siteNorthDeg");
+    if (north && Math.abs(Number(north.value || 0) - prevRotation) < 0.2) {
+      north.value = String(Math.round(state.siteContext.transform.rotation_deg * 10) / 10);
+    }
+  }
+  if (options.syncInputs !== false) syncSiteControlInputs();
+  renderSiteRedlineOverlay();
+}
+
+function redlineBaseSize(container) {
+  const redline = state.siteContext.redline || {};
+  const aspect = Math.max(0.15, Math.min(8, Number(redline.aspect_ratio) || 1));
+  let boxW = Math.min(container.clientWidth * 0.42, container.clientHeight * 0.5 * aspect);
+  let boxH = boxW / aspect;
+  if (boxH > container.clientHeight * 0.54) {
+    boxH = container.clientHeight * 0.54;
+    boxW = boxH * aspect;
+  }
+  return { boxW: Math.max(40, boxW), boxH: Math.max(40, boxH) };
+}
+
+function computeRedlineScreenPoints() {
+  const container = $("#s2AmapMap");
+  const redline = state.siteContext.redline;
+  if (!container || !redline?.normalized_points?.length) return [];
+  const width = Math.max(1, container.clientWidth);
+  const height = Math.max(1, container.clientHeight);
+  const { boxW, boxH } = redlineBaseSize(container);
+  const transform = state.siteContext.transform;
+  const angle = transform.rotation_deg * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const cx = transform.x * width;
+  const cy = transform.y * height;
+  return redline.normalized_points.map((point) => {
+    const localX = (Number(point.x) - 0.5) * boxW * transform.scale;
+    const localY = (Number(point.y) - 0.5) * boxH * transform.scale;
+    return {
+      x: cx + localX * cos - localY * sin,
+      y: cy + localX * sin + localY * cos,
+    };
+  });
+}
+
+function pointOnRenderedEdge(entrance) {
+  const points = state.siteContext.renderedPoints || [];
+  if (!points.length) return null;
+  const edge = Math.max(0, Math.min(points.length - 1, Number(entrance.edge_index) || 0));
+  const t = Math.max(0, Math.min(1, Number(entrance.edge_t) || 0));
+  const a = points[edge];
+  const b = points[(edge + 1) % points.length];
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+function nearestRedlineEdge(x, y) {
+  const points = state.siteContext.renderedPoints || [];
+  if (points.length < 2) return null;
+  let best = null;
+  points.forEach((a, index) => {
+    const b = points[(index + 1) % points.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2));
+    const px = a.x + dx * t;
+    const py = a.y + dy * t;
+    const d2 = (x - px) ** 2 + (y - py) ** 2;
+    if (!best || d2 < best.d2) best = { edge_index: index, edge_t: t, x: px, y: py, d2 };
+  });
+  return best;
+}
+
+function screenPointToApproxGeo(point) {
+  const center = s1CenterPoint();
+  const container = $("#s2AmapMap");
+  if (!center || !container) return null;
+  const zoom = Number(state.amap.s2Map?.getZoom?.() || 17);
+  const latRad = center.lat * Math.PI / 180;
+  const cosLat = Math.max(0.000001, Math.cos(latRad));
+  const metersPerPixel = 156543.03392 * cosLat / (2 ** zoom);
+  const dxMeters = (point.x - container.clientWidth / 2) * metersPerPixel;
+  const dyMeters = (container.clientHeight / 2 - point.y) * metersPerPixel;
+  return {
+    lng: center.lng + dxMeters / (111320 * cosLat),
+    lat: center.lat + dyMeters / 110540,
+  };
+}
+
+function buildApproxSitePolygonGeo() {
+  const points = computeRedlineScreenPoints();
+  const geoPoints = points.map(screenPointToApproxGeo).filter(Boolean);
+  if (geoPoints.length < 3) throw new Error("缺少 S1 中心点，无法写出近似 site_polygon_geo。");
+  const first = geoPoints[0];
+  geoPoints.push({ lng: first.lng, lat: first.lat });
+  return {
+    coordinate_system: "GCJ-02 / AMap approximate",
+    confidence: "rough_overlay",
+    points: geoPoints,
+  };
+}
+
+function entrancePointPayload(entrance) {
+  const screen = pointOnRenderedEdge(entrance);
+  const geo = screen ? screenPointToApproxGeo(screen) : null;
+  const point = {
+    edge_index: Number(entrance.edge_index) || 0,
+    edge_t: Number(entrance.edge_t) || 0,
+  };
+  if (screen) {
+    const container = $("#s2AmapMap");
+    point.screen_x = container ? screen.x / Math.max(1, container.clientWidth) : screen.x;
+    point.screen_y = container ? screen.y / Math.max(1, container.clientHeight) : screen.y;
+  }
+  if (geo) {
+    point.lng = geo.lng;
+    point.lat = geo.lat;
+  }
+  return point;
+}
+
 function setMapStatus(id, text, ok = null) {
   const el = $(id);
   if (!el) return;
@@ -229,8 +417,9 @@ async function syncAmapEnvStatus() {
       }
       if (state.page === "s2") {
         setMapStatus("#s2AmapStatus", "高德配置不完整", false);
-        setMapHint("#s2AmapHint", warning, true);
+        setMapHint("#s2AmapHint", `${warning} 红线叠加层仍可离线调整。`, true);
         if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", warning);
+        renderSiteRedlineOverlay();
       }
       return;
     }
@@ -240,7 +429,7 @@ async function syncAmapEnvStatus() {
     }
     if (state.page === "s2" && !state.amap.s2Map) {
       setMapStatus("#s2AmapStatus", "高德配置已加载", true);
-      setMapHint("#s2AmapHint", "选择 CAD 候选点后，在内嵌地图上点击对应位置。");
+      setMapHint("#s2AmapHint", "红线叠加层会显示在 S1 中心点附近，可拖动和旋转粗对位。");
     }
   } catch (err) {
     setAmapStatus("高德配置读取失败", false);
@@ -1039,65 +1228,275 @@ function renderS2Markers() {
   });
 }
 
-async function ensureS2Map() {
-  if (state.page !== "s2" || !state.project || !$("#s2AmapMap")) return;
-  const panel = $("#s2AmapPanel");
-  const stale = hasStaleControlPoints();
-  panel?.classList.toggle("disabled", stale);
-  updateActiveCandidatePanel();
-  if (stale) {
-    setMapStatus("#s2AmapStatus", "旧控制点过期", false);
-    setMapHint("#s2AmapHint", "当前旧控制点与 CAD 候选集不匹配，地图拾取已停用。", true);
-    clearS2Markers();
-    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "旧控制点过期。请先处理 stale 提示，再重新拾取。");
+function renderSiteRedlineOverlay() {
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  let overlay = $("#siteRedlineOverlay");
+  if (!overlay) {
+    overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.setAttribute("id", "siteRedlineOverlay");
+    overlay.classList.add("site-redline-overlay");
+    container.appendChild(overlay);
+  }
+  const redline = state.siteContext.redline;
+  if (!redline?.normalized_points?.length) {
+    overlay.innerHTML = "";
+    setCadPreviewStatus("未找到 CAD 红线", false);
     return;
   }
+  const width = Math.max(1, container.clientWidth);
+  const height = Math.max(1, container.clientHeight);
+  overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  overlay.setAttribute("width", String(width));
+  overlay.setAttribute("height", String(height));
+  const points = computeRedlineScreenPoints();
+  state.siteContext.renderedPoints = points;
+  const pointText = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const cx = state.siteContext.transform.x * width;
+  const cy = state.siteContext.transform.y * height;
+  const topY = Math.min(...points.map((point) => point.y));
+  const rotateY = Math.max(18, topY - 34);
+  const entranceMarkup = state.siteContext.entrances
+    .map((entrance, index) => {
+      const point = pointOnRenderedEdge(entrance);
+      if (!point) return "";
+      return `
+        <circle class="site-entrance-marker" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="8"></circle>
+        <text class="site-entrance-label" x="${(point.x + 11).toFixed(1)}" y="${(point.y - 10).toFixed(1)}">${escapeHtml(entrance.label || `E${index + 1}`)}</text>
+      `;
+    })
+    .join("");
+  overlay.innerHTML = `
+    <polygon class="site-redline-fill" id="siteRedlinePolygon" data-redline-polygon="true" points="${pointText}"></polygon>
+    <polygon class="site-redline-guide" points="${pointText}"></polygon>
+    <polygon class="site-redline-hit" data-redline-polygon="true" points="${pointText}"></polygon>
+    <line class="site-rotate-line" x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${rotateY.toFixed(1)}"></line>
+    <circle class="site-rotate-handle" id="siteRedlineRotateHandle" data-redline-rotate="true" cx="${cx.toFixed(1)}" cy="${rotateY.toFixed(1)}" r="11"></circle>
+    ${entranceMarkup}
+  `;
+  overlay.querySelectorAll("[data-redline-polygon]").forEach((node) => {
+    node.addEventListener("pointerdown", onRedlinePointerDown);
+    node.addEventListener("click", onRedlineClick);
+  });
+  overlay.querySelector("[data-redline-rotate]")?.addEventListener("pointerdown", onRedlineRotateDown);
+  const reliability = redline.coordinate_reliability || {};
+  const source = redline.source ? ` · ${redline.source}` : "";
+  setCadPreviewStatus(
+    reliability.reliable ? `红线已按地理坐标预置${source}` : `红线需手动粗对位${source}`,
+    true,
+  );
+}
+
+function onRedlinePointerDown(event) {
+  if (state.siteContext.addEntranceMode) return;
+  event.preventDefault();
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  state.siteContext.drag = {
+    mode: "move",
+    startX: event.clientX,
+    startY: event.clientY,
+    startTransform: { ...state.siteContext.transform },
+  };
+}
+
+function onRedlineRotateDown(event) {
+  event.preventDefault();
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const center = {
+    x: rect.left + state.siteContext.transform.x * rect.width,
+    y: rect.top + state.siteContext.transform.y * rect.height,
+  };
+  state.siteContext.drag = {
+    mode: "rotate",
+    center,
+    startAngle: Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI,
+    startTransform: { ...state.siteContext.transform },
+  };
+}
+
+function onSitePointerMove(event) {
+  const drag = state.siteContext.drag;
+  if (!drag) return;
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  if (drag.mode === "move") {
+    const dx = (event.clientX - drag.startX) / Math.max(1, container.clientWidth);
+    const dy = (event.clientY - drag.startY) / Math.max(1, container.clientHeight);
+    setSiteTransform({ ...drag.startTransform, x: drag.startTransform.x + dx, y: drag.startTransform.y + dy });
+  } else if (drag.mode === "rotate") {
+    const angle = Math.atan2(event.clientY - drag.center.y, event.clientX - drag.center.x) * 180 / Math.PI;
+    setSiteTransform({ ...drag.startTransform, rotation_deg: drag.startTransform.rotation_deg + angle - drag.startAngle });
+  }
+}
+
+function onSitePointerUp() {
+  state.siteContext.drag = null;
+}
+
+function onRedlineClick(event) {
+  if (!state.siteContext.addEntranceMode) return;
+  event.preventDefault();
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const nearest = nearestRedlineEdge(event.clientX - rect.left, event.clientY - rect.top);
+  if (!nearest) return;
+  const index = state.siteContext.entrances.length + 1;
+  const firstRoad = siteRoadNames()[0] || "";
+  state.siteContext.entrances.push({
+    id: `ENT-${index}`,
+    label: `出入口 ${index}`,
+    edge_index: nearest.edge_index,
+    edge_t: nearest.edge_t,
+    faces_road: firstRoad,
+  });
+  state.siteContext.addEntranceMode = false;
+  $("#addEntrance")?.classList.remove("active");
+  renderEntranceList();
+  renderSiteRedlineOverlay();
+}
+
+function renderEntranceList() {
+  const list = $("#entranceList");
+  const status = $("#entranceStatus");
+  if (!list) return;
+  if (status) status.textContent = `${state.siteContext.entrances.length} 个`;
+  list.innerHTML = "";
+  const roads = siteRoadNames();
+  if (!state.siteContext.entrances.length) {
+    const empty = document.createElement("div");
+    empty.className = "control-empty";
+    empty.textContent = "尚未标注出入口。";
+    list.appendChild(empty);
+    return;
+  }
+  state.siteContext.entrances.forEach((entrance, index) => {
+    const item = document.createElement("div");
+    item.className = "entrance-item";
+    item.dataset.entranceItem = entrance.id;
+    const options = roads
+      .map((road) => `<option value="${escapeHtml(road)}" ${road === entrance.faces_road ? "selected" : ""}>${escapeHtml(road)}</option>`)
+      .join("");
+    item.innerHTML = `
+      <b>${escapeHtml(entrance.label || `出入口 ${index + 1}`)}</b>
+      <button type="button" data-remove-entrance="${escapeHtml(entrance.id)}">删除</button>
+      <small>红线边 ${Number(entrance.edge_index) + 1} · ${(Number(entrance.edge_t) || 0).toFixed(2)}</small>
+      <select data-entrance-road="${escapeHtml(entrance.id)}">
+        <option value="">选择所朝道路</option>
+        ${options}
+      </select>
+    `;
+    item.querySelector("[data-entrance-road]")?.addEventListener("change", (event) => {
+      entrance.faces_road = event.target.value;
+    });
+    item.querySelector("[data-remove-entrance]")?.addEventListener("click", () => {
+      state.siteContext.entrances.splice(index, 1);
+      renderEntranceList();
+      renderSiteRedlineOverlay();
+    });
+    list.appendChild(item);
+  });
+}
+
+function renderSurroundings() {
+  const roads = state.siteContext.surroundings.roads || [];
+  const landUses = state.siteContext.surroundings.land_uses || [];
+  const notes = state.siteContext.surroundings.notes || [];
+  const roadList = $("#surroundingRoads");
+  const landList = $("#surroundingLandUses");
+  const roadStatus = $("#surroundingRoadStatus");
+  const landStatus = $("#surroundingLandUseStatus");
+  if (roadStatus) roadStatus.textContent = `${roads.length} 条`;
+  if (landStatus) landStatus.textContent = `${landUses.length} 项`;
+  if (roadList) {
+    roadList.innerHTML = roads.length ? "" : `<div class="control-empty">S1 未返回明确道路，可在备注中补注。</div>`;
+    roads.forEach((road, index) => {
+      const item = document.createElement("div");
+      item.className = "surrounding-item";
+      item.innerHTML = `
+        <input data-road-name="${index}" value="${escapeHtml(road.name || "")}">
+        <small>${escapeHtml([road.type, road.note, road.source].filter(Boolean).join(" · "))}</small>
+      `;
+      item.querySelector("[data-road-name]")?.addEventListener("change", (event) => {
+        state.siteContext.surroundings.roads[index].name = event.target.value.trim();
+        renderEntranceList();
+      });
+      roadList.appendChild(item);
+    });
+  }
+  if (landList) {
+    landList.innerHTML = landUses.length ? "" : `<div class="control-empty">S1 未返回可用地物节点。</div>`;
+    landUses.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "surrounding-item";
+      row.innerHTML = `
+        <b>${escapeHtml(item.name || "")}</b>
+        <small>${escapeHtml([item.category, item.source].filter(Boolean).join(" · "))}</small>
+      `;
+      landList.appendChild(row);
+    });
+  }
+  const noteBox = $("#surroundingNotes");
+  if (noteBox && !noteBox.value) noteBox.value = notes.join("\n");
+}
+
+function collectSurroundingsForSave() {
+  const roadNames = Array.from(document.querySelectorAll("[data-road-name]"))
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+  const roads = roadNames.map((name) => {
+    const original = (state.siteContext.surroundings.roads || []).find((item) => item.name === name) || {};
+    return { ...original, name };
+  });
+  const notes = ($("#surroundingNotes")?.value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return {
+    roads,
+    land_uses: state.siteContext.surroundings.land_uses || [],
+    notes,
+  };
+}
+
+async function ensureS2Map() {
+  if (state.page !== "s2" || !state.project || !$("#s2AmapMap")) return;
   const center = s1CenterPoint();
   if (!center) {
     setMapStatus("#s2AmapStatus", "缺少 S1 中心点", false);
-    setMapHint("#s2AmapHint", "先在 S1 标定中心点，S2 地图才会启动。", true);
-    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "先在 S1 标定中心点；S2 不使用默认城市。");
+    setMapHint("#s2AmapHint", "先在 S1 标定中心点，红线粗对位才能写出近似坐标。", true);
+    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "先在 S1 标定中心点；红线叠加层会在加载 CAD 后显示。");
+    renderSiteRedlineOverlay();
     return;
   }
   try {
     const AMap = await ensureAmapSdk();
     if (!state.amap.s2Map) {
       $("#s2AmapMap").innerHTML = "";
+      const layers = [];
+      if (AMap.TileLayer?.Satellite) {
+        layers.push(new AMap.TileLayer.Satellite());
+      }
       state.amap.s2Map = new AMap.Map("s2AmapMap", {
         center: [center.lng, center.lat],
         zoom: 17,
         viewMode: "2D",
+        layers: layers.length ? layers : undefined,
       });
       addAmapControls(AMap, state.amap.s2Map);
-      state.amap.s2Map.on("click", (event) => {
-        try {
-          if (hasStaleControlPoints()) return;
-          if (!state.amap.activeCandidateId) {
-            setMapStatus("#s2AmapStatus", "先选择 CAD 点", false);
-            setMapHint("#s2AmapHint", "请先在候选点卡片上点击“地图拾取”。", true);
-            return;
-          }
-          const candidate = findCandidateById(state.amap.activeCandidateId);
-          if (!candidate) throw new Error("当前 CAD 候选点不存在，请重新选择。");
-          const picked = lngLatFromAmapClick(event);
-          candidate.amap_location = picked.location;
-          addCandidateControlPoint(candidate);
-          upsertS2Marker(state.amap.activeCandidateId, picked);
-          setMapStatus("#s2AmapStatus", "已加入控制点", true);
-          setMapHint("#s2AmapHint", `${state.amap.activeCandidateId} 已写入 ${picked.location}`);
-        } catch (err) {
-          writeOutput(err.message);
-        }
-      });
     }
     if (state.amap.s2Map.setCenter) state.amap.s2Map.setCenter([center.lng, center.lat]);
-    renderS2Markers();
-    setMapStatus("#s2AmapStatus", state.amap.activeCandidateId ? "等待地图点击" : "地图已加载", true);
-    setMapHint("#s2AmapHint", state.amap.activeCandidateId ? "在地图上点击当前 CAD 点对应的真实位置。" : "先在左侧候选点点击“地图拾取”。");
+    renderSiteRedlineOverlay();
+    setMapStatus("#s2AmapStatus", "卫星底图已加载", true);
+    setMapHint("#s2AmapHint", "拖动红线移动；拖动上方圆点旋转；添加出入口后点击红线边。");
   } catch (err) {
     setMapStatus("#s2AmapStatus", "地图不可用", false);
-    setMapHint("#s2AmapHint", amapFailureHint(err), true);
-    setMapEmpty("#s2AmapMap", "内嵌地图暂不可用，请检查 .env 中的高德配置和高德控制台 referer 白名单。");
+    setMapHint("#s2AmapHint", `${amapFailureHint(err)}；仍可先调整 CAD 红线叠加层。`, true);
+    setMapEmpty("#s2AmapMap", "内嵌卫星底图暂不可用；红线叠加层仍可用于粗对位。");
+    renderSiteRedlineOverlay();
   }
 }
 
@@ -1191,7 +1590,6 @@ function summarizeAmap(data) {
   const seed = data.s1_external_context_seed || {};
   const roads = seed.external_features?.primary_roads || seed.amap_context?.roads || [];
   const water = seed.amap_context?.water || seed.external_features?.landscape_or_culture_nodes || [];
-  const controlNeeds = seed.s2_use?.required_control_points || [];
   const poi1000 = seed.amap_context?.poi_1000m || {};
   const poiTotal = Object.values(poi1000).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0);
   return `
@@ -1200,27 +1598,29 @@ function summarizeAmap(data) {
       <div class="result-grid">
         ${resultRow("中心点", location.amap_gcj02)}
         ${resultRow("逆地理地址", regeo.formatted_address)}
-        ${resultRow("配准状态", seed.registration_state)}
-        ${resultRow("入口判断", seed.entrance_judgment?.level === "candidate" ? "只能候选，未绑定 CAD 边" : seed.entrance_judgment?.level)}
+        ${resultRow("定位状态", seed.registration_state)}
+        ${resultRow("入口判断", seed.entrance_judgment?.level === "candidate" ? "待在红线边人工标注" : seed.entrance_judgment?.level)}
       </div>
       <div class="result-section">
         <b>对设计真正有用的线索</b>
         <p>道路/到达：${compactList(roads)}</p>
         <p>水系/桥梁/边界：${compactList(water)}</p>
-        <p>控制点需求：${compactList(controlNeeds, 2)}</p>
+        <p>S2 使用方式：在卫星底图上粗对位 CAD 红线，标注入口和所朝道路。</p>
       </div>
       <div class="result-section">
         <b>当前不能直接得出的结论</b>
-        <p>主次入口不能只靠中心点确定；道路、水系和入口必须等 S1 结合区位图/现场照片，或等 S2 控制点把地图和 CAD 红线配准后再落边。</p>
+        <p>主次入口不能只靠中心点确定；需要在 S2 把入口点标到 CAD 红线边，并手选所朝道路。</p>
         <p>附近 POI 共 ${escapeHtml(poiTotal)} 条已保留在原始 JSON，默认不作为设计结论展示。</p>
       </div>
-      <p class="result-next">${data.status === "ok" ? "下一步：回到对话执行 S1；若需要精确到红线边，再到 S2 录入 2-3 个地图点 ↔ CAD 点。" : escapeHtml(data.error || "请检查 key 和坐标。")}</p>
+      <p class="result-next">${data.status === "ok" ? "下一步：进入 S2，粗对位 CAD 红线并保存场地语义。" : escapeHtml(data.error || "请检查 key 和坐标。")}</p>
     </div>
   `;
 }
 
 function summarizeSpatial(data) {
   const context = data.amap_context || {};
+  const redline = data.redline || {};
+  const surroundings = data.surroundings || {};
   return `
     <div class="summary-card ${data.amap_context_exists ? "ok" : "warn"}">
       <h3>${data.amap_context_exists ? "空间定位已读取" : "尚无空间定位"}</h3>
@@ -1228,9 +1628,27 @@ function summarizeSpatial(data) {
         ${resultRow("项目", data.project)}
         ${resultRow("中心点", context.location?.amap_gcj02)}
         ${resultRow("地址", context.address)}
-        ${resultRow("控制点", `${(data.control_points || []).length} 个`)}
+        ${resultRow("CAD 红线", redline.exists ? (redline.coordinate_reliability?.reliable ? "地理坐标预置" : "需手动粗对位") : "未找到")}
+        ${resultRow("周边道路", `${(surroundings.roads || []).length} 条`)}
+        ${resultRow("场地语义", data.site_context_exists ? "已保存" : "未保存")}
       </div>
       <p class="result-next">${data.amap_context_exists ? "刷新页面会自动回填中心点。" : "请在 S1 输入页生成高德上下文。"}</p>
+    </div>
+  `;
+}
+
+function summarizeSiteContext(data) {
+  const site = data.site_context || {};
+  return `
+    <div class="summary-card ok">
+      <h3>场地语义已保存</h3>
+      <div class="result-grid">
+        ${resultRow("项目", data.project)}
+        ${resultRow("文件", data.path)}
+        ${resultRow("北向角", site.north_deg)}
+        ${resultRow("出入口", `${(site.entrances || []).length} 个`)}
+      </div>
+      <p class="result-next">S3 可读取 north_deg、entrances、surroundings 和 site_polygon_geo。</p>
     </div>
   `;
 }
@@ -1298,7 +1716,6 @@ function summarizeMigration(data) {
 
 function summarizeCadPreview(data) {
   const boundary = data.selected_boundary || {};
-  const candidates = data.candidates || [];
   const semanticStatus = data.candidate_semantics_status || data.cad_semantics?.status || "未生成";
   const locationImages = data.candidate_semantics_location_images || [];
   const findings = data.candidate_semantics_global_findings || [];
@@ -1309,14 +1726,14 @@ function summarizeCadPreview(data) {
       <div class="result-grid">
         ${resultRow("源 DXF", data.source_dxf)}
         ${resultRow("红线候选", boundary.handle ? `${boundary.handle} / ${boundary.layer}` : "未识别")}
-        ${resultRow("候选控制点", `${candidates.length} 个`)}
+        ${resultRow("S2 输入", data.redline_candidate_geojson || "redline_candidate_*.geojson")}
         ${resultRow("语义建议", semanticStatus)}
         ${resultRow("综合视觉参考", locationImages.length ? `CAD + ${locationImages.length} 张区位/卫星图` : "仅 CAD")}
         ${resultRow("预览文件", data.preview_svg)}
       </div>
       ${findings.length ? `<p class="result-next">${compactList(findings, 2)}</p>` : ""}
       ${userPick.length ? `<p class="result-warning">${compactList(userPick, 2)}</p>` : ""}
-      <p class="result-next">${data.status === "ok" ? "S2 页面已加载 CAD 底图。点击候选点的“地图拾取”，再在高德地图上点选对应位置。" : escapeHtml(data.error || data.stderr || "请检查 DWG/DXF 是否可转换。")}</p>
+      <p class="result-next">${data.status === "ok" ? "S2 会重新读取 CAD 红线，并在地图面上显示半透明粗对位图层。" : escapeHtml(data.error || data.stderr || "请检查 DWG/DXF 是否可转换。")}</p>
     </div>
   `;
 }
@@ -1477,6 +1894,7 @@ function summarizeGeneric(data) {
   if (data.stats || Array.isArray(data.issues)) return summarizeValidate(data);
   if (data.provider?.name === "amap_webservice" && "location" in data) return summarizeAmap(data);
   if ("amap_context_exists" in data) return summarizeSpatial(data);
+  if ("site_context" in data && data.path === "05_output/site_context/site_context.json") return summarizeSiteContext(data);
   if ("preview_svg" in data && "candidates" in data) return summarizeCadPreview(data);
   if ("control_points" in data && "count" in data && data.path) return summarizeControlPoints(data);
   if ("migration" in data || (Array.isArray(data.items) && "candidate_set_id_current" in data)) return summarizeMigration(data);
@@ -1599,6 +2017,17 @@ function setActiveProject(code, options = {}) {
   if (resetInventory) state.controlPointsSaved = false;
   if (resetInventory) state.controlPointsStale = false;
   if (resetInventory) state.migrationReport = null;
+  if (resetInventory) {
+    state.siteContext.redline = null;
+    state.siteContext.surroundings = { roads: [], land_uses: [], notes: [] };
+    state.siteContext.entrances = [];
+    state.siteContext.transform = { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 };
+    state.siteContext.addEntranceMode = false;
+    state.siteContext.drag = null;
+    state.siteContext.renderedPoints = [];
+    state.siteContext.siteContextPath = "";
+    state.siteContext.northManual = false;
+  }
   if (resetInventory) state.s1Location = "";
   if (resetInventory) {
     state.amap.activeCandidateId = "";
@@ -1616,7 +2045,7 @@ const PAGE_META = {
   project: { title: "创建或选择项目", badge: "项目", crumb: "Architecture Design / Project" },
   s0: { title: "S0 建档输入", badge: "S0", crumb: "Architecture Design / S0 Intake" },
   s1: { title: "S1 区位输入", badge: "S1", crumb: "Architecture Design / S1 Location" },
-  s2: { title: "S2 地形与配准输入", badge: "S2", crumb: "Architecture Design / S2 Terrain" },
+  s2: { title: "S2 红线与场地语义", badge: "S2", crumb: "Architecture Design / S2 Site Context" },
   workbench: { title: "图纸工作台", badge: "图纸", crumb: "Architecture Design / Drawing Studio" },
   status: { title: "项目检查", badge: "状态", crumb: "Architecture Design / Status" },
 };
@@ -1675,15 +2104,19 @@ function setControls() {
     "#cadZoomOut",
     "#cadZoomReset",
     "#cadZoomIn",
-    "#saveControlPoints",
+    "#resetRedlineOverlay",
+    "#addEntrance",
+    "#saveSiteContext",
   ].forEach((selector) => {
     const control = $(selector);
     if (control) control.disabled = !hasProject;
   });
-  $("#saveControlPoints").disabled = !hasProject || hasStaleControlPoints();
+  const saveSite = $("#saveSiteContext");
+  if (saveSite) saveSite.disabled = !hasProject;
   applyCadPreviewZoom();
-  ["#centerLocation"].forEach((selector) => {
-    $(selector).disabled = !hasProject;
+  ["#centerLocation", "#siteNorthDeg", "#redlineRotation", "#redlineScale", "#surroundingNotes"].forEach((selector) => {
+    const control = $(selector);
+    if (control) control.disabled = !hasProject;
   });
 
   setTab("#tabProject", state.page === "project" ? "active" : hasProject ? "ready" : "active");
@@ -1759,6 +2192,15 @@ async function loadProjects() {
       state.controlPointsSaved = false;
       state.controlPointsStale = false;
       state.migrationReport = null;
+      state.siteContext.redline = null;
+      state.siteContext.surroundings = { roads: [], land_uses: [], notes: [] };
+      state.siteContext.entrances = [];
+      state.siteContext.transform = { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 };
+      state.siteContext.addEntranceMode = false;
+      state.siteContext.drag = null;
+      state.siteContext.renderedPoints = [];
+      state.siteContext.siteContextPath = "";
+      state.siteContext.northManual = false;
       state.s1Location = "";
       state.amap.activeCandidateId = "";
       clearS2Markers();
@@ -1922,30 +2364,32 @@ async function loadSpatial() {
   state.candidateSetIdAtSave = data.candidate_set_id_at_save || null;
   state.controlPointsSaved = Boolean(data.control_points_exists);
   state.controlPointsStale = Boolean(data.control_points_stale);
-  const existing = data.control_points || [];
-  state.controlPoints = existing.map((point) => ({
-    label: point.label || "",
-    cad_x: point.cad_point?.x ?? "",
-    cad_y: point.cad_point?.y ?? "",
-    amap_location: Array.isArray(point.amap_gcj02) ? point.amap_gcj02.join(",") : "",
-    feature_type: point.feature_type || "redline_corner",
-    feature_name: point.feature_name || "",
-    purpose: point.purpose || "registration",
-    confidence: point.confidence || "medium",
-    note: point.note || "",
-  }));
-  state.alignment = data.alignment_report || null;
   if (data.amap_context?.location?.amap_gcj02) {
     state.s1Location = data.amap_context.location.amap_gcj02;
     $("#centerLocation").value = state.s1Location;
     setAmapStatus(`已有上下文：${data.amap_context.location.confidence || "unknown"}`, true);
   }
-  refreshStaleState();
-  renderStaleBanner();
-  renderControlPoints();
-  renderAlignment();
+  state.siteContext.redline = data.redline || null;
+  const saved = data.site_context || null;
+  state.siteContext.surroundings = saved?.surroundings || data.surroundings || { roads: [], land_uses: [], notes: [] };
+  state.siteContext.transform = saved?.redline_transform || defaultSiteTransform(data.redline);
+  state.siteContext.entrances = (saved?.entrances || []).map((entrance, index) => ({
+    id: entrance.id || `ENT-${index + 1}`,
+    label: entrance.label || `出入口 ${index + 1}`,
+    edge_index: Number(entrance.point_on_redline?.edge_index || 0),
+    edge_t: Number(entrance.point_on_redline?.edge_t || 0),
+    faces_road: entrance.faces_road || "",
+  }));
+  state.siteContext.siteContextPath = data.site_context_path || "";
+  state.siteContext.northManual = Boolean(saved?.north_deg || saved?.north_deg === 0);
+  syncSiteControlInputs();
+  const north = $("#siteNorthDeg");
+  if (north && saved?.north_deg !== undefined) north.value = String(saved.north_deg);
+  renderSurroundings();
+  renderEntranceList();
+  renderSiteRedlineOverlay();
+  setSiteContextStatus(data.site_context_exists ? "已保存" : "未保存", data.site_context_exists ? true : null);
   syncAmapUi();
-  if (!state.alignment && state.controlPoints.length >= 3 && !state.controlPointsStale) scheduleAlignmentCheck();
 }
 
 function alignmentPayload() {
@@ -2082,6 +2526,7 @@ async function runCadPreview() {
   renderStaleBanner();
   renderCadPreview();
   syncAmapUi();
+  await loadSpatial();
   writeOutput(data);
 }
 
@@ -2324,6 +2769,44 @@ async function saveControlPoints() {
   await loadSpatial();
 }
 
+async function saveSiteContext() {
+  const code = activeProject();
+  if (!state.siteContext.redline?.normalized_points?.length) {
+    throw new Error("未加载 CAD 红线，无法保存场地语义。");
+  }
+  if (!state.siteContext.entrances.length) {
+    throw new Error("至少需要在红线上标注 1 个出入口。");
+  }
+  const missingRoad = state.siteContext.entrances.find((entrance) => !String(entrance.faces_road || "").trim());
+  if (missingRoad) {
+    throw new Error(`${missingRoad.label || missingRoad.id} 缺少所朝道路。`);
+  }
+  const north = Number($("#siteNorthDeg")?.value || state.siteContext.transform.rotation_deg || 0);
+  const payload = {
+    project: code,
+    north_deg: north,
+    redline_transform: state.siteContext.transform,
+    site_polygon_geo: buildApproxSitePolygonGeo(),
+    entrances: state.siteContext.entrances.map((entrance) => ({
+      id: entrance.id,
+      label: entrance.label,
+      point_on_redline: entrancePointPayload(entrance),
+      faces_road: entrance.faces_road,
+    })),
+    surroundings: collectSurroundingsForSave(),
+  };
+  const data = await api("/api/site-context", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.siteContext.siteContextPath = data.path || "";
+  state.siteContext.northManual = true;
+  setSiteContextStatus("已保存", true);
+  writeOutput(data);
+  await loadSpatial();
+}
+
 function bind() {
   $("#createProject").addEventListener("click", () => createProject().catch((err) => writeOutput(err.message)));
   $("#refreshProjects").addEventListener("click", () => loadProjects().catch((err) => writeOutput(err.message)));
@@ -2337,9 +2820,31 @@ function bind() {
     setCadPreviewStatus("生成失败", false);
     writeOutput(err.message);
   }));
-  $("#cadZoomOut").addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom - 0.25));
-  $("#cadZoomReset").addEventListener("click", () => setCadPreviewZoom(1));
-  $("#cadZoomIn").addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom + 0.25));
+  $("#cadZoomOut")?.addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom - 0.25));
+  $("#cadZoomReset")?.addEventListener("click", () => setCadPreviewZoom(1));
+  $("#cadZoomIn")?.addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom + 0.25));
+  $("#resetRedlineOverlay")?.addEventListener("click", () => {
+    state.siteContext.northManual = false;
+    setSiteTransform(defaultSiteTransform(state.siteContext.redline));
+    renderEntranceList();
+  });
+  $("#redlineRotation")?.addEventListener("input", (event) => {
+    setSiteTransform({ ...state.siteContext.transform, rotation_deg: Number(event.target.value) }, { syncInputs: false });
+  });
+  $("#redlineScale")?.addEventListener("input", (event) => {
+    setSiteTransform({ ...state.siteContext.transform, scale: Number(event.target.value) }, { syncInputs: false });
+  });
+  $("#siteNorthDeg")?.addEventListener("input", () => {
+    state.siteContext.northManual = true;
+  });
+  $("#addEntrance")?.addEventListener("click", () => {
+    state.siteContext.addEntranceMode = !state.siteContext.addEntranceMode;
+    $("#addEntrance")?.classList.toggle("active", state.siteContext.addEntranceMode);
+    setMapHint(
+      "#s2AmapHint",
+      state.siteContext.addEntranceMode ? "点击红线边生成出入口。" : "拖动红线移动；拖动上方圆点旋转；添加出入口后点击红线边。",
+    );
+  });
   $("#saveCenter").addEventListener("click", () => saveCenter().catch((err) => {
     setAmapStatus("生成失败", false);
     writeOutput(err.message);
@@ -2356,7 +2861,16 @@ function bind() {
       ensureS2Map().catch((err) => writeOutput(err.message));
     }
   });
-  $("#saveControlPoints").addEventListener("click", () => saveControlPoints().catch((err) => writeOutput(err.message)));
+  $("#saveControlPoints")?.addEventListener("click", () => saveControlPoints().catch((err) => writeOutput(err.message)));
+  $("#saveSiteContext")?.addEventListener("click", () => saveSiteContext().catch((err) => {
+    setSiteContextStatus("保存失败", false);
+    writeOutput(err.message);
+  }));
+  window.addEventListener("pointermove", onSitePointerMove);
+  window.addEventListener("pointerup", onSitePointerUp);
+  window.addEventListener("resize", () => {
+    if (state.page === "s2") renderSiteRedlineOverlay();
+  });
   $("#projectCode").addEventListener("input", () => {
     if ($("#projectCode").value.trim() !== state.project) {
       setActiveProject("", { clearFiles: true, resetInventory: true });
@@ -2382,6 +2896,11 @@ function bind() {
 window.architectureUploader = {
   getProject: () => state.project,
   getPage: () => state.page,
+  getSiteContextState: () => JSON.parse(JSON.stringify({
+    transform: state.siteContext.transform,
+    entrances: state.siteContext.entrances,
+    redline: state.siteContext.redline,
+  })),
   api,
 };
 

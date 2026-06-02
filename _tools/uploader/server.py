@@ -79,6 +79,7 @@ BUCKETS = {
 CAD_SEMANTICS_REL = Path("05_output/cad/control_point_candidate_semantics.json")
 CAD_CANDIDATES_REL = Path("05_output/cad/control_point_candidates.json")
 CONTROL_POINTS_REL = Path("05_output/amap/control_points.json")
+SITE_CONTEXT_REL = Path("05_output/site_context/site_context.json")
 STYLE_PRESETS_FILE = Path(
     os.environ.get(
         "DRAWING_STYLE_PRESETS_PATH",
@@ -106,6 +107,9 @@ CONTROL_PURPOSES = {
     "reference_only",
 }
 CONTROL_CONFIDENCE = {"low", "medium", "high"}
+ROAD_NAME_RE = re.compile(
+    r"(?:G\d{2,3}|\d{2,3}国道|\d{2,3}省道|\d{2,3}县道|\d{2,3}乡道|[\u4e00-\u9fa5A-Za-z0-9]{1,16}(?:大道|公路|道路|路|街|桥))"
+)
 
 AMAP_JSAPI_REFERER_HINT = (
     "AMAP_JSAPI_KEY 需在高德控制台勾选 'Web 端' 并把 referer 白名单加入 "
@@ -507,6 +511,334 @@ def short_candidate_set_id(value: object) -> str:
     return text[:16] or "unknown"
 
 
+def _json_file(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _walk_coordinate_pairs(value: object, out: list[list[float]]) -> None:
+    if (
+        isinstance(value, list)
+        and len(value) >= 2
+        and isinstance(value[0], (int, float))
+        and isinstance(value[1], (int, float))
+    ):
+        out.append([float(value[0]), float(value[1])])
+        return
+    if isinstance(value, list):
+        for item in value:
+            _walk_coordinate_pairs(item, out)
+
+
+def redline_coordinate_reliability(points: list[list[float]], properties: dict) -> dict[str, object]:
+    unit_note = str(properties.get("unit_note") or "").lower()
+    looks_lonlat = bool(points) and all(-180 <= x <= 180 and -90 <= y <= 90 for x, y in points)
+    projected_hint = any(token in unit_note for token in ("not wgs84", "not lon", "projected", "cad", "dxf"))
+    reliable = looks_lonlat and not projected_hint
+    if reliable:
+        reason = "GeoJSON coordinates look like longitude/latitude and no CAD/projected warning was found."
+    elif projected_hint:
+        reason = properties.get("unit_note") or "GeoJSON properties indicate CAD/projected coordinates."
+    else:
+        reason = "GeoJSON coordinate range is outside longitude/latitude bounds."
+    return {
+        "reliable": reliable,
+        "reason": reason,
+        "placement": "geojson_coordinates" if reliable else "manual_rough_alignment",
+    }
+
+
+def normalize_redline_points(points: list[list[float]]) -> dict[str, object]:
+    if len(points) < 3:
+        raise ValueError("CAD 红线点数不足，无法生成叠加层")
+    ring = points[:]
+    if len(ring) > 1 and abs(ring[0][0] - ring[-1][0]) < 1e-9 and abs(ring[0][1] - ring[-1][1]) < 1e-9:
+        ring = ring[:-1]
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    width = max(max_x - min_x, 1e-9)
+    height = max(max_y - min_y, 1e-9)
+    normalized = [
+        {
+            "x": (x - min_x) / width,
+            "y": (max_y - y) / height,
+        }
+        for x, y in ring
+    ]
+    return {
+        "normalized_points": normalized,
+        "cad_bbox": [min_x, min_y, max_x, max_y],
+        "aspect_ratio": width / height,
+        "point_count": len(normalized),
+    }
+
+
+def read_redline_overlay(proj: Path, code: str) -> dict[str, object]:
+    cad_dir = proj / "05_output" / "cad"
+    preferred = cad_dir / "redline_candidate_1306.geojson"
+    candidates = [preferred] if preferred.exists() else sorted(cad_dir.glob("redline_candidate_*.geojson"))
+    if not candidates:
+        return {
+            "exists": False,
+            "coordinate_reliability": {
+                "reliable": False,
+                "reason": "未找到 05_output/cad/redline_candidate_*.geojson",
+                "placement": "missing",
+            },
+            "normalized_points": [],
+        }
+    path = candidates[0]
+    data = _json_file(path)
+    features = data.get("features") if isinstance(data, dict) else None
+    feature = features[0] if isinstance(features, list) and features else {}
+    properties = feature.get("properties") if isinstance(feature.get("properties"), dict) else {}
+    geometry = feature.get("geometry") if isinstance(feature.get("geometry"), dict) else {}
+    points: list[list[float]] = []
+    _walk_coordinate_pairs(geometry.get("coordinates"), points)
+    normalized = normalize_redline_points(points)
+    reliability = redline_coordinate_reliability(points, properties)
+    svg_path = cad_dir / "redline_candidate_1306.svg"
+    preview_path = cad_dir / "site_preview.svg"
+    return {
+        "exists": True,
+        "source": str(path.relative_to(proj)).replace("\\", "/"),
+        "svg": str(svg_path.relative_to(proj)).replace("\\", "/") if svg_path.exists() else None,
+        "site_preview_svg": str(preview_path.relative_to(proj)).replace("\\", "/") if preview_path.exists() else None,
+        "handle": properties.get("handle"),
+        "area_xy": properties.get("area_xy"),
+        "unit_note": properties.get("unit_note"),
+        "confidence": properties.get("confidence"),
+        "coordinate_reliability": reliability,
+        "default_transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "scale": 1.0,
+            "rotation_deg": 0.0,
+        },
+        **normalized,
+    }
+
+
+def _append_unique_named(items: dict[str, dict], name: object, **fields: object) -> None:
+    label = str(name or "").strip()
+    if not label:
+        return
+    if label not in items:
+        row = {"name": label}
+        row.update({k: v for k, v in fields.items() if v not in (None, "", [])})
+        items[label] = row
+        return
+    for key, value in fields.items():
+        if value not in (None, "", []) and not items[label].get(key):
+            items[label][key] = value
+
+
+def _names_from_seed(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    names = []
+    for item in value:
+        if isinstance(item, dict):
+            label = item.get("name")
+        else:
+            label = item
+        if str(label or "").strip():
+            names.append(str(label).strip())
+    return names
+
+
+def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
+    roads: dict[str, dict] = {}
+    land_uses: dict[str, dict] = {}
+    notes: list[str] = []
+    map_context = context.get("map_context") if isinstance(context.get("map_context"), dict) else {}
+    regeo = map_context.get("regeo") if isinstance(map_context.get("regeo"), dict) else {}
+    seed = context.get("s1_external_context_seed") if isinstance(context.get("s1_external_context_seed"), dict) else {}
+    seed_features = seed.get("external_features") if isinstance(seed.get("external_features"), dict) else {}
+    seed_amap = seed.get("amap_context") if isinstance(seed.get("amap_context"), dict) else {}
+
+    for item in regeo.get("roads") or []:
+        if isinstance(item, dict):
+            direction = item.get("direction")
+            distance = item.get("distance") or item.get("distance_m")
+            note = " / ".join(str(part) for part in (direction, f"{distance}m" if distance else None) if part)
+            _append_unique_named(roads, item.get("name"), type="road", source="regeo.roads", note=note)
+    for name in _names_from_seed(seed_features.get("primary_roads")) + _names_from_seed(seed_features.get("secondary_roads")):
+        _append_unique_named(roads, name, type="road", source="s1_external_context_seed")
+    for name in _names_from_seed(seed_amap.get("roads")):
+        _append_unique_named(roads, name, type="road", source="s1_external_context_seed")
+
+    poi_sources: list[tuple[str, list]] = []
+    nearby = regeo.get("nearby_pois")
+    if isinstance(nearby, list):
+        poi_sources.append(("regeo.nearby_pois", nearby))
+    keyword_context = map_context.get("keyword_context") if isinstance(map_context.get("keyword_context"), dict) else {}
+    for key, value in keyword_context.items():
+        items = value.get("items") if isinstance(value, dict) else []
+        if isinstance(items, list):
+            poi_sources.append((f"keyword_context.{key}", items))
+    for source, items in poi_sources:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            text = " ".join(str(item.get(key) or "") for key in ("name", "type", "address"))
+            if "桥" in text:
+                _append_unique_named(
+                    roads,
+                    item.get("name"),
+                    type="bridge",
+                    source=source,
+                    note=str(item.get("distance_m") or item.get("distance") or ""),
+                )
+            for match in ROAD_NAME_RE.findall(text):
+                _append_unique_named(roads, match, type="road", source=source)
+
+    poi_1000m = seed_amap.get("poi_1000m") if isinstance(seed_amap.get("poi_1000m"), dict) else {}
+    for category, names in poi_1000m.items():
+        for name in _names_from_seed(names):
+            _append_unique_named(land_uses, name, category=category, source="s1_external_context_seed.poi_1000m")
+    for name in _names_from_seed(seed_features.get("landscape_or_culture_nodes")):
+        _append_unique_named(land_uses, name, category="landscape_or_culture_node", source="s1_external_context_seed")
+
+    address = regeo.get("formatted_address")
+    if address:
+        notes.append(f"S1 逆地理地址：{address}")
+    if not roads:
+        notes.append("S1 未返回明确道路；请在 UI 中手工补注入口所朝道路。")
+    return {
+        "roads": list(roads.values()),
+        "land_uses": list(land_uses.values()),
+        "notes": notes,
+    }
+
+
+def _finite_float(value: object, field: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field} 必须是数字") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{field} 必须是有限数字")
+    return number
+
+
+def _clean_named_items(value: object, field: str) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field} 必须是数组")
+    cleaned = []
+    for index, raw in enumerate(value, start=1):
+        if isinstance(raw, str):
+            name = raw.strip()
+            row = {"name": name}
+        elif isinstance(raw, dict):
+            name = str(raw.get("name") or "").strip()
+            row = {str(k): v for k, v in raw.items() if v not in (None, "", [])}
+            row["name"] = name
+        else:
+            raise ValueError(f"{field}[{index}] 格式错误")
+        if not name:
+            raise ValueError(f"{field}[{index}].name 不能为空")
+        cleaned.append(row)
+    return cleaned
+
+
+def _clean_notes(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [line.strip() for line in value.splitlines() if line.strip()]
+    if not isinstance(value, list):
+        raise ValueError("surroundings.notes 必须是数组或多行文本")
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _clean_geo_points(site_polygon_geo: object) -> dict[str, object]:
+    if not isinstance(site_polygon_geo, dict):
+        raise ValueError("site_polygon_geo 必须是对象")
+    points = site_polygon_geo.get("points")
+    if not isinstance(points, list) or len(points) < 3:
+        raise ValueError("site_polygon_geo.points 至少需要 3 个点")
+    cleaned_points = []
+    for index, raw in enumerate(points, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"site_polygon_geo.points[{index}] 格式错误")
+        lng = _finite_float(raw.get("lng"), f"site_polygon_geo.points[{index}].lng")
+        lat = _finite_float(raw.get("lat"), f"site_polygon_geo.points[{index}].lat")
+        if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+            raise ValueError(f"site_polygon_geo.points[{index}] 经纬度超出范围")
+        cleaned_points.append({"lng": lng, "lat": lat})
+    return {
+        "coordinate_system": str(site_polygon_geo.get("coordinate_system") or "GCJ-02 / AMap approximate"),
+        "points": cleaned_points,
+        "confidence": str(site_polygon_geo.get("confidence") or "rough_overlay"),
+    }
+
+
+def clean_site_context_payload(payload: dict, code: str) -> dict[str, object]:
+    north_deg = _finite_float(payload.get("north_deg"), "north_deg") % 360
+    transform_raw = payload.get("redline_transform") if isinstance(payload.get("redline_transform"), dict) else {}
+    transform = {
+        "x": _finite_float(transform_raw.get("x", 0.5), "redline_transform.x"),
+        "y": _finite_float(transform_raw.get("y", 0.5), "redline_transform.y"),
+        "scale": _finite_float(transform_raw.get("scale", 1), "redline_transform.scale"),
+        "rotation_deg": _finite_float(transform_raw.get("rotation_deg", 0), "redline_transform.rotation_deg") % 360,
+    }
+    if transform["scale"] <= 0:
+        raise ValueError("redline_transform.scale 必须大于 0")
+    site_polygon_geo = _clean_geo_points(payload.get("site_polygon_geo"))
+
+    entrances_raw = payload.get("entrances")
+    if not isinstance(entrances_raw, list) or not entrances_raw:
+        raise ValueError("entrances 至少需要 1 个出入口")
+    entrances = []
+    for index, raw in enumerate(entrances_raw, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"entrances[{index}] 格式错误")
+        faces_road = str(raw.get("faces_road") or "").strip()
+        if not faces_road:
+            raise ValueError(f"entrances[{index}].faces_road 不能为空")
+        point = raw.get("point_on_redline")
+        if not isinstance(point, dict):
+            raise ValueError(f"entrances[{index}].point_on_redline 必须是对象")
+        cleaned_point = {}
+        if "lng" in point or "lat" in point:
+            cleaned_point["lng"] = _finite_float(point.get("lng"), f"entrances[{index}].point_on_redline.lng")
+            cleaned_point["lat"] = _finite_float(point.get("lat"), f"entrances[{index}].point_on_redline.lat")
+        for key in ("edge_index", "edge_t", "screen_x", "screen_y"):
+            if key in point:
+                cleaned_point[key] = _finite_float(point.get(key), f"entrances[{index}].point_on_redline.{key}")
+        entrances.append(
+            {
+                "id": str(raw.get("id") or f"ENT-{index}").strip(),
+                "label": str(raw.get("label") or f"出入口 {index}").strip(),
+                "point_on_redline": cleaned_point,
+                "faces_road": faces_road,
+                "note": str(raw.get("note") or "").strip() or None,
+            }
+        )
+
+    surroundings_raw = payload.get("surroundings") if isinstance(payload.get("surroundings"), dict) else {}
+    surroundings = {
+        "roads": _clean_named_items(surroundings_raw.get("roads"), "surroundings.roads"),
+        "land_uses": _clean_named_items(surroundings_raw.get("land_uses"), "surroundings.land_uses"),
+        "notes": _clean_notes(surroundings_raw.get("notes")),
+    }
+    return {
+        "schema_version": "1.0",
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "project": code,
+        "north_deg": north_deg,
+        "redline_transform": transform,
+        "site_polygon_geo": site_polygon_geo,
+        "entrances": entrances,
+        "surroundings": surroundings,
+        "source": "uploader_s2_redline_overlay",
+    }
+
+
 def style_presets_path() -> Path:
     path = STYLE_PRESETS_FILE.resolve()
     repo = REPO_ROOT.resolve()
@@ -588,6 +920,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_amap_jsapi_config()
             elif parsed.path == "/api/spatial":
                 self.handle_spatial(parsed.query)
+            elif parsed.path == "/api/site-context":
+                self.handle_site_context_load(parsed.query)
             elif parsed.path == "/api/cad-preview":
                 self.handle_cad_preview(parsed.query, run=False)
             elif parsed.path == "/api/drawing/registry":
@@ -626,6 +960,8 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_control_points_archive(archive=True)
             elif parsed.path == "/api/control-points/migration-report":
                 self.handle_control_points_archive(archive=False)
+            elif parsed.path == "/api/site-context":
+                self.handle_site_context_save()
             elif parsed.path == "/api/cad-candidate-semantics":
                 self.handle_cad_candidate_semantics()
             elif parsed.path == "/api/alignment-check":
@@ -1457,14 +1793,39 @@ class UploaderHandler(BaseHTTPRequestHandler):
         if context_path.exists():
             try:
                 context = json.loads(context_path.read_text(encoding="utf-8"))
+                surroundings = extract_surroundings_from_s1(context)
                 payload["amap_context"] = {
                     "status": context.get("status"),
                     "location": context.get("location"),
                     "address": (context.get("map_context") or {}).get("regeo", {}).get("formatted_address"),
                     "path": str(context_path.relative_to(proj)).replace("\\", "/"),
                 }
+                payload["surroundings"] = surroundings
             except json.JSONDecodeError as exc:
                 payload["amap_context_error"] = str(exc)
+        else:
+            payload["surroundings"] = {"roads": [], "land_uses": [], "notes": ["缺少 S1 高德上下文。"]}
+        try:
+            payload["redline"] = read_redline_overlay(proj, code)
+        except Exception as exc:
+            payload["redline"] = {
+                "exists": False,
+                "error": str(exc),
+                "coordinate_reliability": {
+                    "reliable": False,
+                    "reason": str(exc),
+                    "placement": "error",
+                },
+                "normalized_points": [],
+            }
+        site_context_path = proj / SITE_CONTEXT_REL
+        payload["site_context_exists"] = site_context_path.exists()
+        if site_context_path.exists():
+            try:
+                payload["site_context"] = json.loads(site_context_path.read_text(encoding="utf-8"))
+                payload["site_context_path"] = str(site_context_path.relative_to(proj)).replace("\\", "/")
+            except json.JSONDecodeError as exc:
+                payload["site_context_error"] = str(exc)
         if control_path.exists():
             try:
                 saved = json.loads(control_path.read_text(encoding="utf-8"))
@@ -1485,6 +1846,48 @@ class UploaderHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as exc:
                 payload["alignment_report_error"] = str(exc)
         self.send_json(payload)
+
+    def handle_site_context_load(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        target = proj / SITE_CONTEXT_REL
+        if not target.exists():
+            self.send_json(
+                {
+                    "ok": True,
+                    "project": code,
+                    "exists": False,
+                    "path": str(SITE_CONTEXT_REL).replace("\\", "/"),
+                }
+            )
+            return
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "exists": True,
+                "path": str(SITE_CONTEXT_REL).replace("\\", "/"),
+                "site_context": json.loads(target.read_text(encoding="utf-8")),
+            }
+        )
+
+    def handle_site_context_save(self) -> None:
+        payload = self.read_json()
+        code = safe_project(str(payload.get("project", "")))
+        proj = project_dir(code)
+        cleaned = clean_site_context_payload(payload, code)
+        target = proj / SITE_CONTEXT_REL
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        self.send_json(
+            {
+                "ok": True,
+                "project": code,
+                "path": str(target.relative_to(proj)).replace("\\", "/"),
+                "site_context": cleaned,
+            }
+        )
 
     def read_cad_preview_payload(self, proj: Path, code: str) -> dict[str, object]:
         preview_path = proj / "05_output" / "cad" / "site_preview.svg"

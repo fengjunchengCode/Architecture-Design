@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
@@ -19,6 +20,101 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_PROJECT = "99-ZZ-BROWSER"
 PORT = int(os.environ.get("DRAWING_BROWSER_SMOKE_PORT", "18766"))
 BASE = f"http://127.0.0.1:{PORT}"
+
+
+def write_site_context_inputs(proj_dir: Path) -> None:
+    amap_dir = proj_dir / "05_output" / "amap"
+    cad_dir = proj_dir / "05_output" / "cad"
+    amap_dir.mkdir(parents=True, exist_ok=True)
+    cad_dir.mkdir(parents=True, exist_ok=True)
+    s1_context = {
+        "schema_version": "1.0",
+        "status": "ok",
+        "project_code": TEST_PROJECT,
+        "provider": {"name": "amap_webservice"},
+        "location": {
+            "amap_gcj02": "94.032582,31.925470",
+            "source": "browser_smoke",
+            "confidence": "high",
+        },
+        "map_context": {
+            "coordinate_system": "GCJ-02 / AMap",
+            "regeo": {
+                "formatted_address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
+                "roads": [
+                    {"name": "G317", "direction": "南", "distance": "40"},
+                    {"name": "650乡道", "direction": "东", "distance": "130"},
+                ],
+                "nearby_pois": [
+                    {
+                        "name": "曲登纳桥",
+                        "type": "地名地址信息;交通地名;桥",
+                        "address": "317国道",
+                        "location": "94.032245,31.926174",
+                        "distance_m": "84",
+                    }
+                ],
+            },
+            "keyword_context": {
+                "桥": {
+                    "status": "ok",
+                    "items": [
+                        {
+                            "name": "曲登纳桥",
+                            "type": "地名地址信息;交通地名;桥",
+                            "address": "317国道",
+                            "location": "94.032245,31.926174",
+                            "distance_m": "84",
+                        }
+                    ],
+                }
+            },
+        },
+        "s1_external_context_seed": {
+            "external_features": {
+                "primary_roads": ["G317"],
+                "secondary_roads": ["650乡道"],
+                "landscape_or_culture_nodes": ["曲登纳桥"],
+            },
+            "amap_context": {
+                "roads": ["G317", "650乡道"],
+                "water": ["曲登纳桥"],
+                "poi_1000m": {
+                    "transport": ["巴青县客运站"],
+                    "education_culture": ["巴青县第一小学"],
+                },
+            },
+        },
+    }
+    redline = {
+        "type": "FeatureCollection",
+        "name": "redline_candidate_1306",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "project": TEST_PROJECT,
+                    "handle": "1306",
+                    "area_xy": 15052.575,
+                    "unit_note": "DXF INSUNITS=0; coordinates are CAD/projected coordinates, not WGS84.",
+                    "confidence": "candidate_needs_cad_review",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [597564.9, 3534324.3],
+                        [597602.4, 3534303.4],
+                        [597569.4, 3534240.6],
+                        [597408.2, 3534296.9],
+                        [597497.5, 3534370.6],
+                        [597564.9, 3534324.3],
+                    ]],
+                },
+            }
+        ],
+    }
+    (amap_dir / "s1_map_context.json").write_text(json.dumps(s1_context, ensure_ascii=False, indent=2), encoding="utf-8")
+    (cad_dir / "redline_candidate_1306.geojson").write_text(json.dumps(redline, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def tool_points(tool_id: str) -> list[list[float]]:
@@ -102,6 +198,7 @@ def prepare_project() -> Path:
         ],
     }
     (semantic_dir / "functional_zoning.json").write_text(json.dumps(legacy_fz, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_site_context_inputs(proj_dir)
     return proj_dir
 
 
@@ -251,6 +348,83 @@ def assert_amap_env_prompt_and_no_external_picker(page) -> None:
     assert "外部拾取器" not in body_text and "外部高德拾取器" not in body_text, (
         "UI should not tell users to use the external AMap picker fallback"
     )
+    page.unroute("**/api/amap-jsapi-config")
+
+
+def assert_s2_site_context_workflow(page) -> None:
+    page.route(
+        "**/api/amap-jsapi-config",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "ok": True,
+                    "configured": False,
+                    "key": None,
+                    "key_env": None,
+                    "security": {"mode": "none"},
+                    "tianditu_key": None,
+                    "warnings": ["未配置 AMAP_JSAPI_KEY，测试使用离线红线叠加层。"],
+                    "env_loaded": [],
+                    "env_file_exists": False,
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    page.goto(f"{BASE}/?project={TEST_PROJECT}&page=s2", wait_until="networkidle", timeout=30000)
+    page.wait_for_selector("#siteRedlinePolygon", state="visible", timeout=15000)
+    s2_text = page.locator("section.page[data-page='s2']").inner_text()
+    for forbidden in ["候选控制点", "地图拾取", "配准检查", "保存控制点", "配准评分", "stale"]:
+        assert forbidden not in s2_text, f"S2 should not expose old control-point flow text: {forbidden}"
+
+    screenshot = page.locator("#s2AmapMap").screenshot()
+    image = Image.open(BytesIO(screenshot)).convert("RGBA")
+    red_pixels = sum(1 for r, g, b, a in image.getdata() if a > 0 and r > 145 and g < 125 and b < 125)
+    assert red_pixels > 250, f"S2 redline overlay should render real red pixels, got {red_pixels}"
+
+    before = page.evaluate("window.architectureUploader.getSiteContextState()")
+    polygon_box = page.locator("#siteRedlinePolygon").bounding_box()
+    assert polygon_box, "redline polygon should be draggable"
+    page.mouse.move(polygon_box["x"] + polygon_box["width"] / 2, polygon_box["y"] + polygon_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(polygon_box["x"] + polygon_box["width"] / 2 + 52, polygon_box["y"] + polygon_box["height"] / 2 + 28, steps=8)
+    page.mouse.up()
+    page.wait_for_function(
+        "(x) => Math.abs(window.architectureUploader.getSiteContextState().transform.x - x) > 0.01",
+        arg=before["transform"]["x"],
+        timeout=8000,
+    )
+
+    rotate_before = page.evaluate("window.architectureUploader.getSiteContextState().transform.rotation_deg")
+    handle_box = page.locator("#siteRedlineRotateHandle").bounding_box()
+    assert handle_box, "redline rotation handle should be visible"
+    page.mouse.move(handle_box["x"] + handle_box["width"] / 2, handle_box["y"] + handle_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(handle_box["x"] + handle_box["width"] / 2 + 44, handle_box["y"] + handle_box["height"] / 2 + 30, steps=8)
+    page.mouse.up()
+    page.wait_for_function(
+        "(rotation) => Math.abs(window.architectureUploader.getSiteContextState().transform.rotation_deg - rotation) > 2",
+        arg=rotate_before,
+        timeout=8000,
+    )
+
+    page.fill("#siteNorthDeg", "23")
+    page.click("#addEntrance")
+    polygon_box = page.locator("#siteRedlinePolygon").bounding_box()
+    assert polygon_box, "redline polygon should still be visible after rotation"
+    page.mouse.click(polygon_box["x"] + polygon_box["width"] * 0.55, polygon_box["y"] + polygon_box["height"] * 0.52)
+    page.wait_for_selector("[data-entrance-item]", timeout=8000)
+    page.locator("[data-entrance-road]").first.select_option("G317")
+
+    with page.expect_response(lambda r: "/api/site-context" in r.url and r.status == 200, timeout=15000):
+        page.click("#saveSiteContext")
+    site_context = REPO_ROOT / "projects" / TEST_PROJECT / "05_output" / "site_context" / "site_context.json"
+    saved = json.loads(site_context.read_text(encoding="utf-8"))
+    assert saved["north_deg"] == 23, f"north angle should persist from UI: {saved}"
+    assert saved["entrances"][0]["faces_road"] == "G317", f"entrance road should persist: {saved}"
+    assert saved["site_polygon_geo"]["points"], f"approximate polygon should be written: {saved}"
     page.unroute("**/api/amap-jsapi-config")
 
 
@@ -1657,6 +1831,7 @@ def main() -> int:
             page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
             assert_amap_env_prompt_and_no_external_picker(page)
+            assert_s2_site_context_workflow(page)
             page.goto(f"{BASE}/?project={TEST_PROJECT}&page=workbench&drawing=functional_zoning", wait_until="networkidle", timeout=30000)
             page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
             line_multipoint_checked = False

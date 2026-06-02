@@ -255,6 +255,45 @@ button:disabled,input:disabled,select:disabled{
 .active-candidate{border:1px dashed var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:7px 8px; font-size:13px; line-height:1.45}
 .amap-label{border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:4px; padding:2px 5px; font-size:12px; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px rgba(31,111,91,.16)}
 .s2-control-panel{position:sticky; top:18px; max-height:calc(100vh - 36px); overflow:auto}
+.s2-site-grid{align-items:start}
+.site-align-panel{display:grid; gap:12px}
+.site-align-map{min-height:max(520px,calc(100vh - var(--top-h) - 210px)); isolation:isolate}
+.site-align-map::before{
+  content:""; position:absolute; inset:0;
+  background:
+    linear-gradient(90deg, rgba(31,111,91,.05) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(31,111,91,.05) 1px, transparent 1px),
+    #f7f4ed;
+  background-size:48px 48px;
+  pointer-events:none;
+}
+.site-redline-overlay{position:absolute; inset:0; z-index:8; width:100%; height:100%; pointer-events:none}
+.site-redline-overlay polygon[data-redline-polygon]{pointer-events:all; cursor:move}
+.site-redline-overlay [data-redline-rotate]{pointer-events:all; cursor:grab}
+.site-redline-overlay [data-redline-rotate]:active{cursor:grabbing}
+.site-redline-fill{fill:#ef3b2d; fill-opacity:.22; stroke:#b91c1c; stroke-width:3; vector-effect:non-scaling-stroke}
+.site-redline-hit{fill:transparent; stroke:#b91c1c; stroke-opacity:.02; stroke-width:22; vector-effect:non-scaling-stroke}
+.site-redline-guide{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:5 5; vector-effect:non-scaling-stroke; fill:none; opacity:.82}
+.site-rotate-line{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:4 4; vector-effect:non-scaling-stroke}
+.site-rotate-handle{fill:#fff; stroke:#b91c1c; stroke-width:3; filter:drop-shadow(0 3px 8px rgba(0,0,0,.22))}
+.site-entrance-marker{fill:#1f6f5b; stroke:#fff; stroke-width:3; vector-effect:non-scaling-stroke; pointer-events:none}
+.site-entrance-label{font-size:12px; font-weight:700; fill:#1f3f35; paint-order:stroke; stroke:#fff; stroke-width:4; pointer-events:none}
+.site-align-controls{display:grid; grid-template-columns:150px minmax(180px,1fr) auto; gap:10px; align-items:end}
+.site-align-controls label,.site-field{display:grid; gap:5px; color:var(--muted); font-size:12px}
+.site-align-controls input,.site-field input,.site-field textarea{width:100%; border:1px solid var(--line); border-radius:5px; padding:7px 9px; font:inherit; background:#fff}
+.site-context-panel{position:sticky; top:18px; max-height:calc(100vh - 36px); overflow:auto}
+.site-context-section{display:grid; gap:8px; border-top:1px solid var(--line); padding-top:10px}
+.box-head.compact b{font-size:14px}
+.entrance-list,.surrounding-list{display:grid; gap:8px}
+.entrance-item,.surrounding-item{border:1px solid var(--line); background:rgba(247,243,234,.55); border-radius:6px; padding:9px; display:grid; gap:6px}
+.entrance-item{grid-template-columns:1fr auto}
+.entrance-item b,.surrounding-item b{font-size:13px}
+.entrance-item small,.surrounding-item small{color:var(--muted); font-size:12px; line-height:1.4}
+.entrance-item select{grid-column:1/-1; width:100%; border:1px solid var(--line); border-radius:5px; padding:7px 9px; font:inherit; background:#fff}
+.entrance-item button{min-height:30px; padding:4px 8px}
+.surrounding-item input{width:100%; border:1px solid var(--line); border-radius:5px; padding:7px 9px; font:inherit; background:#fff}
+.site-context-status-ok{color:var(--accent)}
+.site-context-status-warn{color:var(--accent-2)}
 
 /* ===== AMAP TOOLBAR: search + toggle ===== */
 .amap-toolbar-row{display:flex; gap:8px; align-items:center}
@@ -389,8 +428,10 @@ pre{margin:12px 0 0; max-height:300px; overflow:auto; border:1px solid var(--lin
   .cad-preview-actions{justify-content:stretch}
   .cad-zoom-controls,.cad-preview-actions .primary{width:100%}
   .cad-zoom-controls button{flex:1}
-  .s2-control-panel,.s2-workbench .cad-preview-panel{position:static; max-height:none}
+  .s2-control-panel,.s2-workbench .cad-preview-panel,.site-context-panel{position:static; max-height:none}
   .amap-map,.s2-map-panel .amap-map,#s1TdtMap{min-height:320px}
+  .site-align-map{min-height:420px}
+  .site-align-controls{grid-template-columns:1fr}
   .cad-preview-frame{min-height:320px; max-height:520px}
   .s2-workbench .cad-candidate-list{grid-template-columns:1fr; max-height:none}
 }

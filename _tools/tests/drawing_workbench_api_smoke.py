@@ -102,6 +102,153 @@ def write_semantic_objects(proj_dir: Path, drawing_type: str, count: int) -> Non
     )
 
 
+def write_site_context_inputs(proj_dir: Path) -> None:
+    amap_dir = proj_dir / "05_output" / "amap"
+    cad_dir = proj_dir / "05_output" / "cad"
+    amap_dir.mkdir(parents=True, exist_ok=True)
+    cad_dir.mkdir(parents=True, exist_ok=True)
+    s1_context = {
+        "schema_version": "1.0",
+        "status": "ok",
+        "project_code": TEST_PROJECT,
+        "provider": {"name": "amap_webservice"},
+        "location": {
+            "amap_gcj02": "94.032582,31.925470",
+            "source": "api_smoke",
+            "confidence": "high",
+        },
+        "map_context": {
+            "coordinate_system": "GCJ-02 / AMap",
+            "regeo": {
+                "formatted_address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
+                "roads": [
+                    {"name": "G317", "direction": "南", "distance": "40"},
+                    {"name": "650乡道", "direction": "东", "distance": "130"},
+                ],
+                "nearby_pois": [
+                    {
+                        "name": "曲登纳桥",
+                        "type": "地名地址信息;交通地名;桥",
+                        "address": "317国道",
+                        "location": "94.032245,31.926174",
+                        "distance_m": "84",
+                    }
+                ],
+            },
+            "keyword_context": {
+                "桥": {
+                    "status": "ok",
+                    "items": [
+                        {
+                            "name": "曲登纳桥",
+                            "type": "地名地址信息;交通地名;桥",
+                            "address": "317国道",
+                            "location": "94.032245,31.926174",
+                            "distance_m": "84",
+                        }
+                    ],
+                }
+            },
+        },
+        "s1_external_context_seed": {
+            "external_features": {
+                "primary_roads": ["G317"],
+                "secondary_roads": ["650乡道"],
+                "landscape_or_culture_nodes": ["曲登纳桥"],
+            },
+            "amap_context": {
+                "roads": ["G317", "650乡道"],
+                "water": ["曲登纳桥"],
+                "poi_1000m": {
+                    "transport": ["巴青县客运站"],
+                    "education_culture": ["巴青县第一小学"],
+                },
+            },
+        },
+    }
+    redline = {
+        "type": "FeatureCollection",
+        "name": "redline_candidate_1306",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "project": TEST_PROJECT,
+                    "handle": "1306",
+                    "area_xy": 15052.575,
+                    "unit_note": "DXF INSUNITS=0; coordinates are CAD/projected coordinates, not WGS84.",
+                    "confidence": "candidate_needs_cad_review",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [597564.9, 3534324.3],
+                        [597602.4, 3534303.4],
+                        [597569.4, 3534240.6],
+                        [597408.2, 3534296.9],
+                        [597497.5, 3534370.6],
+                        [597564.9, 3534324.3],
+                    ]],
+                },
+            }
+        ],
+    }
+    (amap_dir / "s1_map_context.json").write_text(json.dumps(s1_context, ensure_ascii=False, indent=2), encoding="utf-8")
+    (cad_dir / "redline_candidate_1306.geojson").write_text(json.dumps(redline, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def assert_site_context_api(proj_dir: Path) -> None:
+    spatial = api_get(f"/api/spatial?project={TEST_PROJECT}")
+    redline = spatial.get("redline") or {}
+    reliability = redline.get("coordinate_reliability") or {}
+    assert redline.get("exists"), f"spatial should expose CAD redline: {spatial}"
+    assert reliability.get("reliable") is False, f"CAD/projected coordinates must not be treated as WGS84: {redline}"
+    assert len(redline.get("normalized_points") or []) >= 4, f"redline overlay points missing: {redline}"
+    road_names = [item.get("name") for item in ((spatial.get("surroundings") or {}).get("roads") or [])]
+    assert "G317" in road_names and "650乡道" in road_names, f"S1 roads not projected into S2: {road_names}"
+
+    payload = {
+        "project": TEST_PROJECT,
+        "north_deg": 17.5,
+        "redline_transform": {"x": 0.54, "y": 0.48, "rotation_deg": 17.5, "scale": 1.08},
+        "site_polygon_geo": {
+            "coordinate_system": "GCJ-02 / AMap approximate",
+            "points": [
+                {"lng": 94.0321, "lat": 31.9251},
+                {"lng": 94.0330, "lat": 31.9252},
+                {"lng": 94.0328, "lat": 31.9260},
+                {"lng": 94.0321, "lat": 31.9251},
+            ],
+        },
+        "entrances": [
+            {
+                "id": "ENT-1",
+                "label": "主入口",
+                "point_on_redline": {"lng": 94.0324, "lat": 31.9255, "edge_index": 1, "edge_t": 0.42},
+                "faces_road": "G317",
+            }
+        ],
+        "surroundings": {
+            "roads": [{"name": "G317", "note": "南侧主要到达道路"}],
+            "land_uses": [{"name": "巴青县第一小学", "category": "education_culture"}],
+            "notes": ["入口由人工在红线边上标注"],
+        },
+    }
+    saved = api_post("/api/site-context", payload)
+    assert saved.get("ok") and saved.get("path") == "05_output/site_context/site_context.json", f"save failed: {saved}"
+    written = json.loads((proj_dir / saved["path"]).read_text(encoding="utf-8"))
+    assert written["north_deg"] == 17.5, f"north_deg did not persist: {written}"
+    assert written["entrances"][0]["faces_road"] == "G317", f"entrance road did not persist: {written}"
+    assert written["surroundings"]["roads"][0]["name"] == "G317", f"surroundings did not persist: {written}"
+
+    invalid = dict(payload)
+    invalid["entrances"] = []
+    rejected = api_post_error("/api/site-context", invalid)
+    assert rejected["status"] == 400 and "entrances" in json.dumps(rejected["body"], ensure_ascii=False), (
+        f"site_context schema should reject missing entrances: {rejected}"
+    )
+
+
 def assert_reflow_adaptive(proj_dir: Path) -> None:
     drawing_type = "planting_design"
     frame = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]["drawing_frame"]
@@ -169,6 +316,7 @@ def main() -> int:
     proj_dir.mkdir(parents=True)
     (proj_dir / "05_output" / "drawings" / "base").mkdir(parents=True)
     (proj_dir / "05_output" / "drawings" / "semantic").mkdir(parents=True)
+    write_site_context_inputs(proj_dir)
     base_img = proj_dir / "05_output" / "drawings" / "base" / "master_plan.jpg"
     base_img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
 
@@ -375,6 +523,9 @@ def main() -> int:
         result = api_get(f"/api/drawing/supporting/list?project={TEST_PROJECT}&drawing_type=planting_design")
         assert result.get("ok"), f"supporting list failed: {result}"
         print("OK: supporting images list endpoint works")
+
+        assert_site_context_api(proj_dir)
+        print("OK: S2 site context API load/save/schema works")
 
         # Test shared style presets library
         presets = api_get("/api/drawing/style-presets")

@@ -30,7 +30,7 @@
           </button>
           <button class="stage-tab studio-act-btn locked" id="tabS2" data-page="s2">
             <span class="glyph">S2</span>
-            <span class="tip">DWG / 控制点</span>
+            <span class="tip">红线 / 入口</span>
           </button>
           <button class="stage-tab studio-act-btn locked" id="tabWorkbench" data-page="workbench">
             <span class="glyph">图</span>
@@ -233,64 +233,80 @@
               </article>
             </section>
 
-            <div class="stale-banner" id="controlPointStaleBanner" hidden></div>
-
-            <div class="studio-page-grid wide-left">
-              <section class="studio-card cad-preview-panel">
+            <div class="studio-page-grid wide-left s2-site-grid">
+              <section class="studio-card site-align-panel">
                 <div class="box-head">
                   <div>
-                    <h3>CAD 地形图与候选控制点</h3>
-                    <span id="cadPreviewStatus">尚未生成 CAD 预览</span>
+                    <h3>CAD 红线粗对位</h3>
+                    <span id="cadPreviewStatus">等待 CAD 红线</span>
                   </div>
                   <div class="cad-preview-actions">
-                    <div class="cad-zoom-controls" aria-label="CAD 预览缩放">
-                      <button id="cadZoomOut" type="button" title="缩小 CAD 预览">−</button>
-                      <button id="cadZoomReset" type="button" title="重置 CAD 预览缩放">100%</button>
-                      <button id="cadZoomIn" type="button" title="放大 CAD 预览">+</button>
-                    </div>
-                    <button id="runCadPreview" class="primary">生成 CAD 预览</button>
+                    <button id="resetRedlineOverlay" type="button">重置摆放</button>
+                    <button id="runCadPreview" class="primary" type="button">刷新 CAD 红线</button>
                   </div>
                 </div>
-                <div class="cad-preview-layout">
-                  <div class="cad-preview-frame" id="cadPreviewFrame">
-                    <div class="control-empty">上传 DWG/DXF 后，点击"生成 CAD 预览"。</div>
+                <div class="amap-panel s2-map-panel" id="s2AmapPanel">
+                  <div class="amap-head">
+                    <b>S1 卫星底图 + CAD 红线</b>
+                    <span id="s2AmapStatus">等待 S1 中心点</span>
                   </div>
-                  <div class="cad-candidate-list" id="cadCandidateList">
-                    <div class="control-empty">候选 CAD 控制点会显示在这里。</div>
+                  <div class="amap-map site-align-map" id="s2AmapMap">
+                    <div class="map-empty">地图会从 S1 中心点启动；红线叠加层会使用 CAD 候选轮廓。</div>
                   </div>
+                  <p class="map-hint" id="s2AmapHint">拖动红线移动，拖动上方圆点旋转；入口由“添加出入口”后点击红线边生成。</p>
+                </div>
+                <div class="site-align-controls">
+                  <label>旋转角
+                    <input id="redlineRotation" type="number" step="1" value="0">
+                  </label>
+                  <label>缩放
+                    <input id="redlineScale" type="range" min="0.45" max="1.8" step="0.01" value="1">
+                  </label>
+                  <button id="addEntrance" type="button">添加出入口</button>
                 </div>
               </section>
 
-              <aside class="spatial-box s2-control-panel">
-                <div class="amap-panel s2-map-panel" id="s2AmapPanel">
-                  <div class="amap-head">
-                    <b>地图拾取</b>
-                    <span id="s2AmapStatus">等待候选点</span>
-                  </div>
-                  <div class="active-candidate" id="s2ActiveCandidate">先在左侧候选点点击"地图拾取"。</div>
-                  <div class="amap-map" id="s2AmapMap">
-                    <div class="map-empty">地图会从 S1 中心点启动；不会使用默认城市。</div>
-                  </div>
-                  <p class="map-hint" id="s2AmapHint">点击地图后会把 GCJ-02 坐标写入当前 CAD 候选点并加入控制点列表。</p>
-                </div>
+              <aside class="spatial-box site-context-panel">
                 <div class="box-head">
-                  <b>已选地图点 ↔ CAD 点</b>
-                  <span id="controlStatus">0 个控制点</span>
+                  <b>S3 场地语义</b>
+                  <span id="siteContextStatus">未保存</span>
                 </div>
-                <div class="control-list" id="controlList"></div>
-                <div class="alignment-panel" id="alignmentPanel">
-                  <b>配准检查</b>
-                  <p>加入至少 3 个点后自动检查；允许少量偏差，但异常点会在这里说明原因。</p>
-                </div>
+                <label class="site-field">北向角
+                  <input id="siteNorthDeg" type="number" step="1" value="0">
+                </label>
+                <section class="site-context-section">
+                  <div class="box-head compact">
+                    <b>出入口</b>
+                    <span id="entranceStatus">0 个</span>
+                  </div>
+                  <div class="entrance-list" id="entranceList"></div>
+                </section>
+                <section class="site-context-section">
+                  <div class="box-head compact">
+                    <b>周边道路</b>
+                    <span id="surroundingRoadStatus">等待 S1</span>
+                  </div>
+                  <div class="surrounding-list" id="surroundingRoads"></div>
+                </section>
+                <section class="site-context-section">
+                  <div class="box-head compact">
+                    <b>周边用地 / 节点</b>
+                    <span id="surroundingLandUseStatus">等待 S1</span>
+                  </div>
+                  <div class="surrounding-list" id="surroundingLandUses"></div>
+                </section>
+                <label class="site-field">补充备注
+                  <textarea id="surroundingNotes" rows="4"></textarea>
+                </label>
                 <div class="inline-actions">
-                  <span class="save-hint">保存后写入项目文件</span>
-                  <button id="saveControlPoints" class="primary">保存控制点与配准报告</button>
+                  <span class="save-hint">写入 05_output/site_context/site_context.json</span>
+                  <button id="saveSiteContext" class="primary" type="button">保存场地语义</button>
                 </div>
               </aside>
             </div>
 
             <div class="handoff-note">
-              S2 输入完成后，按候选点卡片上的建议在内嵌地图拾取坐标，加入控制点并保存。地物类型由 agent/视觉模型预判，只有坐标需要你确认。
+              S2 完成后，S3 读取场地语义文件：北向角、红线近似范围、入口所朝道路和周边语义。
             </div>
           </section>
 
