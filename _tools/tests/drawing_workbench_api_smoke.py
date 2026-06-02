@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 TEST_PROJECT = "99-ZZ-WBTEST"
 PORT = 18765
 BASE = f"http://127.0.0.1:{PORT}"
@@ -122,8 +124,18 @@ def write_site_context_inputs(proj_dir: Path) -> None:
             "regeo": {
                 "formatted_address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
                 "roads": [
-                    {"name": "G317", "direction": "南", "distance": "40"},
-                    {"name": "650乡道", "direction": "东", "distance": "130"},
+                    {
+                        "name": "G317",
+                        "direction": "南",
+                        "distance": "40",
+                        "location": "94.031900,31.925200",
+                    },
+                    {
+                        "name": "650乡道",
+                        "direction": "东",
+                        "distance": "130",
+                        "location": "94.032900,31.925820",
+                    },
                 ],
                 "nearby_pois": [
                     {
@@ -148,6 +160,55 @@ def write_site_context_inputs(proj_dir: Path) -> None:
                         }
                     ],
                 }
+            },
+            "osm_context": {
+                "status": "ok",
+                "source": "mock_overpass",
+                "features": [
+                    {
+                        "kind": "road",
+                        "name": "G317",
+                        "ref": "G317",
+                        "level": "primary",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [94.031500, 31.925130],
+                                [94.032400, 31.925320],
+                                [94.033200, 31.925520],
+                            ],
+                        },
+                    },
+                    {
+                        "kind": "water",
+                        "name": "曲登纳河",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [94.031700, 31.926100],
+                                [94.032500, 31.926030],
+                                [94.033300, 31.925920],
+                            ],
+                        },
+                    },
+                    {
+                        "kind": "water",
+                        "name": "曲登纳水面",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [94.032050, 31.925780],
+                                [94.032320, 31.925820],
+                                [94.032270, 31.925980],
+                                [94.032020, 31.925930],
+                                [94.032050, 31.925780],
+                            ]],
+                        },
+                    },
+                ],
             },
         },
         "s1_external_context_seed": {
@@ -212,14 +273,30 @@ def assert_site_context_api(proj_dir: Path) -> None:
         if isinstance(item, dict)
     }
     assert roads_by_name["G317"].get("level") == "primary", f"G317 should be classified as a primary road: {roads_by_name}"
+    assert roads_by_name["G317"].get("geometry", {}).get("type") == "LineString", (
+        f"G317 should carry line geometry for S2 overlay: {roads_by_name}"
+    )
+    assert roads_by_name["G317"].get("source") in {"osm_context", "regeo.roads", "s1_external_context_seed"}, (
+        f"G317 should expose an auditable source: {roads_by_name}"
+    )
     assert roads_by_name["650乡道"].get("level") == "secondary", (
         f"650乡道 should be classified as a secondary road: {roads_by_name}"
+    )
+    water_features = (spatial.get("surroundings") or {}).get("water_features") or []
+    assert any(item.get("geometry", {}).get("type") in {"LineString", "Polygon"} for item in water_features), (
+        f"S2 surroundings should expose water geometry for overlay: {water_features}"
     )
     candidates = spatial.get("candidate_entrances") or []
     assert candidates and candidates[0].get("faces_road") == "G317", (
         f"S2 should auto expose candidate entrances from nearby roads: {candidates}"
     )
     assert candidates[0].get("road_level") == "primary", f"candidate entrance should carry road_level: {candidates}"
+    assert candidates[0].get("source") == "auto_s2_nearest_road_geometry", (
+        f"candidate entrance should be generated from road/redline geometry, not list order: {candidates}"
+    )
+    assert isinstance(candidates[0].get("distance_hint"), dict), (
+        f"candidate entrance should carry geometry distance hints: {candidates}"
+    )
 
     payload = {
         "project": TEST_PROJECT,
@@ -254,6 +331,36 @@ def assert_site_context_api(proj_dir: Path) -> None:
     rejected = api_post_error("/api/site-context", invalid)
     assert rejected["status"] == 400 and "entrances" in json.dumps(rejected["body"], ensure_ascii=False), (
         f"site_context schema should reject missing entrances: {rejected}"
+    )
+
+
+def assert_s2_basemap_diagnostics_contract(proj_dir: Path) -> None:
+    from _tools.uploader import server as uploader_server
+
+    payload = uploader_server.build_s2_basemap_error_payload(
+        RuntimeError("tile fetch failed: timeout"),
+        configured=True,
+        project=TEST_PROJECT,
+        center_gcj02="94.032582,31.925470",
+        tile_debug={"zoom": 17, "tile_count": 24, "server": "t0"},
+    )
+    assert payload["ok"] is False, f"diagnostic payload must be an error payload: {payload}"
+    assert payload["configured"] is True, f"diagnostic payload should preserve configured state: {payload}"
+    assert payload["reason"] == "tile_fetch_failed", f"tile errors should be categorized: {payload}"
+    assert payload["project"] == TEST_PROJECT and payload["center_gcj02"], f"payload should carry project and center: {payload}"
+    assert payload["tile_debug"]["tile_count"] == 24, f"payload should expose tile debug info: {payload}"
+    assert "暂不可用" not in payload["error"], f"API error should be concrete, not UI-only copy: {payload}"
+
+
+def assert_location_analysis_semantic_candidates(proj_dir: Path) -> None:
+    from _tools.uploader import server as uploader_server
+
+    objects = uploader_server.build_location_analysis_semantic_objects(proj_dir, radius_m=1000)
+    types = {item.get("type") for item in objects}
+    assert "location_road_line" in types, f"S1 location analysis should get road candidates: {objects}"
+    assert "location_water_area" in types, f"S1 location analysis should get water candidates: {objects}"
+    assert all(item.get("source") == "s1_semantic_context" for item in objects), (
+        f"S1 semantic candidates should be auditable: {objects}"
     )
 
 
@@ -533,7 +640,10 @@ def main() -> int:
         print("OK: supporting images list endpoint works")
 
         assert_site_context_api(proj_dir)
+        assert_s2_basemap_diagnostics_contract(proj_dir)
         print("OK: S2 site context API load/save/schema works")
+        assert_location_analysis_semantic_candidates(proj_dir)
+        print("OK: S1 location analysis semantic candidates work")
 
         # Test shared style presets library
         presets = api_get("/api/drawing/style-presets")

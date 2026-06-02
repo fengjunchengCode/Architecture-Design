@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -383,6 +384,139 @@ def static_map_url(location: tuple[float, float]) -> str:
     return f"{AMAP_BASE}/v3/staticmap?{urllib.parse.urlencode(params)}"
 
 
+def gcj02_to_wgs84_approx(lng: float, lat: float) -> tuple[float, float]:
+    pi = 3.14159265358979324
+    a = 6378245.0
+    ee = 0.00669342162296594323
+
+    def transform_lat(x: float, y: float) -> float:
+        ret = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * math.sqrt(abs(x))
+        ret += (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
+        ret += (20 * math.sin(y * pi) + 40 * math.sin(y / 3 * pi)) * 2 / 3
+        ret += (160 * math.sin(y / 12 * pi) + 320 * math.sin(y * pi / 30)) * 2 / 3
+        return ret
+
+    def transform_lng(x: float, y: float) -> float:
+        ret = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * math.sqrt(abs(x))
+        ret += (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
+        ret += (20 * math.sin(x * pi) + 40 * math.sin(x / 3 * pi)) * 2 / 3
+        ret += (150 * math.sin(x / 12 * pi) + 300 * math.sin(x / 30 * pi)) * 2 / 3
+        return ret
+
+    dlat = transform_lat(lng - 105, lat - 35)
+    dlng = transform_lng(lng - 105, lat - 35)
+    radlat = lat / 180 * pi
+    magic = math.sin(radlat)
+    magic = 1 - ee * magic * magic
+    sqrtmagic = math.sqrt(magic)
+    dlat = (dlat * 180) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi)
+    dlng = (dlng * 180) / (a / sqrtmagic * math.cos(radlat) * pi)
+    return lng - dlng, lat - dlat
+
+
+def overpass_bbox_wgs84(center_gcj02: tuple[float, float], radius_m: int) -> tuple[float, float, float, float]:
+    center_wgs = gcj02_to_wgs84_approx(center_gcj02[0], center_gcj02[1])
+    cos_lat = max(0.000001, math.cos(math.radians(center_wgs[1])))
+    lat_delta = radius_m / 110540
+    lng_delta = radius_m / (111320 * cos_lat)
+    south = center_wgs[1] - lat_delta
+    west = center_wgs[0] - lng_delta
+    north = center_wgs[1] + lat_delta
+    east = center_wgs[0] + lng_delta
+    return south, west, north, east
+
+
+def overpass_query(bbox: tuple[float, float, float, float], timeout: int) -> str:
+    south, west, north, east = bbox
+    bbox_text = f"{south:.7f},{west:.7f},{north:.7f},{east:.7f}"
+    return f"""
+[out:json][timeout:{max(5, min(timeout, 60))}];
+(
+  way["highway"]({bbox_text});
+  way["waterway"]({bbox_text});
+  way["natural"="water"]({bbox_text});
+  way["water"]({bbox_text});
+);
+out tags geom qt;
+"""
+
+
+def overpass_fetch(
+    location_gcj02: tuple[float, float],
+    radius_m: int,
+    timeout: int,
+    endpoint: str,
+) -> dict[str, Any]:
+    bbox = overpass_bbox_wgs84(location_gcj02, radius_m)
+    query = overpass_query(bbox, timeout)
+    body = urllib.parse.urlencode({"data": query}).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={
+            "User-Agent": "Architecture-Design-osm-context/1.0",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    return {
+        "status": "ok",
+        "source": "overpass_api",
+        "endpoint": endpoint,
+        "coordinate_system": "WGS84",
+        "bbox_wgs84": {"south": bbox[0], "west": bbox[1], "north": bbox[2], "east": bbox[3]},
+        "features": overpass_elements_to_features(payload.get("elements") or []),
+    }
+
+
+def overpass_elements_to_features(elements: list[Any]) -> list[dict[str, Any]]:
+    features: list[dict[str, Any]] = []
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        tags = element.get("tags") if isinstance(element.get("tags"), dict) else {}
+        geometry = element.get("geometry") if isinstance(element.get("geometry"), list) else []
+        coords = [
+            [float(point["lon"]), float(point["lat"])]
+            for point in geometry
+            if isinstance(point, dict) and "lon" in point and "lat" in point
+        ]
+        if len(coords) < 2:
+            continue
+        is_water_area = tags.get("natural") == "water" or bool(tags.get("water"))
+        geom_type = "Polygon" if is_water_area and coords[0] == coords[-1] and len(coords) >= 4 else "LineString"
+        coordinates: Any = [coords] if geom_type == "Polygon" else coords
+        kind = "water" if tags.get("waterway") or is_water_area else "road"
+        features.append(
+            {
+                "id": f"osm-{element.get('type', 'way')}-{element.get('id')}",
+                "kind": kind,
+                "source": "overpass_api",
+                "name": tags.get("name") or tags.get("ref"),
+                "tags": tags,
+                "geometry": {"type": geom_type, "coordinates": coordinates},
+            }
+        )
+    return features
+
+
+def build_osm_context(args: argparse.Namespace, location_gcj02: tuple[float, float]) -> dict[str, Any]:
+    if args.skip_osm:
+        return {"status": "skipped", "source": "overpass_api", "features": []}
+    try:
+        return overpass_fetch(location_gcj02, args.osm_radius, args.timeout, args.overpass_endpoint)
+    except Exception as exc:
+        return {
+            "status": "request_error",
+            "source": "overpass_api",
+            "endpoint": args.overpass_endpoint,
+            "error": str(exc),
+            "features": [],
+        }
+
+
 def location_from_record(record: dict[str, Any]) -> tuple[tuple[float, float] | None, str | None, str | None]:
     site = record.get("site") if isinstance(record.get("site"), dict) else {}
     coords = site.get("coords")
@@ -506,6 +640,7 @@ def build_context(args: argparse.Namespace, project_dir: Path, api_key: str, key
                 args.max_items,
                 keywords=keyword,
             )
+    osm_context = build_osm_context(args, amap_location)
 
     road_names = names(regeo["roads"]) + [
         " / ".join(filter(None, [item.get("first_name"), item.get("second_name")]))
@@ -537,6 +672,7 @@ def build_context(args: argparse.Namespace, project_dir: Path, api_key: str, key
             "poi_500m": poi_500m,
             "poi_1000m": poi_1000m,
             "keyword_context": keyword_context,
+            "osm_context": osm_context,
         },
         "static_map": {
             "url_template": static_map_url(amap_location),
@@ -734,6 +870,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keyword", action="append", help="Extra keyword around-search. Repeatable.")
     parser.add_argument("--skip-poi", action="store_true", help="Skip grouped 500m/1000m POI searches")
     parser.add_argument("--skip-keywords", action="store_true", help="Skip keyword searches for water/bridges/parks")
+    parser.add_argument("--skip-osm", action="store_true", help="Skip OSM/Overpass road and water vector query")
+    parser.add_argument("--osm-radius", type=int, default=1500, help="OSM/Overpass query radius in meters")
+    parser.add_argument(
+        "--overpass-endpoint",
+        default="https://overpass-api.de/api/interpreter",
+        help="Overpass API endpoint for OSM vector semantics",
+    )
     parser.add_argument("--max-items", type=int, default=8, help="Max items per category, capped by AMap offset limit")
     parser.add_argument("--timeout", type=int, default=20, help="HTTP timeout seconds")
     parser.add_argument("--write", action="store_true", help="Write 05_output/amap/s1_map_context.json")

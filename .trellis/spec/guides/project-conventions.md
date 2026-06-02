@@ -16,12 +16,14 @@
 4. **不擅自加重依赖**(如 `python-pptx`)——先在回复里说明、等确认。
 5. **不改 `docs/CLAUDE_CODEX_REVIEW_THREAD.md`**(评审线程只 mac claude 写)。
 6. 脚本必须从自身位置推导仓库根目录,不假设固定路径。
+7. **制图标准动作必须可撤销/重做。** 任意 drawing/workbench/S2 类制图 UI 的移动、旋转、缩放、增删对象、属性编辑、重置等标准交互,必须支持 `Ctrl/Cmd+Z` 撤销与 `Ctrl/Cmd+Y` 或 `Ctrl/Cmd+Shift+Z` 重做；一次用户意图只入栈一次,并用浏览器 smoke 覆盖关键路径。
 
 ## 标准门禁（改完必须全绿）
 
 ```bash
 python3 -m py_compile _tools/drawing_workbench/*.py _tools/uploader/server.py
 node --check _tools/uploader/static/workbench/workbench.js
+node --check _tools/uploader/static/app.js
 python3 _tools/tests/drawing_workbench_api_smoke.py
 python3 _tools/tests/drawing_workbench_browser_smoke.py   # 需起服务 + playwright
 ```

@@ -1164,6 +1164,22 @@
     return `left:${Number(data.x || 0) * 100}%;top:${Number(data.y || 0) * 100}%;width:${Number(data.w || 0) * 100}%;height:${Number(data.h || 0) * 100}%;`;
   }
 
+  function drawingSourceAspect() {
+    const image = $("#baseImage");
+    const naturalWidth = Number(state.drawing?.base_image?.natural_width || (image && image.naturalWidth) || 1);
+    const naturalHeight = Number(state.drawing?.base_image?.natural_height || (image && image.naturalHeight) || 1);
+    if (!Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0) {
+      return 1.6;
+    }
+    return Math.max(0.2, Math.min(8, naturalWidth / naturalHeight));
+  }
+
+  function pptDrawingPlateStyle(frame, sourceAspect) {
+    const frameAspect = ((Number(frame?.w || 0) || 1) * (16 / 9)) / (Number(frame?.h || 0) || 1);
+    const sizeStyle = frameAspect > sourceAspect ? "height:100%;width:auto;" : "width:100%;height:auto;";
+    return `${sizeStyle}--ppt-source-aspect:${sourceAspect};`;
+  }
+
   function safeCssColor(value, fallback = "#D9882B") {
     const text = String(value || "").trim();
     return /^#[0-9A-Fa-f]{6}$/.test(text) ? text : fallback;
@@ -1290,8 +1306,10 @@
     const plate = state.deckLayout.drawing_plate || {};
     slideEl.style.setProperty("--ppt-plate-aspect", String(Number(plate.aspect_ratio) || 1.6));
     const frame = state.deckLayout.drawing_frame || { x: 0.02, y: 0.17, w: 0.64, h: 0.72 };
+    const sourceAspect = drawingSourceAspect();
+    slideEl.style.setProperty("--ppt-source-aspect", String(sourceAspect));
     const elements = (slide && slide.elements) || {};
-    const drawingMedia = renderPptDrawingMedia();
+    const drawingMedia = renderPptDrawingMedia(sourceAspect);
     const legendHtml = isFunctionalZoning() ? renderFunctionalZoneLegendPreview({ forPreview: true }) : renderGenericLegendPreview();
     const supportBoxes = Array.isArray(elements.supporting_images) ? elements.supporting_images : [];
     const warnings = Array.isArray(slide && slide.layout_warnings)
@@ -1317,7 +1335,7 @@
       ${slide && slide.needs_reflow ? '<div class="ppt-reflow-banner">本页排版需根据最新图纸框重新生成</div>' : ""}
       ${warningHtml}
       <div class="ppt-el ppt-drawing-frame" data-ppt-drawing-frame="true" style="${boxStyle(frame)}">
-        <div class="ppt-drawing-plate" data-ppt-drawing-plate="true">
+        <div class="ppt-drawing-plate" data-ppt-drawing-plate="true" style="${pptDrawingPlateStyle(frame, sourceAspect)}">
           ${drawingMedia}
         </div>
         <span class="ppt-frame-label">全局图纸框</span>
@@ -1339,7 +1357,7 @@
     bindPptElementInteractions(slideEl);
   }
 
-  function renderPptDrawingMedia() {
+  function renderPptDrawingMedia(sourceAspect = drawingSourceAspect()) {
     const baseUrl = state.loadedBaseUrl || "";
     const selectedId = state.selectedId;
     state.selectedId = null;
@@ -1353,20 +1371,22 @@
       return '<div class="ppt-empty-note">暂无图纸内容；请先加载底图或绘制对象。</div>';
     }
     const baseImage = baseUrl
-      ? `<image href="${escapeHtml(baseUrl)}" x="0" y="0" width="1" height="1" preserveAspectRatio="none"></image>`
-      : '<rect x="0" y="0" width="1" height="1" fill="#f7f4ed"></rect>';
+      ? `<image href="${escapeHtml(baseUrl)}" x="0" y="0" width="${sourceAspect}" height="1" preserveAspectRatio="xMidYMid meet"></image>`
+      : `<rect x="0" y="0" width="${sourceAspect}" height="1" fill="#f7f4ed"></rect>`;
     return `
       <svg
         class="ppt-drawing-vector"
         data-ppt-drawing-media="true"
         data-ppt-drawing-vector="true"
-        viewBox="0 0 1 1"
-        preserveAspectRatio="none"
+        viewBox="0 0 ${sourceAspect} 1"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="${escapeHtml(drawingConfig().label || "图纸")}"
       >
         ${baseImage}
-        ${objectSvg}
+        <g transform="scale(${sourceAspect} 1)">
+          ${objectSvg}
+        </g>
       </svg>
     `;
   }

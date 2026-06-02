@@ -424,25 +424,24 @@ def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path)
 
 def generate_tdt_site_basemap(proj: Path, output_path: Path) -> dict[str, object]:
     from PIL import Image, ImageEnhance
-    from _tools.s1_location_analysis import gcj02_to_wgs84
 
     load_env_file()
     tk = os.environ.get("TIANDITU_KEY", "").strip()
     if not tk:
         raise ValueError("缺 TIANDITU_KEY，S2 天地图卫星底图不可用，请在仓库根 .env 配置")
-    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
-    if not context_path.exists():
-        raise ValueError("缺少 S1 高德上下文，无法读取 S2 底图中心点")
-    context = json.loads(context_path.read_text(encoding="utf-8"))
-    center_text = str(context.get("location", {}).get("amap_gcj02") or "")
-    lng_gcj, lat_gcj = [float(part.strip()) for part in center_text.split(",", 1)]
-    lng_wgs, lat_wgs = gcj02_to_wgs84(lng_gcj, lat_gcj)
-    width, height, zoom = 1280, 820, 17
-    center_tile_x, center_tile_y = _wgs84_to_tile(lng_wgs, lat_wgs, zoom)
-    center_px_x, center_px_y = center_tile_x * 256, center_tile_y * 256
-    left, top = center_px_x - width / 2, center_px_y - height / 2
-    first_x, last_x = math.floor(left / 256), math.floor((left + width - 1) / 256)
-    first_y, last_y = math.floor(top / 256), math.floor((top + height - 1) / 256)
+    lng_gcj, lat_gcj = read_s2_center_gcj02(proj)
+    tile_debug = estimate_s2_site_tile_debug(lng_gcj, lat_gcj)
+    lng_wgs = float(tile_debug["center_wgs84"]["lng"])
+    lat_wgs = float(tile_debug["center_wgs84"]["lat"])
+    width = int(tile_debug["size"]["width"])
+    height = int(tile_debug["size"]["height"])
+    zoom = int(tile_debug["zoom"])
+    first_x = int(tile_debug["tile_range"]["first_x"])
+    last_x = int(tile_debug["tile_range"]["last_x"])
+    first_y = int(tile_debug["tile_range"]["first_y"])
+    last_y = int(tile_debug["tile_range"]["last_y"])
+    left = float(tile_debug["pixel_origin"]["left"])
+    top = float(tile_debug["pixel_origin"]["top"])
     mosaic = Image.new("RGB", (width, height), (30, 30, 30))
     for tile_x in range(first_x, last_x + 1):
         for tile_y in range(first_y, last_y + 1):
@@ -459,7 +458,204 @@ def generate_tdt_site_basemap(proj: Path, output_path: Path) -> dict[str, object
         "center_gcj02": f"{lng_gcj:.6f},{lat_gcj:.6f}",
         "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}",
         "size": {"width": width, "height": height},
+        "tile_debug": tile_debug,
     }
+
+
+def read_s2_center_gcj02(proj: Path) -> tuple[float, float]:
+    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
+    if not context_path.exists():
+        raise ValueError("missing_s1_map_context")
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    center_text = str(context.get("location", {}).get("amap_gcj02") or "")
+    parts = [part.strip() for part in center_text.split(",", 1)]
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise ValueError("missing_s1_center_gcj02")
+    lng_gcj, lat_gcj = float(parts[0]), float(parts[1])
+    if not (-180 <= lng_gcj <= 180 and -90 <= lat_gcj <= 90):
+        raise ValueError("invalid_s1_center_gcj02")
+    return lng_gcj, lat_gcj
+
+
+def estimate_s2_site_tile_debug(lng_gcj: float, lat_gcj: float) -> dict[str, object]:
+    from _tools.s1_location_analysis import gcj02_to_wgs84
+
+    lng_wgs, lat_wgs = gcj02_to_wgs84(lng_gcj, lat_gcj)
+    width, height, zoom = 1280, 820, 17
+    center_tile_x, center_tile_y = _wgs84_to_tile(lng_wgs, lat_wgs, zoom)
+    center_px_x, center_px_y = center_tile_x * 256, center_tile_y * 256
+    left, top = center_px_x - width / 2, center_px_y - height / 2
+    first_x, last_x = math.floor(left / 256), math.floor((left + width - 1) / 256)
+    first_y, last_y = math.floor(top / 256), math.floor((top + height - 1) / 256)
+    return {
+        "zoom": zoom,
+        "size": {"width": width, "height": height},
+        "center_gcj02": {"lng": lng_gcj, "lat": lat_gcj},
+        "center_wgs84": {"lng": lng_wgs, "lat": lat_wgs},
+        "tile_range": {"first_x": first_x, "last_x": last_x, "first_y": first_y, "last_y": last_y},
+        "pixel_origin": {"left": left, "top": top},
+        "tile_count": (last_x - first_x + 1) * (last_y - first_y + 1),
+    }
+
+
+def build_s2_basemap_error_payload(
+    exc: Exception,
+    configured: bool,
+    project: str,
+    center_gcj02: str | None = None,
+    tile_debug: dict[str, object] | None = None,
+) -> dict[str, object]:
+    error = str(exc)
+    lowered = error.lower()
+    if not configured or "tianditu_key" in lowered:
+        reason = "missing_key"
+        missing = "TIANDITU_KEY"
+    elif "missing_s1" in lowered or "center" in lowered:
+        reason = "missing_s1_center"
+        missing = "s1_center_gcj02"
+    elif "invalid_s1" in lowered or "could not convert" in lowered:
+        reason = "invalid_s1_center"
+        missing = None
+    elif any(token in lowered for token in ("http", "urlopen", "tile", "timeout", "timed out", "connection")):
+        reason = "tile_fetch_failed"
+        missing = None
+    else:
+        reason = "unknown"
+        missing = None
+    return {
+        "ok": False,
+        "configured": configured,
+        "reason": reason,
+        "missing": missing,
+        "project": project,
+        "center_gcj02": center_gcj02,
+        "tile_debug": tile_debug,
+        "error": error,
+    }
+
+
+def _wgs84_to_gcj02_approx(lng: float, lat: float) -> tuple[float, float]:
+    pi = 3.14159265358979324
+    a = 6378245.0
+    ee = 0.00669342162296594323
+
+    def transform_lat(x: float, y: float) -> float:
+        ret = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * math.sqrt(abs(x))
+        ret += (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
+        ret += (20 * math.sin(y * pi) + 40 * math.sin(y / 3 * pi)) * 2 / 3
+        ret += (160 * math.sin(y / 12 * pi) + 320 * math.sin(y * pi / 30)) * 2 / 3
+        return ret
+
+    def transform_lng(x: float, y: float) -> float:
+        ret = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * math.sqrt(abs(x))
+        ret += (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
+        ret += (20 * math.sin(x * pi) + 40 * math.sin(x / 3 * pi)) * 2 / 3
+        ret += (150 * math.sin(x / 12 * pi) + 300 * math.sin(x / 30 * pi)) * 2 / 3
+        return ret
+
+    dlat = transform_lat(lng - 105, lat - 35)
+    dlng = transform_lng(lng - 105, lat - 35)
+    radlat = lat / 180 * pi
+    magic = math.sin(radlat)
+    magic = 1 - ee * magic * magic
+    sqrtmagic = math.sqrt(magic)
+    dlat = (dlat * 180) / ((a * (1 - ee)) / (magic * sqrtmagic) * pi)
+    dlng = (dlng * 180) / (a / sqrtmagic * math.cos(radlat) * pi)
+    return lng + dlng, lat + dlat
+
+
+def _context_center_gcj02(context: dict) -> tuple[float, float] | None:
+    center_text = str((context.get("location") or {}).get("amap_gcj02") or "")
+    try:
+        lng, lat = [float(part.strip()) for part in center_text.split(",", 1)]
+    except (TypeError, ValueError):
+        return None
+    return lng, lat
+
+
+def _semantic_geometry_to_normalized_path(
+    geometry: object,
+    coordinate_system: object,
+    center_gcj02: tuple[float, float],
+    radius_m: int,
+) -> list[list[float]]:
+    points = _geometry_points(geometry)
+    if not points:
+        return []
+    center_lng, center_lat = center_gcj02
+    cos_lat = max(0.000001, math.cos(math.radians(center_lat)))
+    span_m = max(1.0, radius_m * 2 * 1.18)
+    coords: list[list[float]] = []
+    for lng, lat in points:
+        if "wgs" in str(coordinate_system or "").lower():
+            lng, lat = _wgs84_to_gcj02_approx(lng, lat)
+        dx = (lng - center_lng) * 111320 * cos_lat
+        dy = (lat - center_lat) * 110540
+        x = 0.5 + dx / span_m
+        y = 0.5 - dy / span_m
+        if -0.2 <= x <= 1.2 and -0.2 <= y <= 1.2:
+            coords.append([round(max(0.0, min(1.0, x)), 4), round(max(0.0, min(1.0, y)), 4)])
+    return coords
+
+
+def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[dict[str, object]]:
+    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
+    if not context_path.exists():
+        return []
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    center = _context_center_gcj02(context)
+    if not center:
+        return []
+    surroundings = extract_surroundings_from_s1(context)
+    objects: list[dict[str, object]] = []
+    for index, road in enumerate(surroundings.get("roads") or [], start=1):
+        if not isinstance(road, dict):
+            continue
+        coords = _semantic_geometry_to_normalized_path(
+            road.get("geometry"),
+            road.get("coordinate_system"),
+            center,
+            radius_m,
+        )
+        if len(coords) < 2:
+            continue
+        objects.append(
+            {
+                "id": f"auto-s1-road-{index}",
+                "type": "location_road_line",
+                "geometry": {"kind": "path", "closed": False, "coords": coords},
+                "label": str(road.get("name") or f"road {index}"),
+                "confidence": road.get("confidence") or "medium",
+                "source": "s1_semantic_context",
+                "style_hints": {
+                    "inline_text": {"enabled": True, "text": str(road.get("name") or ""), "position": 0.5}
+                },
+            }
+        )
+    for index, water in enumerate(surroundings.get("water_features") or [], start=1):
+        if not isinstance(water, dict) or "polygon" not in str((water.get("geometry") or {}).get("type") or "").lower():
+            continue
+        coords = _semantic_geometry_to_normalized_path(
+            water.get("geometry"),
+            water.get("coordinate_system"),
+            center,
+            radius_m,
+        )
+        if len(coords) < 3:
+            continue
+        if coords[0] != coords[-1]:
+            coords.append(coords[0])
+        objects.append(
+            {
+                "id": f"auto-s1-water-{index}",
+                "type": "location_water_area",
+                "geometry": {"kind": "path", "closed": True, "coords": coords},
+                "label": str(water.get("name") or f"water {index}"),
+                "confidence": water.get("confidence") or "medium",
+                "source": "s1_semantic_context",
+            }
+        )
+    return objects
 
 
 def sync_location_analysis_drawing(proj: Path, code: str, screenshot_rel: str, radius_m: int) -> dict[str, object]:
@@ -511,6 +707,13 @@ def sync_location_analysis_drawing(proj: Path, code: str, screenshot_rel: str, r
         "natural_height": natural_height,
         "source": "sat_export",
     }
+    manual_objects = [
+        obj
+        for obj in drawing.get("objects", [])
+        if isinstance(obj, dict) and obj.get("source") != "s1_semantic_context"
+    ]
+    auto_objects = build_location_analysis_semantic_objects(proj, radius_m)
+    drawing["objects"] = manual_objects + auto_objects
     drawing = normalize_drawing(drawing, project_code=code)
     semantic_path.write_text(json.dumps(drawing, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -677,6 +880,92 @@ def _append_unique_named(items: dict[str, dict], name: object, **fields: object)
             items[label][key] = value
 
 
+def _clean_geometry(geometry: object) -> dict[str, object] | None:
+    if not isinstance(geometry, dict):
+        return None
+    geom_type = str(geometry.get("type") or "").strip()
+    if geom_type not in {"Point", "LineString", "Polygon", "MultiLineString", "MultiPolygon"}:
+        return None
+    points: list[list[float]] = []
+    _walk_coordinate_pairs(geometry.get("coordinates"), points)
+    if not points:
+        return None
+    if geom_type == "Point" and len(points) >= 1:
+        coordinates: object = [points[0][0], points[0][1]]
+    else:
+        coordinates = geometry.get("coordinates")
+    return {"type": geom_type, "coordinates": coordinates}
+
+
+def _geometry_points(geometry: object) -> list[list[float]]:
+    cleaned = _clean_geometry(geometry)
+    if not cleaned:
+        return []
+    points: list[list[float]] = []
+    _walk_coordinate_pairs(cleaned.get("coordinates"), points)
+    return points
+
+
+def _geometry_centroid(geometry: object) -> tuple[float, float] | None:
+    points = _geometry_points(geometry)
+    if not points:
+        return None
+    return (
+        sum(point[0] for point in points) / len(points),
+        sum(point[1] for point in points) / len(points),
+    )
+
+
+def _line_geometry_from_location(location: object, span_deg: float = 0.0012) -> dict[str, object] | None:
+    text = str(location or "").strip()
+    if not text or "," not in text:
+        return None
+    try:
+        lng, lat = [float(part.strip()) for part in text.split(",", 1)]
+    except (TypeError, ValueError):
+        return None
+    if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+        return None
+    return {
+        "type": "LineString",
+        "coordinates": [[lng - span_deg / 2, lat], [lng + span_deg / 2, lat]],
+    }
+
+
+def _osm_feature_tags(feature: object) -> dict[str, object]:
+    if not isinstance(feature, dict):
+        return {}
+    tags = feature.get("tags") if isinstance(feature.get("tags"), dict) else {}
+    properties = feature.get("properties") if isinstance(feature.get("properties"), dict) else {}
+    merged = {}
+    merged.update(tags)
+    merged.update(properties)
+    return merged
+
+
+def _osm_road_level(tags: dict[str, object], name: object) -> str | None:
+    highway = str(tags.get("highway") or "").strip().lower()
+    ref = tags.get("ref")
+    if highway in {"motorway", "trunk", "primary"}:
+        return "primary"
+    if highway in {"secondary", "tertiary"}:
+        return "secondary"
+    if highway in {"residential", "service", "unclassified", "living_street"}:
+        return "local"
+    return classify_road_level(ref or name)
+
+
+def _is_osm_road(tags: dict[str, object], feature: object) -> bool:
+    kind = str(feature.get("kind") or feature.get("type") or "").lower() if isinstance(feature, dict) else ""
+    return kind == "road" or bool(tags.get("highway"))
+
+
+def _is_osm_water(tags: dict[str, object], feature: object) -> bool:
+    kind = str(feature.get("kind") or feature.get("type") or "").lower() if isinstance(feature, dict) else ""
+    water_keys = {str(tags.get(key) or "").lower() for key in ("natural", "water", "waterway", "landuse")}
+    return kind in {"water", "waterway"} or "water" in water_keys or bool(tags.get("waterway"))
+
+
 def classify_road_level(name: object, fallback: str | None = None) -> str | None:
     label = str(name or "").strip()
     if fallback in {"primary", "secondary", "local"}:
@@ -707,12 +996,56 @@ def _names_from_seed(value: object) -> list[str]:
 def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
     roads: dict[str, dict] = {}
     land_uses: dict[str, dict] = {}
+    water_features: dict[str, dict] = {}
     notes: list[str] = []
     map_context = context.get("map_context") if isinstance(context.get("map_context"), dict) else {}
     regeo = map_context.get("regeo") if isinstance(map_context.get("regeo"), dict) else {}
     seed = context.get("s1_external_context_seed") if isinstance(context.get("s1_external_context_seed"), dict) else {}
     seed_features = seed.get("external_features") if isinstance(seed.get("external_features"), dict) else {}
     seed_amap = seed.get("amap_context") if isinstance(seed.get("amap_context"), dict) else {}
+    osm_context = map_context.get("osm_context") if isinstance(map_context.get("osm_context"), dict) else {}
+
+    for feature in osm_context.get("features") or []:
+        if not isinstance(feature, dict):
+            continue
+        tags = _osm_feature_tags(feature)
+        geometry = _clean_geometry(feature.get("geometry"))
+        provider = str(feature.get("source") or osm_context.get("source") or "overpass")
+        source = "osm_context"
+        coordinate_system = str(
+            feature.get("coordinate_system")
+            or osm_context.get("coordinate_system")
+            or "WGS84"
+        )
+        name = tags.get("name") or feature.get("name") or tags.get("ref") or feature.get("id")
+        ref = tags.get("ref")
+        if _is_osm_road(tags, feature):
+            _append_unique_named(
+                roads,
+                name or ref,
+                type="road",
+                ref=ref,
+                level=_osm_road_level(tags, name or ref),
+                level_source="osm.highway",
+                source=source,
+                provider=provider,
+                confidence=feature.get("confidence") or "medium",
+                geometry=geometry,
+                coordinate_system=coordinate_system,
+            )
+        elif _is_osm_water(tags, feature):
+            label = name or tags.get("waterway") or tags.get("water") or "water_feature"
+            _append_unique_named(
+                water_features,
+                label,
+                type="water",
+                waterway=tags.get("waterway"),
+                source=source,
+                provider=provider,
+                confidence=feature.get("confidence") or "medium",
+                geometry=geometry,
+                coordinate_system=coordinate_system,
+            )
 
     for item in regeo.get("roads") or []:
         if isinstance(item, dict):
@@ -726,6 +1059,9 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
                 level=classify_road_level(item.get("name")),
                 level_source="name_heuristic",
                 source="regeo.roads",
+                confidence="low_location_fallback" if item.get("location") else None,
+                geometry=_line_geometry_from_location(item.get("location")),
+                coordinate_system="GCJ-02",
                 note=note,
             )
     for name in _names_from_seed(seed_features.get("primary_roads")):
@@ -788,6 +1124,9 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
                     level=classify_road_level(match),
                     level_source="name_heuristic",
                     source=source,
+                    confidence="low_location_fallback" if item.get("location") else None,
+                    geometry=_line_geometry_from_location(item.get("location")),
+                    coordinate_system="GCJ-02",
                 )
 
     poi_1000m = seed_amap.get("poi_1000m") if isinstance(seed_amap.get("poi_1000m"), dict) else {}
@@ -796,6 +1135,22 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
             _append_unique_named(land_uses, name, category=category, source="s1_external_context_seed.poi_1000m")
     for name in _names_from_seed(seed_features.get("landscape_or_culture_nodes")):
         _append_unique_named(land_uses, name, category="landscape_or_culture_node", source="s1_external_context_seed")
+    for name in _names_from_seed(seed_features.get("water_features")):
+        _append_unique_named(
+            water_features,
+            name,
+            type="water",
+            source="s1_external_context_seed",
+            confidence="seed",
+        )
+    for name in _names_from_seed(seed_amap.get("water_features")):
+        _append_unique_named(
+            water_features,
+            name,
+            type="water",
+            source="s1_external_context_seed",
+            confidence="seed",
+        )
 
     address = regeo.get("formatted_address")
     if address:
@@ -805,6 +1160,7 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
     return {
         "roads": list(roads.values()),
         "land_uses": list(land_uses.values()),
+        "water_features": list(water_features.values()),
         "notes": notes,
     }
 
@@ -815,24 +1171,86 @@ def build_candidate_entrances(roads: object, redline: object) -> list[dict[str, 
     points = redline.get("normalized_points")
     if not isinstance(points, list) or len(points) < 2:
         return []
-    candidates: list[dict[str, object]] = []
     usable_roads = [road for road in roads if isinstance(road, dict) and str(road.get("name") or "").strip()]
-    for index, road in enumerate(usable_roads[: min(4, len(points))], start=1):
-        edge_index = (index - 1) % len(points)
-        candidates.append(
-            {
-                "id": f"ENT-C{index}",
-                "label": f"候选出入口 {index}",
-                "point_on_redline": {
-                    "edge_index": edge_index,
-                    "edge_t": 0.5,
-                },
-                "faces_road": str(road.get("name") or "").strip(),
-                "road_level": road.get("level") or None,
-                "source": "auto_s2_rough_alignment",
-                "confidence": "candidate_needs_user_review",
-            }
-        )
+    normalized_points = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        try:
+            normalized_points.append((float(point.get("x")), float(point.get("y"))))
+        except (TypeError, ValueError):
+            continue
+    if len(normalized_points) < 2:
+        return []
+
+    geometry_points: list[list[float]] = []
+    for road in usable_roads:
+        geometry_points.extend(_geometry_points(road.get("geometry")))
+    if geometry_points:
+        lng_values = [point[0] for point in geometry_points]
+        lat_values = [point[1] for point in geometry_points]
+        min_lng, max_lng = min(lng_values), max(lng_values)
+        min_lat, max_lat = min(lat_values), max(lat_values)
+    else:
+        min_lng = max_lng = min_lat = max_lat = 0.0
+
+    level_priority = {"primary": 0, "secondary": 1, "local": 2}
+    scored: list[tuple[tuple[int, float, int], dict[str, object]]] = []
+    for order, road in enumerate(usable_roads):
+        centroid = _geometry_centroid(road.get("geometry"))
+        if centroid and geometry_points and max_lng != min_lng and max_lat != min_lat:
+            road_x = (centroid[0] - min_lng) / (max_lng - min_lng)
+            road_y = 1 - (centroid[1] - min_lat) / (max_lat - min_lat)
+            source = "auto_s2_nearest_road_geometry"
+            method = "normalized_geometry_centroid_to_redline_edge"
+        else:
+            road_x = 0.5
+            road_y = 0.5
+            source = "auto_s2_rough_alignment"
+            method = "fallback_list_order"
+        best_edge = 0
+        best_t = 0.5
+        best_distance = float("inf")
+        for edge_index, a in enumerate(normalized_points):
+            b = normalized_points[(edge_index + 1) % len(normalized_points)]
+            dx = b[0] - a[0]
+            dy = b[1] - a[1]
+            len2 = dx * dx + dy * dy or 1.0
+            t = max(0.0, min(1.0, ((road_x - a[0]) * dx + (road_y - a[1]) * dy) / len2))
+            px = a[0] + dx * t
+            py = a[1] + dy * t
+            distance = math.hypot(road_x - px, road_y - py)
+            if distance < best_distance:
+                best_edge = edge_index
+                best_t = t
+                best_distance = distance
+        candidate = {
+            "id": f"ENT-C{len(scored) + 1}",
+            "label": f"候选出入口 {len(scored) + 1}",
+            "point_on_redline": {
+                "edge_index": best_edge,
+                "edge_t": round(best_t, 4),
+            },
+            "faces_road": str(road.get("name") or "").strip(),
+            "road_level": road.get("level") or None,
+            "source": source,
+            "confidence": "candidate_needs_user_review",
+            "distance_hint": {
+                "method": method,
+                "normalized_distance": round(best_distance if math.isfinite(best_distance) else 0.0, 4),
+                "road_source": road.get("source"),
+            },
+        }
+        geometry_priority = 0 if source == "auto_s2_nearest_road_geometry" else 1
+        priority = level_priority.get(str(road.get("level") or ""), 3)
+        scored.append(((geometry_priority, priority, candidate["distance_hint"]["normalized_distance"], order), candidate))
+
+    scored.sort(key=lambda item: item[0])
+    candidates: list[dict[str, object]] = []
+    for index, (_, candidate) in enumerate(scored[: min(4, len(normalized_points))], start=1):
+        candidate["id"] = f"ENT-C{index}"
+        candidate["label"] = f"候选出入口 {index}"
+        candidates.append(candidate)
     return candidates
 
 
@@ -941,6 +1359,9 @@ def clean_site_context_payload(payload: dict, code: str) -> dict[str, object]:
                 "point_on_redline": cleaned_point,
                 "faces_road": faces_road,
                 "road_level": road_level,
+                "source": str(raw.get("source") or "").strip() or None,
+                "confidence": str(raw.get("confidence") or "").strip() or None,
+                "distance_hint": raw.get("distance_hint") if isinstance(raw.get("distance_hint"), dict) else None,
                 "note": str(raw.get("note") or "").strip() or None,
             }
         )
@@ -949,6 +1370,7 @@ def clean_site_context_payload(payload: dict, code: str) -> dict[str, object]:
     surroundings = {
         "roads": _clean_named_items(surroundings_raw.get("roads"), "surroundings.roads"),
         "land_uses": _clean_named_items(surroundings_raw.get("land_uses"), "surroundings.land_uses"),
+        "water_features": _clean_named_items(surroundings_raw.get("water_features"), "surroundings.water_features"),
         "notes": _clean_notes(surroundings_raw.get("notes")),
     }
     return {
@@ -1835,14 +2257,17 @@ class UploaderHandler(BaseHTTPRequestHandler):
         try:
             meta = generate_tdt_site_basemap(proj, target)
         except Exception as exc:
-            self.send_json(
-                {
-                    "ok": False,
-                    "configured": bool(os.environ.get("TIANDITU_KEY", "").strip()),
-                    "error": str(exc),
-                    "missing": "TIANDITU_KEY" if "TIANDITU_KEY" in str(exc) else None,
-                }
-            )
+            load_env_file()
+            configured = bool(os.environ.get("TIANDITU_KEY", "").strip())
+            center_gcj02 = None
+            tile_debug = None
+            try:
+                lng_gcj, lat_gcj = read_s2_center_gcj02(proj)
+                center_gcj02 = f"{lng_gcj:.6f},{lat_gcj:.6f}"
+                tile_debug = estimate_s2_site_tile_debug(lng_gcj, lat_gcj)
+            except Exception:
+                pass
+            self.send_json(build_s2_basemap_error_payload(exc, configured, code, center_gcj02, tile_debug))
             return
         rel_path = str(SITE_BASEMAP_REL).replace("\\", "/")
         self.send_json(
@@ -1969,7 +2394,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError as exc:
                 payload["amap_context_error"] = str(exc)
         else:
-            payload["surroundings"] = {"roads": [], "land_uses": [], "notes": ["缺少 S1 高德上下文。"]}
+            payload["surroundings"] = {"roads": [], "land_uses": [], "water_features": [], "notes": ["缺少 S1 高德上下文。"]}
         try:
             payload["redline"] = read_redline_overlay(proj, code)
         except Exception as exc:

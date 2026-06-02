@@ -279,6 +279,12 @@ button:disabled,input:disabled,select:disabled{
 .site-redline-overlay polygon[data-redline-polygon]{pointer-events:all; cursor:move}
 .site-redline-overlay [data-redline-rotate],.site-redline-overlay [data-redline-scale]{pointer-events:all; cursor:grab}
 .site-redline-overlay [data-redline-rotate]:active,.site-redline-overlay [data-redline-scale]:active{cursor:grabbing}
+.site-road-line{fill:none; stroke:#1f2937; stroke-width:4; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; opacity:.82; pointer-events:none}
+.site-road-primary{stroke:#f59e0b; stroke-width:6}
+.site-road-secondary{stroke:#2563eb; stroke-width:4.5}
+.site-road-local{stroke:#64748b; stroke-width:3.5; stroke-dasharray:7 4}
+.site-water-line{fill:none; stroke:#0ea5e9; stroke-width:5; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; opacity:.76; pointer-events:none}
+.site-water-polygon{fill:#38bdf8; fill-opacity:.22; stroke:#0284c7; stroke-width:2.5; vector-effect:non-scaling-stroke; opacity:.82; pointer-events:none}
 .site-redline-fill{fill:#ef3b2d; fill-opacity:.22; stroke:#b91c1c; stroke-width:3; vector-effect:non-scaling-stroke}
 .site-redline-hit{fill:transparent; stroke:#b91c1c; stroke-opacity:.02; stroke-width:22; vector-effect:non-scaling-stroke}
 .site-redline-guide{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:5 5; vector-effect:non-scaling-stroke; fill:none; opacity:.82}
@@ -288,6 +294,8 @@ button:disabled,input:disabled,select:disabled{
 .site-scale-handle{fill:#fff; stroke:#b91c1c; stroke-width:3; filter:drop-shadow(0 3px 8px rgba(0,0,0,.22))}
 .site-entrance-marker{fill:#1f6f5b; stroke:#fff; stroke-width:3; vector-effect:non-scaling-stroke; pointer-events:none}
 .site-entrance-label{font-size:12px; font-weight:700; fill:#1f3f35; paint-order:stroke; stroke:#fff; stroke-width:4; pointer-events:none}
+.site-entrance-candidate{fill:#fff7ed; stroke:#f97316; stroke-width:2.5; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; opacity:.9; pointer-events:none}
+.site-entrance-candidate-label{font-size:11px; font-weight:700; fill:#9a3412; paint-order:stroke; stroke:#fff; stroke-width:3; pointer-events:none}
 .site-align-controls{display:grid; grid-template-columns:150px minmax(180px,1fr) auto; gap:10px; align-items:end}
 .site-align-controls label,.site-field{display:grid; gap:5px; color:var(--muted); font-size:12px}
 .site-align-controls input,.site-field input,.site-field textarea{width:100%; border:1px solid var(--line); border-radius:5px; padding:7px 9px; font:inherit; background:#fff}

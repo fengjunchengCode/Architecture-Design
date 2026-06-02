@@ -47,8 +47,18 @@ def write_site_context_inputs(proj_dir: Path) -> None:
             "regeo": {
                 "formatted_address": "西藏自治区那曲市巴青县拉西镇曲登纳桥",
                 "roads": [
-                    {"name": "G317", "direction": "南", "distance": "40"},
-                    {"name": "650乡道", "direction": "东", "distance": "130"},
+                    {
+                        "name": "G317",
+                        "direction": "南",
+                        "distance": "40",
+                        "location": "94.031900,31.925200",
+                    },
+                    {
+                        "name": "650乡道",
+                        "direction": "东",
+                        "distance": "130",
+                        "location": "94.032900,31.925820",
+                    },
                 ],
                 "nearby_pois": [
                     {
@@ -73,6 +83,69 @@ def write_site_context_inputs(proj_dir: Path) -> None:
                         }
                     ],
                 }
+            },
+            "osm_context": {
+                "status": "ok",
+                "source": "mock_overpass",
+                "features": [
+                    {
+                        "kind": "road",
+                        "name": "G317",
+                        "ref": "G317",
+                        "level": "primary",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [94.031500, 31.925130],
+                                [94.032400, 31.925320],
+                                [94.033200, 31.925520],
+                            ],
+                        },
+                    },
+                    {
+                        "kind": "road",
+                        "name": "650乡道",
+                        "level": "secondary",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [94.032500, 31.925100],
+                                [94.032720, 31.925720],
+                                [94.032880, 31.926100],
+                            ],
+                        },
+                    },
+                    {
+                        "kind": "water",
+                        "name": "曲登纳河",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [94.031700, 31.926100],
+                                [94.032500, 31.926030],
+                                [94.033300, 31.925920],
+                            ],
+                        },
+                    },
+                    {
+                        "kind": "water",
+                        "name": "曲登纳水面",
+                        "coordinate_system": "WGS84",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [94.032050, 31.925780],
+                                [94.032320, 31.925820],
+                                [94.032270, 31.925980],
+                                [94.032020, 31.925930],
+                                [94.032050, 31.925780],
+                            ]],
+                        },
+                    },
+                ],
             },
         },
         "s1_external_context_seed": {
@@ -442,6 +515,15 @@ def assert_s2_site_context_workflow(page) -> None:
     image = Image.open(BytesIO(screenshot)).convert("RGBA")
     red_pixels = sum(1 for r, g, b, a in image.getdata() if a > 0 and r > 145 and g < 125 and b < 125)
     assert red_pixels > 250, f"S2 redline overlay should render real red pixels, got {red_pixels}"
+    assert page.locator(".site-road-line[data-road-level='primary']").count() >= 1, (
+        "S2 should render at least one primary road overlay on the satellite map"
+    )
+    assert page.locator(".site-road-line[data-road-level='secondary']").count() >= 1, (
+        "S2 should render at least one secondary road overlay on the satellite map"
+    )
+    assert page.locator(".site-water-line, .site-water-polygon").count() >= 1, (
+        "S2 should render water overlays from semantic geometry"
+    )
 
     before = page.evaluate("window.architectureUploader.getSiteContextState()")
     polygon_box = page.locator("#siteRedlinePolygon").bounding_box()
@@ -453,6 +535,19 @@ def assert_s2_site_context_workflow(page) -> None:
     page.wait_for_function(
         "(x) => Math.abs(window.architectureUploader.getSiteContextState().transform.x - x) > 0.01",
         arg=before["transform"]["x"],
+        timeout=8000,
+    )
+    moved = page.evaluate("window.architectureUploader.getSiteContextState()")
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        "(x) => Math.abs(window.architectureUploader.getSiteContextState().transform.x - x) < 0.005",
+        arg=before["transform"]["x"],
+        timeout=8000,
+    )
+    page.keyboard.press("Control+Y")
+    page.wait_for_function(
+        "(x) => Math.abs(window.architectureUploader.getSiteContextState().transform.x - x) < 0.005",
+        arg=moved["transform"]["x"],
         timeout=8000,
     )
 
@@ -468,6 +563,19 @@ def assert_s2_site_context_workflow(page) -> None:
         arg=rotate_before,
         timeout=8000,
     )
+    rotated = page.evaluate("window.architectureUploader.getSiteContextState().transform.rotation_deg")
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        "(rotation) => Math.abs(window.architectureUploader.getSiteContextState().transform.rotation_deg - rotation) < 0.2",
+        arg=rotate_before,
+        timeout=8000,
+    )
+    page.keyboard.press("Control+Y")
+    page.wait_for_function(
+        "(rotation) => Math.abs(window.architectureUploader.getSiteContextState().transform.rotation_deg - rotation) < 0.2",
+        arg=rotated,
+        timeout=8000,
+    )
 
     scale_before = page.evaluate("window.architectureUploader.getSiteContextState().transform.scale")
     scale_handle_box = page.locator("#siteRedlineScaleHandle").bounding_box()
@@ -481,13 +589,48 @@ def assert_s2_site_context_workflow(page) -> None:
         arg=scale_before,
         timeout=8000,
     )
+    scaled = page.evaluate("window.architectureUploader.getSiteContextState().transform.scale")
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        "(scale) => Math.abs(window.architectureUploader.getSiteContextState().transform.scale - scale) < 0.01",
+        arg=scale_before,
+        timeout=8000,
+    )
+    page.keyboard.press("Control+Y")
+    page.wait_for_function(
+        "(scale) => Math.abs(window.architectureUploader.getSiteContextState().transform.scale - scale) < 0.01",
+        arg=scaled,
+        timeout=8000,
+    )
 
     page.fill("#siteNorthDeg", "23")
+    page.locator("#s2AmapMap").click(position={"x": 20, "y": 20})
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        "() => Math.abs(Number(document.querySelector('#siteNorthDeg')?.value || 0) - window.architectureUploader.getSiteContextState().transform.rotation_deg) < 0.2",
+        timeout=8000,
+    )
+    page.keyboard.press("Control+Y")
+    page.wait_for_function(
+        "() => Math.abs(Number(document.querySelector('#siteNorthDeg')?.value || 0) - 23) < 0.2",
+        timeout=8000,
+    )
     page.click("#addEntrance")
     polygon_box = page.locator("#siteRedlinePolygon").bounding_box()
     assert polygon_box, "redline polygon should still be visible after rotation"
     page.mouse.click(polygon_box["x"] + polygon_box["width"] * 0.55, polygon_box["y"] + polygon_box["height"] * 0.52)
     page.wait_for_selector("[data-entrance-item]", timeout=8000)
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        "() => window.architectureUploader.getSiteContextState().entrances.length === 0",
+        timeout=8000,
+    )
+    page.keyboard.press("Control+Y")
+    page.wait_for_selector("[data-entrance-item]", timeout=8000)
+    page.wait_for_function(
+        "() => window.architectureUploader.getSiteContextState().entrances.length === 1",
+        timeout=8000,
+    )
     page.locator("[data-entrance-road]").first.select_option("G317")
 
     with page.expect_response(lambda r: "/api/site-context" in r.url and r.status == 200, timeout=15000):
@@ -1351,6 +1494,16 @@ def assert_ppt_preview_basics(page) -> None:
     assert page.locator("[data-ppt-drawing-plate='true']").count() == 1, "PPT preview should render a drawing plate"
     object_fit = media.evaluate("(node) => getComputedStyle(node).objectFit")
     assert object_fit == "contain", f"PPT drawing preview should use object-fit: contain, got {object_fit}"
+    media_box = media.bounding_box()
+    assert media_box, "PPT drawing media should have a measurable box"
+    media_ratio = media_box["width"] / media_box["height"]
+    expected_ratio = page.eval_on_selector(
+        "#baseImage",
+        "(img) => img && img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 900 / 600",
+    )
+    assert abs(media_ratio - expected_ratio) / expected_ratio < 0.01, (
+        f"PPT drawing media should preserve source drawing aspect {expected_ratio:.3f}, got {media_ratio:.3f}"
+    )
     assert_preview_autolayout_button(page)
     assert_title_and_accent_global(page)
     dialogs: list[str] = []

@@ -1287,7 +1287,7 @@
 .ppt-title-kicker-en{margin-top:2px;font-size:8px;text-transform:uppercase;color:#b3ada5;letter-spacing:.04em}
 .ppt-title-main{margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
 .ppt-drawing-frame{border:1px solid rgba(43,39,34,.24);background:#f7f4ed;display:grid;place-items:center;overflow:hidden;cursor:move}
-.ppt-drawing-plate{width:100%;height:100%;max-width:100%;max-height:100%;aspect-ratio:var(--ppt-plate-aspect,1.6);display:grid;place-items:center;background:#f7f4ed;overflow:hidden}
+.ppt-drawing-plate{max-width:100%;max-height:100%;aspect-ratio:var(--ppt-source-aspect,var(--ppt-plate-aspect,1.6));display:grid;place-items:center;background:#f7f4ed;overflow:hidden}
 .ppt-drawing-frame img,.ppt-drawing-frame object,.ppt-drawing-frame svg[data-ppt-drawing-media="true"]{width:100%;height:100%;object-fit:contain;display:block}
 .ppt-drawing-frame [data-ppt-drawing-media="true"]{object-fit:contain;object-position:center center}
 .ppt-frame-label{position:absolute;left:10px;top:8px;background:rgba(255,255,255,.82);border:1px solid rgba(43,39,34,.16);border-radius:6px;padding:3px 7px;font-size:11px;color:var(--muted3)}

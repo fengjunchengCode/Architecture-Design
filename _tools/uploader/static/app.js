@@ -22,8 +22,9 @@ const state = {
   env: null,
   siteContext: {
     redline: null,
-    surroundings: { roads: [], land_uses: [], notes: [] },
+    surroundings: { roads: [], land_uses: [], water_features: [], notes: [] },
     entrances: [],
+    candidateEntrances: [],
     transform: { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 },
     addEntranceMode: false,
     drag: null,
@@ -31,6 +32,9 @@ const state = {
     siteContextPath: "",
     northManual: false,
     basemap: null,
+    undoStack: [],
+    redoStack: [],
+    historyLimit: 50,
   },
   s1Location: "",
   amap: {
@@ -209,6 +213,121 @@ function setSiteContextStatus(text, ok = null) {
   el.classList.toggle("site-context-status-warn", ok === false);
 }
 
+function normalizeSiteSurroundings(value) {
+  const raw = value && typeof value === "object" ? value : {};
+  return {
+    roads: Array.isArray(raw.roads) ? raw.roads : [],
+    land_uses: Array.isArray(raw.land_uses) ? raw.land_uses : [],
+    water_features: Array.isArray(raw.water_features) ? raw.water_features : [],
+    notes: Array.isArray(raw.notes) ? raw.notes : [],
+  };
+}
+
+function mergeSiteSurroundings(savedValue, freshValue) {
+  const saved = normalizeSiteSurroundings(savedValue);
+  const fresh = normalizeSiteSurroundings(freshValue);
+  const mergeNamed = (freshItems, savedItems) => {
+    const byName = new Map();
+    freshItems.forEach((item) => {
+      const name = String(item?.name || "").trim();
+      if (name) byName.set(name, { ...item });
+    });
+    savedItems.forEach((item) => {
+      const name = String(item?.name || "").trim();
+      if (!name) return;
+      byName.set(name, { ...(byName.get(name) || {}), ...item, name });
+    });
+    return Array.from(byName.values());
+  };
+  return {
+    roads: mergeNamed(fresh.roads, saved.roads),
+    land_uses: mergeNamed(fresh.land_uses, saved.land_uses),
+    water_features: mergeNamed(fresh.water_features, saved.water_features),
+    notes: saved.notes.length ? saved.notes : fresh.notes,
+  };
+}
+
+function cloneSiteValue(value) {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function siteHistorySnapshot() {
+  const northValue = $("#siteNorthDeg")?.value;
+  return {
+    transform: cloneSiteValue(state.siteContext.transform),
+    entrances: cloneSiteValue(state.siteContext.entrances),
+    surroundings: cloneSiteValue(normalizeSiteSurroundings(state.siteContext.surroundings)),
+    northManual: Boolean(state.siteContext.northManual),
+    north_deg: Number(northValue === undefined || northValue === "" ? state.siteContext.transform.rotation_deg : northValue),
+  };
+}
+
+function siteHistoryEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pushSiteHistorySnapshot(snapshot) {
+  if (!snapshot) return;
+  const stack = state.siteContext.undoStack;
+  if (stack.length && siteHistoryEqual(stack[stack.length - 1], snapshot)) return;
+  stack.push(cloneSiteValue(snapshot));
+  while (stack.length > state.siteContext.historyLimit) stack.shift();
+  state.siteContext.redoStack = [];
+}
+
+function pushSiteHistory() {
+  pushSiteHistorySnapshot(siteHistorySnapshot());
+}
+
+function clearSiteHistory() {
+  state.siteContext.undoStack = [];
+  state.siteContext.redoStack = [];
+}
+
+function restoreSiteHistorySnapshot(snapshot) {
+  if (!snapshot) return;
+  state.siteContext.transform = cloneSiteValue(snapshot.transform || defaultSiteTransform(state.siteContext.redline));
+  state.siteContext.entrances = cloneSiteValue(snapshot.entrances || []);
+  state.siteContext.surroundings = normalizeSiteSurroundings(snapshot.surroundings);
+  state.siteContext.northManual = Boolean(snapshot.northManual);
+  const north = $("#siteNorthDeg");
+  if (north) north.value = String(Number(snapshot.north_deg || 0));
+  syncSiteControlInputs();
+  renderSurroundings();
+  renderEntranceList();
+  renderSiteRedlineOverlay();
+}
+
+function undoSiteContextEdit() {
+  const previous = state.siteContext.undoStack.pop();
+  if (!previous) return false;
+  state.siteContext.redoStack.push(siteHistorySnapshot());
+  restoreSiteHistorySnapshot(previous);
+  setSiteContextStatus("已撤销", null);
+  return true;
+}
+
+function redoSiteContextEdit() {
+  const next = state.siteContext.redoStack.pop();
+  if (!next) return false;
+  state.siteContext.undoStack.push(siteHistorySnapshot());
+  restoreSiteHistorySnapshot(next);
+  setSiteContextStatus("已重做", null);
+  return true;
+}
+
+function beginSiteInputHistory(event) {
+  const input = event?.target;
+  if (!input || input.dataset.siteHistoryActive === "1") return;
+  input.dataset.siteHistoryActive = "1";
+  pushSiteHistory();
+}
+
+function endSiteInputHistory(event) {
+  const input = event?.target;
+  if (input) delete input.dataset.siteHistoryActive;
+}
+
 function siteRoadNames() {
   return (state.siteContext.surroundings.roads || [])
     .map((road) => String(road?.name || "").trim())
@@ -345,6 +464,54 @@ function screenPointToApproxGeo(point) {
     lng: center.lng + dxMeters / (111320 * cosLat),
     lat: center.lat + dyMeters / 110540,
   };
+}
+
+function geometryCoordinatePairs(coords) {
+  if (!Array.isArray(coords)) return [];
+  if (coords.length >= 2 && Number.isFinite(Number(coords[0])) && Number.isFinite(Number(coords[1]))) {
+    return [[Number(coords[0]), Number(coords[1])]];
+  }
+  return coords.flatMap((item) => geometryCoordinatePairs(item));
+}
+
+function primaryGeometryPath(geometry) {
+  if (!geometry || typeof geometry !== "object") return [];
+  const type = String(geometry.type || "");
+  const coords = geometry.coordinates;
+  if (type === "Point") return geometryCoordinatePairs(coords);
+  if (type === "LineString") return geometryCoordinatePairs(coords);
+  if (type === "Polygon") return geometryCoordinatePairs(Array.isArray(coords) ? coords[0] : []);
+  if (type === "MultiLineString") return geometryCoordinatePairs(Array.isArray(coords) ? coords[0] : []);
+  if (type === "MultiPolygon") return geometryCoordinatePairs(Array.isArray(coords) && coords[0] ? coords[0][0] : []);
+  return geometryCoordinatePairs(coords);
+}
+
+function approxGeoToScreenPoint(point, coordinateSystem = "") {
+  const center = s1CenterPoint();
+  const container = $("#s2AmapMap");
+  if (!center || !container || !point) return null;
+  let lng = Number(Array.isArray(point) ? point[0] : point.lng);
+  let lat = Number(Array.isArray(point) ? point[1] : point.lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  if (/wgs/i.test(String(coordinateSystem || ""))) {
+    [lng, lat] = wgs84ToGcj02(lng, lat);
+  }
+  const zoom = Number(state.siteContext.basemap?.zoom || 17);
+  const latRad = center.lat * Math.PI / 180;
+  const cosLat = Math.max(0.000001, Math.cos(latRad));
+  const metersPerPixel = 156543.03392 * cosLat / (2 ** zoom);
+  const dxMeters = (lng - center.lng) * 111320 * cosLat;
+  const dyMeters = (lat - center.lat) * 110540;
+  return {
+    x: container.clientWidth / 2 + dxMeters / metersPerPixel,
+    y: container.clientHeight / 2 - dyMeters / metersPerPixel,
+  };
+}
+
+function geometryToScreenPath(geometry, coordinateSystem) {
+  return primaryGeometryPath(geometry)
+    .map((point) => approxGeoToScreenPoint(point, coordinateSystem))
+    .filter(Boolean);
 }
 
 function buildApproxSitePolygonGeo() {
@@ -1312,6 +1479,31 @@ function renderS2Markers() {
   });
 }
 
+function renderSiteSemanticMarkup() {
+  const surroundings = normalizeSiteSurroundings(state.siteContext.surroundings);
+  const roadMarkup = (surroundings.roads || [])
+    .map((road) => {
+      const points = geometryToScreenPath(road.geometry, road.coordinate_system);
+      if (points.length < 2) return "";
+      const pointText = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+      const level = String(road.level || "local");
+      return `<polyline class="site-road-line site-road-${escapeHtml(level)}" data-road-level="${escapeHtml(level)}" data-road-name="${escapeHtml(road.name || "")}" points="${pointText}"></polyline>`;
+    })
+    .join("");
+  const waterMarkup = (surroundings.water_features || [])
+    .map((feature) => {
+      const points = geometryToScreenPath(feature.geometry, feature.coordinate_system);
+      if (points.length < 2) return "";
+      const pointText = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+      const isPolygon = /polygon/i.test(String(feature.geometry?.type || ""));
+      const tag = isPolygon ? "polygon" : "polyline";
+      const cssClass = isPolygon ? "site-water-polygon" : "site-water-line";
+      return `<${tag} class="${cssClass}" data-water-name="${escapeHtml(feature.name || "")}" points="${pointText}"></${tag}>`;
+    })
+    .join("");
+  return `${waterMarkup}${roadMarkup}`;
+}
+
 function renderSiteRedlineOverlay() {
   const container = $("#s2AmapMap");
   if (!container) return;
@@ -1344,6 +1536,21 @@ function renderSiteRedlineOverlay() {
   const rotateY = Math.max(18, topY - 34);
   const scaleX = Math.min(width - 18, maxX + 28);
   const scaleY = Math.min(height - 18, maxY + 28);
+  const semanticMarkup = renderSiteSemanticMarkup();
+  const candidateMarkup = (state.siteContext.candidateEntrances || [])
+    .map((candidate, index) => {
+      const point = pointOnRenderedEdge({
+        edge_index: candidate.point_on_redline?.edge_index,
+        edge_t: candidate.point_on_redline?.edge_t,
+      });
+      if (!point) return "";
+      const label = candidate.faces_road || candidate.label || `C${index + 1}`;
+      return `
+        <circle class="site-entrance-candidate" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="7"></circle>
+        <text class="site-entrance-candidate-label" x="${(point.x + 10).toFixed(1)}" y="${(point.y + 18).toFixed(1)}">${escapeHtml(label)}</text>
+      `;
+    })
+    .join("");
   const entranceMarkup = state.siteContext.entrances
     .map((entrance, index) => {
       const point = pointOnRenderedEdge(entrance);
@@ -1355,6 +1562,7 @@ function renderSiteRedlineOverlay() {
     })
     .join("");
   overlay.innerHTML = `
+    ${semanticMarkup}
     <polygon class="site-redline-fill" id="siteRedlinePolygon" data-redline-polygon="true" points="${pointText}"></polygon>
     <polygon class="site-redline-guide" points="${pointText}"></polygon>
     <polygon class="site-redline-hit" data-redline-polygon="true" points="${pointText}"></polygon>
@@ -1362,6 +1570,7 @@ function renderSiteRedlineOverlay() {
     <circle class="site-rotate-handle" id="siteRedlineRotateHandle" data-redline-rotate="true" cx="${cx.toFixed(1)}" cy="${rotateY.toFixed(1)}" r="11"></circle>
     <line class="site-scale-line" x1="${maxX.toFixed(1)}" y1="${maxY.toFixed(1)}" x2="${scaleX.toFixed(1)}" y2="${scaleY.toFixed(1)}"></line>
     <rect class="site-scale-handle" id="siteRedlineScaleHandle" data-redline-scale="true" x="${(scaleX - 10).toFixed(1)}" y="${(scaleY - 10).toFixed(1)}" width="20" height="20" rx="3"></rect>
+    ${candidateMarkup}
     ${entranceMarkup}
   `;
   overlay.querySelectorAll("[data-redline-polygon]").forEach((node) => {
@@ -1388,6 +1597,7 @@ function onRedlinePointerDown(event) {
     startX: event.clientX,
     startY: event.clientY,
     startTransform: { ...state.siteContext.transform },
+    historyBefore: siteHistorySnapshot(),
   };
 }
 
@@ -1405,6 +1615,7 @@ function onRedlineRotateDown(event) {
     center,
     startAngle: Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI,
     startTransform: { ...state.siteContext.transform },
+    historyBefore: siteHistorySnapshot(),
   };
 }
 
@@ -1423,6 +1634,7 @@ function onRedlineScaleDown(event) {
     center,
     startDistance: Math.max(1, startDistance),
     startTransform: { ...state.siteContext.transform },
+    historyBefore: siteHistorySnapshot(),
   };
 }
 
@@ -1446,6 +1658,10 @@ function onSitePointerMove(event) {
 }
 
 function onSitePointerUp() {
+  const drag = state.siteContext.drag;
+  if (drag?.historyBefore && !siteHistoryEqual(drag.historyBefore, siteHistorySnapshot())) {
+    pushSiteHistorySnapshot(drag.historyBefore);
+  }
   state.siteContext.drag = null;
 }
 
@@ -1457,6 +1673,7 @@ function onRedlineClick(event) {
   const rect = container.getBoundingClientRect();
   const nearest = nearestRedlineEdge(event.clientX - rect.left, event.clientY - rect.top);
   if (!nearest) return;
+  pushSiteHistory();
   const index = state.siteContext.entrances.length + 1;
   const firstRoad = (state.siteContext.surroundings.roads || [])[0] || {};
   state.siteContext.entrances.push({
@@ -1509,11 +1726,13 @@ function renderEntranceList() {
       </select>
     `;
     item.querySelector("[data-entrance-road]")?.addEventListener("change", (event) => {
+      pushSiteHistory();
       entrance.faces_road = event.target.value;
       entrance.road_level = siteRoadByName(event.target.value)?.level || "";
       renderEntranceList();
     });
     item.querySelector("[data-remove-entrance]")?.addEventListener("click", () => {
+      pushSiteHistory();
       state.siteContext.entrances.splice(index, 1);
       renderEntranceList();
       renderSiteRedlineOverlay();
@@ -1542,8 +1761,10 @@ function renderSurroundings() {
         <small>${escapeHtml([roadLevelText(road.level), road.type, road.note, road.source].filter(Boolean).join(" · "))}</small>
       `;
       item.querySelector("[data-road-name]")?.addEventListener("change", (event) => {
+        pushSiteHistory();
         state.siteContext.surroundings.roads[index].name = event.target.value.trim();
         renderEntranceList();
+        renderSiteRedlineOverlay();
       });
       roadList.appendChild(item);
     });
@@ -1561,11 +1782,11 @@ function renderSurroundings() {
     });
   }
   const noteBox = $("#surroundingNotes");
-  if (noteBox && !noteBox.value) noteBox.value = notes.join("\n");
+  if (noteBox) noteBox.value = notes.join("\n");
 }
 
 function collectSurroundingsForSave() {
-  const roadNames = Array.from(document.querySelectorAll("[data-road-name]"))
+  const roadNames = Array.from(document.querySelectorAll("input[data-road-name]"))
     .map((input) => input.value.trim())
     .filter(Boolean);
   const roads = roadNames.map((name) => {
@@ -1579,8 +1800,21 @@ function collectSurroundingsForSave() {
   return {
     roads,
     land_uses: state.siteContext.surroundings.land_uses || [],
+    water_features: state.siteContext.surroundings.water_features || [],
     notes,
   };
+}
+
+function s2BasemapFailureMessage(data) {
+  const reason = String(data?.reason || "");
+  if (reason === "missing_key") return "缺少 TIANDITU_KEY，请检查仓库根目录 .env。";
+  if (reason === "missing_s1_center") return "缺少 S1 中心点，需先在 S1 保存中心坐标后再生成 S2 卫星底图。";
+  if (reason === "invalid_s1_center") return "S1 中心点坐标格式异常，需回到 S1 重新保存中心坐标。";
+  if (reason === "tile_fetch_failed") {
+    const count = data?.tile_debug?.tile_count;
+    return `天地图 key 已配置，但服务端瓦片请求失败${count ? `（计划请求 ${count} 张瓦片）` : ""}：${data.error || "请检查网络、key 服务状态或瓦片接口"}`;
+  }
+  return data?.error || envMissingMessage("TIANDITU_KEY", "S2 天地图卫星底图");
 }
 
 async function ensureS2Map() {
@@ -1596,8 +1830,8 @@ async function ensureS2Map() {
   try {
     const data = await api(`/api/s2/basemap?project=${encodeURIComponent(state.project)}`);
     if (!data.ok || !data.image_url) {
-      const message = data.error || envMissingMessage("TIANDITU_KEY", "S2 天地图卫星底图");
-      setMapStatus("#s2AmapStatus", "天地图底图不可用", false);
+      const message = s2BasemapFailureMessage(data);
+      setMapStatus("#s2AmapStatus", data.reason === "tile_fetch_failed" ? "天地图瓦片请求失败" : "天地图底图不可用", false);
       setMapHint("#s2AmapHint", `${message} 红线叠加层仍可离线调整。`, true);
       setMapEmpty("#s2AmapMap", message);
       state.siteContext.basemap = null;
@@ -1610,8 +1844,9 @@ async function ensureS2Map() {
     setMapHint("#s2AmapHint", "拖动红线移动；拖动上方圆点旋转；拖动角点缩放；添加出入口后点击红线边。");
   } catch (err) {
     setMapStatus("#s2AmapStatus", "天地图底图不可用", false);
-    setMapHint("#s2AmapHint", `${err.message || String(err)}；仍可先调整 CAD 红线叠加层。`, true);
-    setMapEmpty("#s2AmapMap", "天地图卫星底图暂不可用；红线叠加层仍可用于粗对位。");
+    const message = s2BasemapFailureMessage(err.data || { error: err.message || String(err) });
+    setMapHint("#s2AmapHint", `${message}；仍可先调整 CAD 红线叠加层。`, true);
+    setMapEmpty("#s2AmapMap", message);
     state.siteContext.basemap = null;
     renderSiteRedlineOverlay();
   }
@@ -2136,8 +2371,9 @@ function setActiveProject(code, options = {}) {
   if (resetInventory) state.migrationReport = null;
   if (resetInventory) {
     state.siteContext.redline = null;
-    state.siteContext.surroundings = { roads: [], land_uses: [], notes: [] };
+    state.siteContext.surroundings = { roads: [], land_uses: [], water_features: [], notes: [] };
     state.siteContext.entrances = [];
+    state.siteContext.candidateEntrances = [];
     state.siteContext.basemap = null;
     state.siteContext.transform = { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 };
     state.siteContext.addEntranceMode = false;
@@ -2145,6 +2381,7 @@ function setActiveProject(code, options = {}) {
     state.siteContext.renderedPoints = [];
     state.siteContext.siteContextPath = "";
     state.siteContext.northManual = false;
+    clearSiteHistory();
   }
   if (resetInventory) state.s1Location = "";
   if (resetInventory) {
@@ -2490,9 +2727,10 @@ async function loadSpatial() {
   }
   state.siteContext.redline = data.redline || null;
   const saved = data.site_context || null;
-  state.siteContext.surroundings = saved?.surroundings || data.surroundings || { roads: [], land_uses: [], notes: [] };
+  state.siteContext.surroundings = mergeSiteSurroundings(saved?.surroundings, data.surroundings);
   state.siteContext.transform = saved?.redline_transform || defaultSiteTransform(data.redline);
-  const entranceSource = saved?.entrances?.length ? saved.entrances : (data.candidate_entrances || []);
+  state.siteContext.candidateEntrances = Array.isArray(data.candidate_entrances) ? data.candidate_entrances : [];
+  const entranceSource = saved?.entrances?.length ? saved.entrances : [];
   state.siteContext.entrances = entranceSource.map((entrance, index) => ({
     id: entrance.id || `ENT-${index + 1}`,
     label: entrance.label || `出入口 ${index + 1}`,
@@ -2500,6 +2738,9 @@ async function loadSpatial() {
     edge_t: Number(entrance.point_on_redline?.edge_t || 0),
     faces_road: entrance.faces_road || "",
     road_level: entrance.road_level || siteRoadByName(entrance.faces_road)?.level || "",
+    source: entrance.source || "",
+    confidence: entrance.confidence || "",
+    distance_hint: entrance.distance_hint || null,
   }));
   state.siteContext.siteContextPath = data.site_context_path || "";
   state.siteContext.northManual = Boolean(saved?.north_deg || saved?.north_deg === 0);
@@ -2509,6 +2750,7 @@ async function loadSpatial() {
   renderSurroundings();
   renderEntranceList();
   renderSiteRedlineOverlay();
+  clearSiteHistory();
   setSiteContextStatus(data.site_context_exists ? "已保存" : "未保存", data.site_context_exists ? true : null);
   syncAmapUi();
 }
@@ -2914,6 +3156,9 @@ async function saveSiteContext() {
       point_on_redline: entrancePointPayload(entrance),
       faces_road: entrance.faces_road,
       road_level: entrance.road_level || siteRoadByName(entrance.faces_road)?.level || "",
+      source: entrance.source || "",
+      confidence: entrance.confidence || "",
+      distance_hint: entrance.distance_hint || null,
     })),
     surroundings: collectSurroundingsForSave(),
   };
@@ -2946,19 +3191,38 @@ function bind() {
   $("#cadZoomReset")?.addEventListener("click", () => setCadPreviewZoom(1));
   $("#cadZoomIn")?.addEventListener("click", () => setCadPreviewZoom(state.cadPreviewZoom + 0.25));
   $("#resetRedlineOverlay")?.addEventListener("click", () => {
+    pushSiteHistory();
     state.siteContext.northManual = false;
     setSiteTransform(defaultSiteTransform(state.siteContext.redline));
     renderEntranceList();
   });
   $("#redlineRotation")?.addEventListener("input", (event) => {
+    beginSiteInputHistory(event);
     setSiteTransform({ ...state.siteContext.transform, rotation_deg: Number(event.target.value) }, { syncInputs: false });
   });
+  $("#redlineRotation")?.addEventListener("change", endSiteInputHistory);
+  $("#redlineRotation")?.addEventListener("blur", endSiteInputHistory);
   $("#redlineScale")?.addEventListener("input", (event) => {
+    beginSiteInputHistory(event);
     setSiteTransform({ ...state.siteContext.transform, scale: Number(event.target.value) }, { syncInputs: false });
   });
-  $("#siteNorthDeg")?.addEventListener("input", () => {
+  $("#redlineScale")?.addEventListener("change", endSiteInputHistory);
+  $("#redlineScale")?.addEventListener("blur", endSiteInputHistory);
+  $("#siteNorthDeg")?.addEventListener("input", (event) => {
+    beginSiteInputHistory(event);
     state.siteContext.northManual = true;
   });
+  $("#siteNorthDeg")?.addEventListener("change", endSiteInputHistory);
+  $("#siteNorthDeg")?.addEventListener("blur", endSiteInputHistory);
+  $("#surroundingNotes")?.addEventListener("input", (event) => {
+    beginSiteInputHistory(event);
+    state.siteContext.surroundings.notes = String(event.target.value || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  });
+  $("#surroundingNotes")?.addEventListener("change", endSiteInputHistory);
+  $("#surroundingNotes")?.addEventListener("blur", endSiteInputHistory);
   $("#addEntrance")?.addEventListener("click", () => {
     state.siteContext.addEntranceMode = !state.siteContext.addEntranceMode;
     $("#addEntrance")?.classList.toggle("active", state.siteContext.addEntranceMode);
@@ -2990,6 +3254,20 @@ function bind() {
   }));
   window.addEventListener("pointermove", onSitePointerMove);
   window.addEventListener("pointerup", onSitePointerUp);
+  window.addEventListener("keydown", (event) => {
+    if (state.page !== "s2" || !(event.ctrlKey || event.metaKey)) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key === "z" && event.shiftKey) {
+      event.preventDefault();
+      redoSiteContextEdit();
+    } else if (key === "z") {
+      event.preventDefault();
+      undoSiteContextEdit();
+    } else if (key === "y") {
+      event.preventDefault();
+      redoSiteContextEdit();
+    }
+  });
   window.addEventListener("resize", () => {
     if (state.page === "s2") renderSiteRedlineOverlay();
   });
@@ -3021,7 +3299,11 @@ window.architectureUploader = {
   getSiteContextState: () => JSON.parse(JSON.stringify({
     transform: state.siteContext.transform,
     entrances: state.siteContext.entrances,
+    candidateEntrances: state.siteContext.candidateEntrances,
     redline: state.siteContext.redline,
+    surroundings: state.siteContext.surroundings,
+    undoDepth: state.siteContext.undoStack.length,
+    redoDepth: state.siteContext.redoStack.length,
   })),
   api,
 };
