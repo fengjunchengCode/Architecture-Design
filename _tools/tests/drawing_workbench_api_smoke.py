@@ -393,6 +393,22 @@ def assert_s1_auto_draft_missing_context_error(proj_dir: Path) -> None:
     assert "生成失败" not in (body.get("error") or ""), f"API must not collapse the real error into generic copy: {body}"
 
 
+def assert_project_conventions_standard_interactions() -> None:
+    conventions = (REPO_ROOT / ".trellis" / "spec" / "guides" / "project-conventions.md").read_text(encoding="utf-8")
+    required = [
+        "制图标准交互",
+        "撤销/重做",
+        "整体移动",
+        "复制粘贴",
+        "Ctrl/Cmd+Z",
+        "Shift+Ctrl/Cmd+Z",
+        "Ctrl/Cmd+C/V",
+        "PPT 版式/文本",
+    ]
+    missing = [item for item in required if item not in conventions]
+    assert not missing, f"project conventions missing mandatory drawing interactions: {missing}"
+
+
 def assert_reflow_adaptive(proj_dir: Path) -> None:
     drawing_type = "planting_design"
     frame = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]["drawing_frame"]
@@ -675,6 +691,8 @@ def main() -> int:
         print("OK: S1 auto draft reports missing context explicitly")
         assert_location_analysis_semantic_candidates(proj_dir)
         print("OK: S1 location analysis semantic candidates work")
+        assert_project_conventions_standard_interactions()
+        print("OK: project conventions require standard drawing interactions")
 
         # Test shared style presets library
         presets = api_get("/api/drawing/style-presets")
