@@ -4,12 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Architecture Intake</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="/workbench/workbench.css">
-    <script src="https://webapi.amap.com/loader.js"></script>
   </head>
   <body>
     <main class="studio-shell">
@@ -118,6 +114,12 @@
                     <div class="bucket-state">未选择文件</div>
                     <button>上传到当前项目</button>
                   </article>
+                  <article class="bucket" data-bucket="topography">
+                    <div class="bucket-head"><b>地形图 / 红线图</b><span>DWG / DXF / PDF</span></div>
+                    <input type="file" multiple>
+                    <div class="bucket-state">未选择文件</div>
+                    <button>上传到当前项目</button>
+                  </article>
                   <article class="bucket" data-bucket="site_photo">
                     <div class="bucket-head"><b>现场照片</b><span>踏勘照片</span></div>
                     <input type="file" accept=".jpg,.jpeg,.png,.heic" multiple>
@@ -162,6 +164,7 @@
                   <h3>地块中心点</h3>
                   <span id="amapStatus">等待项目</span>
                 </div>
+                <div class="env-check" id="s1EnvCheck"></div>
                 <label>
                   <span>高德坐标（GCJ-02）</span>
                   <input id="centerLocation" placeholder="94.032582,31.92547" autocomplete="off">
@@ -180,12 +183,6 @@
                   <button id="autoDraftS1" class="primary">生成 S1 区位分析草稿</button>
                 </div>
                 <div id="s1SnapshotPreview" class="s1-snapshot-preview"></div>
-                <article class="bucket required" data-bucket="location_map">
-                  <div class="bucket-head"><b>区位图补充</b><span>S1 视觉路由输入</span></div>
-                  <input type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
-                  <div class="bucket-state">未选择文件</div>
-                  <button>上传到当前项目</button>
-                </article>
                 <div class="handoff-note">
                   S1 输入完成后，回到对话里说"执行 S1"。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
                 </div>
@@ -224,15 +221,6 @@
           </section>
 
           <section class="page" data-page="s2">
-            <section class="s2-upload-row">
-              <article class="bucket" data-bucket="topography">
-                <div class="bucket-head"><b>地形图 / 红线图</b><span>DWG / DXF / PDF</span></div>
-                <input type="file" multiple>
-                <div class="bucket-state">未选择文件</div>
-                <button>上传到当前项目</button>
-              </article>
-            </section>
-
             <div class="studio-page-grid wide-left s2-site-grid">
               <section class="studio-card site-align-panel">
                 <div class="box-head">
@@ -250,10 +238,11 @@
                     <b>S1 卫星底图 + CAD 红线</b>
                     <span id="s2AmapStatus">等待 S1 中心点</span>
                   </div>
+                  <div class="env-check" id="s2EnvCheck"></div>
                   <div class="amap-map site-align-map" id="s2AmapMap">
                     <div class="map-empty">地图会从 S1 中心点启动；红线叠加层会使用 CAD 候选轮廓。</div>
                   </div>
-                  <p class="map-hint" id="s2AmapHint">拖动红线移动，拖动上方圆点旋转；入口由“添加出入口”后点击红线边生成。</p>
+                  <p class="map-hint" id="s2AmapHint">拖动红线移动，拖动上方圆点旋转，拖动角点缩放；入口由“添加出入口”后点击红线边生成。</p>
                 </div>
                 <div class="site-align-controls">
                   <label>旋转角

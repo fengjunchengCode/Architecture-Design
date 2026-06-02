@@ -246,18 +246,26 @@ button:disabled,input:disabled,select:disabled{
 .amap-head{display:flex; justify-content:space-between; gap:10px; align-items:center}
 .amap-head span,.map-hint,.map-fallback{color:var(--muted); font-size:12px}
 .amap-map{width:100%; min-height:300px; border:1px solid var(--line); background:#fff; border-radius:6px; overflow:hidden; position:relative}
-.s2-map-panel .amap-map{min-height:340px}
+.s2-map-panel .amap-map{min-height:max(420px,calc(100vh - var(--top-h) - 96px))}
 #s1AmapMap,#s1TdtMap{min-height:max(420px,calc(100vh - var(--top-h) - 96px))}
 .map-empty{position:absolute; inset:0; display:grid; place-items:center; padding:18px; color:var(--muted); font-size:13px; text-align:center; line-height:1.55}
 .map-hint{margin:0; line-height:1.45}
 .map-hint.warn{color:var(--accent-2)}
 .map-fallback{width:fit-content}
+.tdt-basemap-image{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; display:block}
+.env-check{display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:28px}
+.env-check:empty{display:none}
+.env-check small{flex-basis:100%; color:var(--muted); font-size:12px; line-height:1.35}
+.env-pill{border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:5px 7px; font-size:12px; line-height:1.2}
+.env-pill b{color:var(--ink); margin-right:4px}
+.env-pill.ok{border-color:rgba(31,111,91,.34); background:rgba(31,111,91,.07)}
+.env-pill.warn{border-color:rgba(185,75,47,.38); background:rgba(185,75,47,.07)}
 .active-candidate{border:1px dashed var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:7px 8px; font-size:13px; line-height:1.45}
 .amap-label{border:1px solid var(--accent); background:#fff; color:var(--accent); border-radius:4px; padding:2px 5px; font-size:12px; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px rgba(31,111,91,.16)}
 .s2-control-panel{position:sticky; top:18px; max-height:calc(100vh - 36px); overflow:auto}
 .s2-site-grid{align-items:start}
 .site-align-panel{display:grid; gap:12px}
-.site-align-map{min-height:max(520px,calc(100vh - var(--top-h) - 210px)); isolation:isolate}
+.site-align-map{min-height:max(420px,calc(100vh - var(--top-h) - 96px)); isolation:isolate}
 .site-align-map::before{
   content:""; position:absolute; inset:0;
   background:
@@ -269,13 +277,15 @@ button:disabled,input:disabled,select:disabled{
 }
 .site-redline-overlay{position:absolute; inset:0; z-index:8; width:100%; height:100%; pointer-events:none}
 .site-redline-overlay polygon[data-redline-polygon]{pointer-events:all; cursor:move}
-.site-redline-overlay [data-redline-rotate]{pointer-events:all; cursor:grab}
-.site-redline-overlay [data-redline-rotate]:active{cursor:grabbing}
+.site-redline-overlay [data-redline-rotate],.site-redline-overlay [data-redline-scale]{pointer-events:all; cursor:grab}
+.site-redline-overlay [data-redline-rotate]:active,.site-redline-overlay [data-redline-scale]:active{cursor:grabbing}
 .site-redline-fill{fill:#ef3b2d; fill-opacity:.22; stroke:#b91c1c; stroke-width:3; vector-effect:non-scaling-stroke}
 .site-redline-hit{fill:transparent; stroke:#b91c1c; stroke-opacity:.02; stroke-width:22; vector-effect:non-scaling-stroke}
 .site-redline-guide{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:5 5; vector-effect:non-scaling-stroke; fill:none; opacity:.82}
 .site-rotate-line{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:4 4; vector-effect:non-scaling-stroke}
 .site-rotate-handle{fill:#fff; stroke:#b91c1c; stroke-width:3; filter:drop-shadow(0 3px 8px rgba(0,0,0,.22))}
+.site-scale-line{stroke:#7f1d1d; stroke-width:1.5; stroke-dasharray:4 4; vector-effect:non-scaling-stroke}
+.site-scale-handle{fill:#fff; stroke:#b91c1c; stroke-width:3; filter:drop-shadow(0 3px 8px rgba(0,0,0,.22))}
 .site-entrance-marker{fill:#1f6f5b; stroke:#fff; stroke-width:3; vector-effect:non-scaling-stroke; pointer-events:none}
 .site-entrance-label{font-size:12px; font-weight:700; fill:#1f3f35; paint-order:stroke; stroke:#fff; stroke-width:4; pointer-events:none}
 .site-align-controls{display:grid; grid-template-columns:150px minmax(180px,1fr) auto; gap:10px; align-items:end}

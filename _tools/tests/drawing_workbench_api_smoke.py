@@ -206,6 +206,20 @@ def assert_site_context_api(proj_dir: Path) -> None:
     assert len(redline.get("normalized_points") or []) >= 4, f"redline overlay points missing: {redline}"
     road_names = [item.get("name") for item in ((spatial.get("surroundings") or {}).get("roads") or [])]
     assert "G317" in road_names and "650乡道" in road_names, f"S1 roads not projected into S2: {road_names}"
+    roads_by_name = {
+        item.get("name"): item
+        for item in ((spatial.get("surroundings") or {}).get("roads") or [])
+        if isinstance(item, dict)
+    }
+    assert roads_by_name["G317"].get("level") == "primary", f"G317 should be classified as a primary road: {roads_by_name}"
+    assert roads_by_name["650乡道"].get("level") == "secondary", (
+        f"650乡道 should be classified as a secondary road: {roads_by_name}"
+    )
+    candidates = spatial.get("candidate_entrances") or []
+    assert candidates and candidates[0].get("faces_road") == "G317", (
+        f"S2 should auto expose candidate entrances from nearby roads: {candidates}"
+    )
+    assert candidates[0].get("road_level") == "primary", f"candidate entrance should carry road_level: {candidates}"
 
     payload = {
         "project": TEST_PROJECT,
@@ -220,16 +234,9 @@ def assert_site_context_api(proj_dir: Path) -> None:
                 {"lng": 94.0321, "lat": 31.9251},
             ],
         },
-        "entrances": [
-            {
-                "id": "ENT-1",
-                "label": "主入口",
-                "point_on_redline": {"lng": 94.0324, "lat": 31.9255, "edge_index": 1, "edge_t": 0.42},
-                "faces_road": "G317",
-            }
-        ],
+        "entrances": [candidates[0]],
         "surroundings": {
-            "roads": [{"name": "G317", "note": "南侧主要到达道路"}],
+            "roads": [{"name": "G317", "level": "primary", "note": "南侧主要到达道路"}],
             "land_uses": [{"name": "巴青县第一小学", "category": "education_culture"}],
             "notes": ["入口由人工在红线边上标注"],
         },
@@ -239,6 +246,7 @@ def assert_site_context_api(proj_dir: Path) -> None:
     written = json.loads((proj_dir / saved["path"]).read_text(encoding="utf-8"))
     assert written["north_deg"] == 17.5, f"north_deg did not persist: {written}"
     assert written["entrances"][0]["faces_road"] == "G317", f"entrance road did not persist: {written}"
+    assert written["entrances"][0]["road_level"] == "primary", f"entrance road level did not persist: {written}"
     assert written["surroundings"]["roads"][0]["name"] == "G317", f"surroundings did not persist: {written}"
 
     invalid = dict(payload)

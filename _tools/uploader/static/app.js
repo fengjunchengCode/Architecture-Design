@@ -19,6 +19,7 @@ const state = {
   controlPointsStale: false,
   migrationReport: null,
   cadPreviewZoom: 1,
+  env: null,
   siteContext: {
     redline: null,
     surroundings: { roads: [], land_uses: [], notes: [] },
@@ -29,12 +30,14 @@ const state = {
     renderedPoints: [],
     siteContextPath: "",
     northManual: false,
+    basemap: null,
   },
   s1Location: "",
   amap: {
     config: null,
     sdk: null,
     loaderPromise: null,
+    loaderScriptPromise: null,
     s1Map: null,
     s1Marker: null,
     s1TdtMap: null,
@@ -212,6 +215,19 @@ function siteRoadNames() {
     .filter(Boolean);
 }
 
+function siteRoadByName(name) {
+  const label = String(name || "").trim();
+  return (state.siteContext.surroundings.roads || []).find((road) => String(road?.name || "").trim() === label) || null;
+}
+
+function roadLevelText(value) {
+  return {
+    primary: "主干道",
+    secondary: "次干道",
+    local: "支路",
+  }[value] || "未分级";
+}
+
 function defaultSiteTransform(redline) {
   const raw = redline?.default_transform || {};
   return {
@@ -319,7 +335,7 @@ function screenPointToApproxGeo(point) {
   const center = s1CenterPoint();
   const container = $("#s2AmapMap");
   if (!center || !container) return null;
-  const zoom = Number(state.amap.s2Map?.getZoom?.() || 17);
+  const zoom = Number(state.siteContext.basemap?.zoom || 17);
   const latRad = center.lat * Math.PI / 180;
   const cosLat = Math.max(0.000001, Math.cos(latRad));
   const metersPerPixel = 156543.03392 * cosLat / (2 ** zoom);
@@ -383,59 +399,126 @@ function setMapEmpty(id, text) {
   el.innerHTML = `<div class="map-empty">${escapeHtml(text)}</div>`;
 }
 
+function setS2Basemap(data) {
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  container.querySelector(".map-empty")?.remove();
+  let image = $("#s2TdtBasemap");
+  if (!image) {
+    image = document.createElement("img");
+    image.id = "s2TdtBasemap";
+    image.className = "tdt-basemap-image";
+    image.alt = "天地图高清卫星底图";
+    container.insertBefore(image, container.firstChild);
+  }
+  image.src = data.image_url || data.path || "";
+  state.siteContext.basemap = {
+    zoom: Number(data.zoom || 17),
+    center_gcj02: data.center_gcj02 || "",
+    source: data.source || "server_tianditu_tiles",
+  };
+}
+
 function amapFailureHint(error) {
   const warnings = state.amap.config?.warnings || [];
   return warnings.length ? warnings[0] : error?.message || "高德 JSAPI 暂不可用";
 }
 
+function envMissingMessage(key, feature) {
+  return `缺 ${key}，${feature}不可用，请在仓库根 .env 配置。`;
+}
+
 function amapConfigWarning(config) {
   const warnings = Array.isArray(config?.warnings) ? config.warnings : [];
-  if (warnings.length) return warnings.join(" ");
-  if (!config?.configured) return "未配置 AMAP_JSAPI_KEY，内嵌地图不可用。";
+  const jsapiWarning = warnings.find((item) => String(item).includes("AMAP_JSAPI_KEY"));
+  if (jsapiWarning) return jsapiWarning;
+  if (!config?.configured) return "未配置 AMAP_JSAPI_KEY；S1 高德拾点地图不可用。";
   if (config.webservice_configured === false) return "未配置 AMAP_WEBSERVICE_KEY，无法生成 S1 高德上下文。";
   return "";
+}
+
+function tdtConfigWarning(config) {
+  if (config?.tianditu_configured || config?.tianditu_key) return "";
+  return envMissingMessage("TIANDITU_KEY", "天地图高清卫星底图");
+}
+
+function renderEnvCheck(selector, config) {
+  const el = $(selector);
+  if (!el || !config) return;
+  const rows = [
+    ["TIANDITU_KEY", Boolean(config.tianditu_configured || config.tianditu_key), "天地图卫星底图"],
+    ["AMAP_WEBSERVICE_KEY", Boolean(config.webservice_configured), "S1 周边路网语义"],
+  ];
+  if (selector === "#s1EnvCheck") {
+    rows.push(["AMAP_JSAPI_KEY", Boolean(config.configured && config.key), "S1 高德拾点"]);
+  }
+  const warning = Array.isArray(config.warnings) && config.warnings.length ? config.warnings[0] : "";
+  el.innerHTML = `
+    ${rows.map(([key, ok, label]) => `
+      <span class="env-pill ${ok ? "ok" : "warn"}">
+        <b>${escapeHtml(key)}</b>${ok ? "已配置" : "缺失"} · ${escapeHtml(label)}
+      </span>
+    `).join("")}
+    ${warning ? `<small>${escapeHtml(warning)}</small>` : ""}
+  `;
+}
+
+async function loadEnvCheck() {
+  if (state.env) return state.env;
+  state.env = await api("/api/env-check");
+  if (!state.amap.config) state.amap.config = state.env;
+  state.amap.tiandituKey = state.env.tianditu_key || null;
+  return state.env;
 }
 
 async function loadAmapJsapiConfig() {
   if (state.amap.config) return state.amap.config;
   state.amap.config = await api("/api/amap-jsapi-config");
   state.amap.tiandituKey = state.amap.config.tianditu_key || null;
+  if (!state.env) state.env = state.amap.config;
   return state.amap.config;
 }
 
 async function syncAmapEnvStatus() {
   if (!["s1", "s2"].includes(state.page)) return;
   try {
-    const config = await loadAmapJsapiConfig();
-    const warning = amapConfigWarning(config);
-    if (warning) {
-      setAmapStatus("高德配置不完整", false);
-      if (state.page === "s1") {
-        setMapStatus("#s1AmapStatus", "高德配置不完整", false);
-        setMapHint("#s1AmapHint", warning, true);
-        if (!state.amap.s1Map) setMapEmpty("#s1AmapMap", warning);
-      }
-      if (state.page === "s2") {
-        setMapStatus("#s2AmapStatus", "高德配置不完整", false);
-        setMapHint("#s2AmapHint", `${warning} 红线叠加层仍可离线调整。`, true);
-        if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", warning);
+    const config = await loadEnvCheck();
+    renderEnvCheck("#s1EnvCheck", config);
+    renderEnvCheck("#s2EnvCheck", config);
+    if (state.page === "s1" && !state.amap.s1Map) {
+      const warning = amapConfigWarning(config);
+      setMapStatus("#s1AmapStatus", warning ? "高德配置不完整" : "高德配置已加载", warning ? false : true);
+      setMapHint("#s1AmapHint", warning || "输入或加载中心点后显示内嵌地图。", Boolean(warning));
+      if (warning) setMapEmpty("#s1AmapMap", warning);
+    }
+    if (state.page === "s2" && !state.siteContext.basemap) {
+      const warning = tdtConfigWarning(config);
+      setMapStatus("#s2AmapStatus", warning ? "天地图配置不完整" : "天地图配置已加载", warning ? false : true);
+      setMapHint("#s2AmapHint", warning || "红线叠加层会显示在 S1 中心点附近，可拖动、旋转和缩放粗对位。", Boolean(warning));
+      if (warning) {
+        setMapEmpty("#s2AmapMap", warning);
         renderSiteRedlineOverlay();
       }
-      return;
-    }
-    if (state.page === "s1" && !state.amap.s1Map) {
-      setMapStatus("#s1AmapStatus", "高德配置已加载", true);
-      setMapHint("#s1AmapHint", "输入或加载中心点后显示内嵌地图。");
-    }
-    if (state.page === "s2" && !state.amap.s2Map) {
-      setMapStatus("#s2AmapStatus", "高德配置已加载", true);
-      setMapHint("#s2AmapHint", "红线叠加层会显示在 S1 中心点附近，可拖动和旋转粗对位。");
     }
   } catch (err) {
-    setAmapStatus("高德配置读取失败", false);
+    setAmapStatus("地图配置读取失败", false);
     if (state.page === "s1") setMapHint("#s1AmapHint", err.message || String(err), true);
     if (state.page === "s2") setMapHint("#s2AmapHint", err.message || String(err), true);
   }
+}
+
+function ensureAmapLoaderScript() {
+  if (window.AMapLoader?.load) return Promise.resolve();
+  if (state.amap.loaderScriptPromise) return state.amap.loaderScriptPromise;
+  state.amap.loaderScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://webapi.amap.com/loader.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("高德 JSAPI loader 加载失败，请检查网络或 referer 白名单。"));
+    document.head.appendChild(script);
+  });
+  return state.amap.loaderScriptPromise;
 }
 
 async function ensureAmapSdk() {
@@ -451,6 +534,7 @@ async function ensureAmapSdk() {
   } else if (security.mode === "security_jscode" && security.security_jscode) {
     window._AMapSecurityConfig = { securityJsCode: security.security_jscode };
   }
+  await ensureAmapLoaderScript();
   if (!window.AMapLoader?.load) {
     throw new Error("高德 JSAPI loader 未加载，请检查网络或 referer 白名单。");
   }
@@ -1255,7 +1339,11 @@ function renderSiteRedlineOverlay() {
   const cx = state.siteContext.transform.x * width;
   const cy = state.siteContext.transform.y * height;
   const topY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
   const rotateY = Math.max(18, topY - 34);
+  const scaleX = Math.min(width - 18, maxX + 28);
+  const scaleY = Math.min(height - 18, maxY + 28);
   const entranceMarkup = state.siteContext.entrances
     .map((entrance, index) => {
       const point = pointOnRenderedEdge(entrance);
@@ -1272,6 +1360,8 @@ function renderSiteRedlineOverlay() {
     <polygon class="site-redline-hit" data-redline-polygon="true" points="${pointText}"></polygon>
     <line class="site-rotate-line" x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${rotateY.toFixed(1)}"></line>
     <circle class="site-rotate-handle" id="siteRedlineRotateHandle" data-redline-rotate="true" cx="${cx.toFixed(1)}" cy="${rotateY.toFixed(1)}" r="11"></circle>
+    <line class="site-scale-line" x1="${maxX.toFixed(1)}" y1="${maxY.toFixed(1)}" x2="${scaleX.toFixed(1)}" y2="${scaleY.toFixed(1)}"></line>
+    <rect class="site-scale-handle" id="siteRedlineScaleHandle" data-redline-scale="true" x="${(scaleX - 10).toFixed(1)}" y="${(scaleY - 10).toFixed(1)}" width="20" height="20" rx="3"></rect>
     ${entranceMarkup}
   `;
   overlay.querySelectorAll("[data-redline-polygon]").forEach((node) => {
@@ -1279,6 +1369,7 @@ function renderSiteRedlineOverlay() {
     node.addEventListener("click", onRedlineClick);
   });
   overlay.querySelector("[data-redline-rotate]")?.addEventListener("pointerdown", onRedlineRotateDown);
+  overlay.querySelector("[data-redline-scale]")?.addEventListener("pointerdown", onRedlineScaleDown);
   const reliability = redline.coordinate_reliability || {};
   const source = redline.source ? ` · ${redline.source}` : "";
   setCadPreviewStatus(
@@ -1317,6 +1408,24 @@ function onRedlineRotateDown(event) {
   };
 }
 
+function onRedlineScaleDown(event) {
+  event.preventDefault();
+  const container = $("#s2AmapMap");
+  if (!container) return;
+  const rect = container.getBoundingClientRect();
+  const center = {
+    x: rect.left + state.siteContext.transform.x * rect.width,
+    y: rect.top + state.siteContext.transform.y * rect.height,
+  };
+  const startDistance = Math.hypot(event.clientX - center.x, event.clientY - center.y);
+  state.siteContext.drag = {
+    mode: "scale",
+    center,
+    startDistance: Math.max(1, startDistance),
+    startTransform: { ...state.siteContext.transform },
+  };
+}
+
 function onSitePointerMove(event) {
   const drag = state.siteContext.drag;
   if (!drag) return;
@@ -1329,6 +1438,10 @@ function onSitePointerMove(event) {
   } else if (drag.mode === "rotate") {
     const angle = Math.atan2(event.clientY - drag.center.y, event.clientX - drag.center.x) * 180 / Math.PI;
     setSiteTransform({ ...drag.startTransform, rotation_deg: drag.startTransform.rotation_deg + angle - drag.startAngle });
+  } else if (drag.mode === "scale") {
+    const distance = Math.hypot(event.clientX - drag.center.x, event.clientY - drag.center.y);
+    const ratio = distance / drag.startDistance;
+    setSiteTransform({ ...drag.startTransform, scale: drag.startTransform.scale * ratio });
   }
 }
 
@@ -1345,13 +1458,14 @@ function onRedlineClick(event) {
   const nearest = nearestRedlineEdge(event.clientX - rect.left, event.clientY - rect.top);
   if (!nearest) return;
   const index = state.siteContext.entrances.length + 1;
-  const firstRoad = siteRoadNames()[0] || "";
+  const firstRoad = (state.siteContext.surroundings.roads || [])[0] || {};
   state.siteContext.entrances.push({
     id: `ENT-${index}`,
     label: `出入口 ${index}`,
     edge_index: nearest.edge_index,
     edge_t: nearest.edge_t,
-    faces_road: firstRoad,
+    faces_road: firstRoad.name || "",
+    road_level: firstRoad.level || "",
   });
   state.siteContext.addEntranceMode = false;
   $("#addEntrance")?.classList.remove("active");
@@ -1365,7 +1479,7 @@ function renderEntranceList() {
   if (!list) return;
   if (status) status.textContent = `${state.siteContext.entrances.length} 个`;
   list.innerHTML = "";
-  const roads = siteRoadNames();
+  const roads = state.siteContext.surroundings.roads || [];
   if (!state.siteContext.entrances.length) {
     const empty = document.createElement("div");
     empty.className = "control-empty";
@@ -1378,12 +1492,17 @@ function renderEntranceList() {
     item.className = "entrance-item";
     item.dataset.entranceItem = entrance.id;
     const options = roads
-      .map((road) => `<option value="${escapeHtml(road)}" ${road === entrance.faces_road ? "selected" : ""}>${escapeHtml(road)}</option>`)
+      .map((road) => {
+        const name = String(road?.name || "").trim();
+        if (!name) return "";
+        const label = `${name} · ${roadLevelText(road.level)}`;
+        return `<option value="${escapeHtml(name)}" ${name === entrance.faces_road ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
       .join("");
     item.innerHTML = `
       <b>${escapeHtml(entrance.label || `出入口 ${index + 1}`)}</b>
       <button type="button" data-remove-entrance="${escapeHtml(entrance.id)}">删除</button>
-      <small>红线边 ${Number(entrance.edge_index) + 1} · ${(Number(entrance.edge_t) || 0).toFixed(2)}</small>
+      <small>红线边 ${Number(entrance.edge_index) + 1} · ${(Number(entrance.edge_t) || 0).toFixed(2)} · ${escapeHtml(roadLevelText(entrance.road_level))}</small>
       <select data-entrance-road="${escapeHtml(entrance.id)}">
         <option value="">选择所朝道路</option>
         ${options}
@@ -1391,6 +1510,8 @@ function renderEntranceList() {
     `;
     item.querySelector("[data-entrance-road]")?.addEventListener("change", (event) => {
       entrance.faces_road = event.target.value;
+      entrance.road_level = siteRoadByName(event.target.value)?.level || "";
+      renderEntranceList();
     });
     item.querySelector("[data-remove-entrance]")?.addEventListener("click", () => {
       state.siteContext.entrances.splice(index, 1);
@@ -1418,7 +1539,7 @@ function renderSurroundings() {
       item.className = "surrounding-item";
       item.innerHTML = `
         <input data-road-name="${index}" value="${escapeHtml(road.name || "")}">
-        <small>${escapeHtml([road.type, road.note, road.source].filter(Boolean).join(" · "))}</small>
+        <small>${escapeHtml([roadLevelText(road.level), road.type, road.note, road.source].filter(Boolean).join(" · "))}</small>
       `;
       item.querySelector("[data-road-name]")?.addEventListener("change", (event) => {
         state.siteContext.surroundings.roads[index].name = event.target.value.trim();
@@ -1468,34 +1589,30 @@ async function ensureS2Map() {
   if (!center) {
     setMapStatus("#s2AmapStatus", "缺少 S1 中心点", false);
     setMapHint("#s2AmapHint", "先在 S1 标定中心点，红线粗对位才能写出近似坐标。", true);
-    if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", "先在 S1 标定中心点；红线叠加层会在加载 CAD 后显示。");
+    if (!state.siteContext.basemap) setMapEmpty("#s2AmapMap", "先在 S1 标定中心点；红线叠加层会在加载 CAD 后显示。");
     renderSiteRedlineOverlay();
     return;
   }
   try {
-    const AMap = await ensureAmapSdk();
-    if (!state.amap.s2Map) {
-      $("#s2AmapMap").innerHTML = "";
-      const layers = [];
-      if (AMap.TileLayer?.Satellite) {
-        layers.push(new AMap.TileLayer.Satellite());
-      }
-      state.amap.s2Map = new AMap.Map("s2AmapMap", {
-        center: [center.lng, center.lat],
-        zoom: 17,
-        viewMode: "2D",
-        layers: layers.length ? layers : undefined,
-      });
-      addAmapControls(AMap, state.amap.s2Map);
+    const data = await api(`/api/s2/basemap?project=${encodeURIComponent(state.project)}`);
+    if (!data.ok || !data.image_url) {
+      const message = data.error || envMissingMessage("TIANDITU_KEY", "S2 天地图卫星底图");
+      setMapStatus("#s2AmapStatus", "天地图底图不可用", false);
+      setMapHint("#s2AmapHint", `${message} 红线叠加层仍可离线调整。`, true);
+      setMapEmpty("#s2AmapMap", message);
+      state.siteContext.basemap = null;
+      renderSiteRedlineOverlay();
+      return;
     }
-    if (state.amap.s2Map.setCenter) state.amap.s2Map.setCenter([center.lng, center.lat]);
+    setS2Basemap(data);
     renderSiteRedlineOverlay();
-    setMapStatus("#s2AmapStatus", "卫星底图已加载", true);
-    setMapHint("#s2AmapHint", "拖动红线移动；拖动上方圆点旋转；添加出入口后点击红线边。");
+    setMapStatus("#s2AmapStatus", "天地图卫星底图已加载", true);
+    setMapHint("#s2AmapHint", "拖动红线移动；拖动上方圆点旋转；拖动角点缩放；添加出入口后点击红线边。");
   } catch (err) {
-    setMapStatus("#s2AmapStatus", "地图不可用", false);
-    setMapHint("#s2AmapHint", `${amapFailureHint(err)}；仍可先调整 CAD 红线叠加层。`, true);
-    setMapEmpty("#s2AmapMap", "内嵌卫星底图暂不可用；红线叠加层仍可用于粗对位。");
+    setMapStatus("#s2AmapStatus", "天地图底图不可用", false);
+    setMapHint("#s2AmapHint", `${err.message || String(err)}；仍可先调整 CAD 红线叠加层。`, true);
+    setMapEmpty("#s2AmapMap", "天地图卫星底图暂不可用；红线叠加层仍可用于粗对位。");
+    state.siteContext.basemap = null;
     renderSiteRedlineOverlay();
   }
 }
@@ -2021,6 +2138,7 @@ function setActiveProject(code, options = {}) {
     state.siteContext.redline = null;
     state.siteContext.surroundings = { roads: [], land_uses: [], notes: [] };
     state.siteContext.entrances = [];
+    state.siteContext.basemap = null;
     state.siteContext.transform = { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 };
     state.siteContext.addEntranceMode = false;
     state.siteContext.drag = null;
@@ -2195,6 +2313,7 @@ async function loadProjects() {
       state.siteContext.redline = null;
       state.siteContext.surroundings = { roads: [], land_uses: [], notes: [] };
       state.siteContext.entrances = [];
+      state.siteContext.basemap = null;
       state.siteContext.transform = { x: 0.5, y: 0.5, scale: 1, rotation_deg: 0 };
       state.siteContext.addEntranceMode = false;
       state.siteContext.drag = null;
@@ -2373,12 +2492,14 @@ async function loadSpatial() {
   const saved = data.site_context || null;
   state.siteContext.surroundings = saved?.surroundings || data.surroundings || { roads: [], land_uses: [], notes: [] };
   state.siteContext.transform = saved?.redline_transform || defaultSiteTransform(data.redline);
-  state.siteContext.entrances = (saved?.entrances || []).map((entrance, index) => ({
+  const entranceSource = saved?.entrances?.length ? saved.entrances : (data.candidate_entrances || []);
+  state.siteContext.entrances = entranceSource.map((entrance, index) => ({
     id: entrance.id || `ENT-${index + 1}`,
     label: entrance.label || `出入口 ${index + 1}`,
     edge_index: Number(entrance.point_on_redline?.edge_index || 0),
     edge_t: Number(entrance.point_on_redline?.edge_t || 0),
     faces_road: entrance.faces_road || "",
+    road_level: entrance.road_level || siteRoadByName(entrance.faces_road)?.level || "",
   }));
   state.siteContext.siteContextPath = data.site_context_path || "";
   state.siteContext.northManual = Boolean(saved?.north_deg || saved?.north_deg === 0);
@@ -2792,6 +2913,7 @@ async function saveSiteContext() {
       label: entrance.label,
       point_on_redline: entrancePointPayload(entrance),
       faces_road: entrance.faces_road,
+      road_level: entrance.road_level || siteRoadByName(entrance.faces_road)?.level || "",
     })),
     surroundings: collectSurroundingsForSave(),
   };

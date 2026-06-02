@@ -20,6 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_PROJECT = "99-ZZ-BROWSER"
 PORT = int(os.environ.get("DRAWING_BROWSER_SMOKE_PORT", "18766"))
 BASE = f"http://127.0.0.1:{PORT}"
+MOCK_TDT_IMAGE = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAKUlEQVR4nGM8ceIEA27AhEduBEsD"
+    "RgYGJgZGIYpGNYyqGVUzqgYArSMCF0YyxjIAAAAASUVORK5CYII="
+)
 
 
 def write_site_context_inputs(proj_dir: Path) -> None:
@@ -316,30 +321,35 @@ def assert_base_upload_loads_and_persists(page) -> None:
 
 
 def assert_amap_env_prompt_and_no_external_picker(page) -> None:
+    env_body = json.dumps(
+        {
+            "ok": True,
+            "configured": False,
+            "key": None,
+            "key_env": None,
+            "security": {"mode": "none"},
+            "tianditu_key": None,
+            "tianditu_configured": False,
+            "webservice_configured": False,
+            "webservice_key_env": None,
+            "warnings": ["未配置 AMAP_JSAPI_KEY，请在仓库根目录 .env 配置后重启服务。"],
+            "env_loaded": [],
+            "env_file_exists": False,
+        },
+        ensure_ascii=False,
+    )
     page.route(
         "**/api/amap-jsapi-config",
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps(
-                {
-                    "ok": True,
-                    "configured": False,
-                    "key": None,
-                    "key_env": None,
-                    "security": {"mode": "none"},
-                    "tianditu_key": None,
-                    "warnings": ["未配置 AMAP_JSAPI_KEY，请在仓库根目录 .env 配置后重启服务。"],
-                    "env_loaded": [],
-                    "env_file_exists": False,
-                },
-                ensure_ascii=False,
-            ),
-        ),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=env_body),
+    )
+    page.route(
+        "**/api/env-check",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=env_body),
     )
     page.goto(f"{BASE}/?project={TEST_PROJECT}&page=s1", wait_until="networkidle", timeout=30000)
     page.wait_for_function(
-        "() => (document.querySelector('#s1AmapHint')?.textContent || '').includes('.env')",
+        "() => (document.querySelector('#s1AmapHint')?.textContent || '').includes('.env')"
+        " && (document.querySelector('#s1EnvCheck')?.textContent || '').includes('TIANDITU_KEY')",
         timeout=10000,
     )
     assert page.locator("#checkAmap").count() == 0, "S1 UI should not require a manual AMap key check button"
@@ -349,32 +359,81 @@ def assert_amap_env_prompt_and_no_external_picker(page) -> None:
         "UI should not tell users to use the external AMap picker fallback"
     )
     page.unroute("**/api/amap-jsapi-config")
+    page.unroute("**/api/env-check")
+
+
+def assert_stage_upload_buckets_merged(page) -> None:
+    page.goto(f"{BASE}/?project={TEST_PROJECT}&page=s0", wait_until="networkidle", timeout=30000)
+    assert page.locator("section.page[data-page='s0'] [data-bucket='location_map']").count() == 1, (
+        "S0 should own the location_map upload bucket"
+    )
+    assert page.locator("section.page[data-page='s0'] [data-bucket='topography']").count() == 1, (
+        "S0 should own the topography upload bucket"
+    )
+    assert page.locator("section.page[data-page='s1'] .bucket").count() == 0, "S1 should not render upload buckets"
+    assert page.locator("section.page[data-page='s2'] .bucket").count() == 0, "S2 should not render upload buckets"
 
 
 def assert_s2_site_context_workflow(page) -> None:
+    env_body = json.dumps(
+        {
+            "ok": True,
+            "configured": True,
+            "key": "test-amap-jsapi-key",
+            "key_env": "AMAP_JSAPI_KEY",
+            "security": {"mode": "none"},
+            "tianditu_key": "test-tianditu-key",
+            "tianditu_configured": True,
+            "webservice_configured": True,
+            "webservice_key_env": "AMAP_WEBSERVICE_KEY",
+            "warnings": [],
+            "env_loaded": ["TIANDITU_KEY", "AMAP_WEBSERVICE_KEY"],
+            "env_file_exists": True,
+        },
+        ensure_ascii=False,
+    )
     page.route(
         "**/api/amap-jsapi-config",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=env_body),
+    )
+    page.route(
+        "**/api/env-check",
+        lambda route: route.fulfill(status=200, content_type="application/json", body=env_body),
+    )
+    page.route(
+        "**/api/s2/basemap**",
         lambda route: route.fulfill(
             status=200,
             content_type="application/json",
             body=json.dumps(
                 {
                     "ok": True,
-                    "configured": False,
-                    "key": None,
-                    "key_env": None,
-                    "security": {"mode": "none"},
-                    "tianditu_key": None,
-                    "warnings": ["未配置 AMAP_JSAPI_KEY，测试使用离线红线叠加层。"],
-                    "env_loaded": [],
-                    "env_file_exists": False,
+                    "source": "server_tianditu_tiles",
+                    "image_url": MOCK_TDT_IMAGE,
+                    "zoom": 17,
+                    "center_gcj02": "94.032582,31.925470",
                 },
                 ensure_ascii=False,
             ),
         ),
     )
+    page.add_init_script(
+        """
+        window.__s2AmapLoadCalls = 0;
+        window.AMapLoader = {
+          load() {
+            window.__s2AmapLoadCalls += 1;
+            throw new Error("S2 must not use AMap JSAPI for display");
+          }
+        };
+        """
+    )
     page.goto(f"{BASE}/?project={TEST_PROJECT}&page=s2", wait_until="networkidle", timeout=30000)
+    page.wait_for_selector("#s2TdtBasemap", state="visible", timeout=15000)
     page.wait_for_selector("#siteRedlinePolygon", state="visible", timeout=15000)
+    assert page.evaluate("window.__s2AmapLoadCalls") == 0, "S2 display path must not call AMapLoader.load"
+    map_box = page.locator("#s2AmapMap").bounding_box()
+    assert map_box and map_box["height"] >= 420, f"S2 map should be sized like S1, got {map_box}"
     s2_text = page.locator("section.page[data-page='s2']").inner_text()
     for forbidden in ["候选控制点", "地图拾取", "配准检查", "保存控制点", "配准评分", "stale"]:
         assert forbidden not in s2_text, f"S2 should not expose old control-point flow text: {forbidden}"
@@ -410,6 +469,19 @@ def assert_s2_site_context_workflow(page) -> None:
         timeout=8000,
     )
 
+    scale_before = page.evaluate("window.architectureUploader.getSiteContextState().transform.scale")
+    scale_handle_box = page.locator("#siteRedlineScaleHandle").bounding_box()
+    assert scale_handle_box, "redline scale handle should be visible"
+    page.mouse.move(scale_handle_box["x"] + scale_handle_box["width"] / 2, scale_handle_box["y"] + scale_handle_box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(scale_handle_box["x"] + scale_handle_box["width"] / 2 + 58, scale_handle_box["y"] + scale_handle_box["height"] / 2 + 42, steps=8)
+    page.mouse.up()
+    page.wait_for_function(
+        "(scale) => Math.abs(window.architectureUploader.getSiteContextState().transform.scale - scale) > 0.05",
+        arg=scale_before,
+        timeout=8000,
+    )
+
     page.fill("#siteNorthDeg", "23")
     page.click("#addEntrance")
     polygon_box = page.locator("#siteRedlinePolygon").bounding_box()
@@ -424,8 +496,11 @@ def assert_s2_site_context_workflow(page) -> None:
     saved = json.loads(site_context.read_text(encoding="utf-8"))
     assert saved["north_deg"] == 23, f"north angle should persist from UI: {saved}"
     assert saved["entrances"][0]["faces_road"] == "G317", f"entrance road should persist: {saved}"
+    assert saved["entrances"][0]["road_level"] == "primary", f"entrance road level should persist: {saved}"
     assert saved["site_polygon_geo"]["points"], f"approximate polygon should be written: {saved}"
     page.unroute("**/api/amap-jsapi-config")
+    page.unroute("**/api/env-check")
+    page.unroute("**/api/s2/basemap**")
 
 
 def assert_control_rules(page, drawing_type: str, tools: list[str]) -> None:
@@ -1830,6 +1905,7 @@ def main() -> int:
             console_errors: list[str] = []
             page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
+            assert_stage_upload_buckets_merged(page)
             assert_amap_env_prompt_and_no_external_picker(page)
             assert_s2_site_context_workflow(page)
             page.goto(f"{BASE}/?project={TEST_PROJECT}&page=workbench&drawing=functional_zoning", wait_until="networkidle", timeout=30000)

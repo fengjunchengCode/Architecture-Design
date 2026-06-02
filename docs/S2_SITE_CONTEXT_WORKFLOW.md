@@ -5,10 +5,13 @@ S2 now produces a rough site-context artifact for S3 instead of a point-by-point
 ## Current Flow
 
 1. S1 writes `05_output/amap/s1_map_context.json` with the GCJ-02 center point and surrounding context.
-2. S2 reads `05_output/cad/redline_candidate_*.geojson`, normalizes the CAD redline polygon, and draws it as a translucent overlay on the S1 map surface.
-3. The user roughly drags, rotates, and optionally scales the redline until it visually faces the surrounding roads.
-4. The user clicks the redline edge to add one or more entrances, then selects the road each entrance faces from the S1-derived road list.
-5. S2 saves `05_output/site_context/site_context.json`.
+2. S2 renders the same-source Tianditu satellite basemap used by S1 server snapshots. The display path uses `TIANDITU_KEY` and does not mount an AMap JSAPI map.
+3. S2 reads `05_output/cad/redline_candidate_*.geojson`, normalizes the CAD redline polygon, and draws it as a translucent overlay on the Tianditu satellite surface.
+4. The user roughly drags, rotates, and scales the redline with the on-map handles until it visually faces the surrounding roads.
+5. S2 automatically exposes S1-derived surrounding roads with `primary` / `secondary` / `local` levels and seeds candidate entrances on redline edges. The user can add, delete, or adjust entrances and choose the road each entrance faces.
+6. S1/S2 show an environment check for `TIANDITU_KEY` and `AMAP_WEBSERVICE_KEY`. Missing keys are surfaced in the UI instead of producing a blank map.
+7. S0 owns all upload buckets, including `location_map` and `topography`; S1/S2 no longer render upload rows.
+8. S2 saves `05_output/site_context/site_context.json`.
 
 ## Artifact Contract
 
@@ -33,11 +36,12 @@ S2 now produces a rough site-context artifact for S3 instead of a point-by-point
       "id": "ENT-1",
       "label": "出入口 1",
       "point_on_redline": {"lng": 0, "lat": 0, "edge_index": 0, "edge_t": 0.5},
-      "faces_road": "G317"
+      "faces_road": "G317",
+      "road_level": "primary"
     }
   ],
   "surroundings": {
-    "roads": [{"name": "G317"}],
+    "roads": [{"name": "G317", "level": "primary"}],
     "land_uses": [{"name": "巴青县第一小学", "category": "education_culture"}],
     "notes": []
   }

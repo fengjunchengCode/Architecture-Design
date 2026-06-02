@@ -80,6 +80,7 @@ CAD_SEMANTICS_REL = Path("05_output/cad/control_point_candidate_semantics.json")
 CAD_CANDIDATES_REL = Path("05_output/cad/control_point_candidates.json")
 CONTROL_POINTS_REL = Path("05_output/amap/control_points.json")
 SITE_CONTEXT_REL = Path("05_output/site_context/site_context.json")
+SITE_BASEMAP_REL = Path("05_output/site_context/s2_tianditu_satellite.png")
 STYLE_PRESETS_FILE = Path(
     os.environ.get(
         "DRAWING_STYLE_PRESETS_PATH",
@@ -110,6 +111,8 @@ CONTROL_CONFIDENCE = {"low", "medium", "high"}
 ROAD_NAME_RE = re.compile(
     r"(?:G\d{2,3}|\d{2,3}国道|\d{2,3}省道|\d{2,3}县道|\d{2,3}乡道|[\u4e00-\u9fa5A-Za-z0-9]{1,16}(?:大道|公路|道路|路|街|桥))"
 )
+PRIMARY_ROAD_RE = re.compile(r"(?:^G\d{2,3}$|\d{2,3}国道|国道|高速|快速路|大道)")
+SECONDARY_ROAD_RE = re.compile(r"(?:^S\d{2,3}$|\d{2,3}省道|\d{2,3}县道|\d{2,3}乡道|省道|县道|乡道|公路)")
 
 AMAP_JSAPI_REFERER_HINT = (
     "AMAP_JSAPI_KEY 需在高德控制台勾选 'Web 端' 并把 referer 白名单加入 "
@@ -419,6 +422,46 @@ def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path)
     return {"source": "server_tianditu_tiles", "zoom": zoom, "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}"}
 
 
+def generate_tdt_site_basemap(proj: Path, output_path: Path) -> dict[str, object]:
+    from PIL import Image, ImageEnhance
+    from _tools.s1_location_analysis import gcj02_to_wgs84
+
+    load_env_file()
+    tk = os.environ.get("TIANDITU_KEY", "").strip()
+    if not tk:
+        raise ValueError("缺 TIANDITU_KEY，S2 天地图卫星底图不可用，请在仓库根 .env 配置")
+    context_path = proj / "05_output" / "amap" / "s1_map_context.json"
+    if not context_path.exists():
+        raise ValueError("缺少 S1 高德上下文，无法读取 S2 底图中心点")
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    center_text = str(context.get("location", {}).get("amap_gcj02") or "")
+    lng_gcj, lat_gcj = [float(part.strip()) for part in center_text.split(",", 1)]
+    lng_wgs, lat_wgs = gcj02_to_wgs84(lng_gcj, lat_gcj)
+    width, height, zoom = 1280, 820, 17
+    center_tile_x, center_tile_y = _wgs84_to_tile(lng_wgs, lat_wgs, zoom)
+    center_px_x, center_px_y = center_tile_x * 256, center_tile_y * 256
+    left, top = center_px_x - width / 2, center_px_y - height / 2
+    first_x, last_x = math.floor(left / 256), math.floor((left + width - 1) / 256)
+    first_y, last_y = math.floor(top / 256), math.floor((top + height - 1) / 256)
+    mosaic = Image.new("RGB", (width, height), (30, 30, 30))
+    for tile_x in range(first_x, last_x + 1):
+        for tile_y in range(first_y, last_y + 1):
+            tile = _fetch_tdt_tile("img", zoom, tile_x, tile_y, tk)
+            px = int(tile_x * 256 - left)
+            py = int(tile_y * 256 - top)
+            mosaic.paste(tile, (px, py))
+    mosaic = ImageEnhance.Contrast(mosaic).enhance(1.06)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    mosaic.save(output_path)
+    return {
+        "source": "server_tianditu_tiles",
+        "zoom": zoom,
+        "center_gcj02": f"{lng_gcj:.6f},{lat_gcj:.6f}",
+        "center_wgs84": f"{lng_wgs:.6f},{lat_wgs:.6f}",
+        "size": {"width": width, "height": height},
+    }
+
+
 def sync_location_analysis_drawing(proj: Path, code: str, screenshot_rel: str, radius_m: int) -> dict[str, object]:
     """Use the generated S1 snapshot as the editable workbench base image."""
     from PIL import Image
@@ -634,6 +677,19 @@ def _append_unique_named(items: dict[str, dict], name: object, **fields: object)
             items[label][key] = value
 
 
+def classify_road_level(name: object, fallback: str | None = None) -> str | None:
+    label = str(name or "").strip()
+    if fallback in {"primary", "secondary", "local"}:
+        return fallback
+    if PRIMARY_ROAD_RE.search(label):
+        return "primary"
+    if SECONDARY_ROAD_RE.search(label):
+        return "secondary"
+    if label.endswith(("路", "街", "桥", "巷")):
+        return "local"
+    return None
+
+
 def _names_from_seed(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -663,11 +719,42 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
             direction = item.get("direction")
             distance = item.get("distance") or item.get("distance_m")
             note = " / ".join(str(part) for part in (direction, f"{distance}m" if distance else None) if part)
-            _append_unique_named(roads, item.get("name"), type="road", source="regeo.roads", note=note)
-    for name in _names_from_seed(seed_features.get("primary_roads")) + _names_from_seed(seed_features.get("secondary_roads")):
-        _append_unique_named(roads, name, type="road", source="s1_external_context_seed")
+            _append_unique_named(
+                roads,
+                item.get("name"),
+                type="road",
+                level=classify_road_level(item.get("name")),
+                level_source="name_heuristic",
+                source="regeo.roads",
+                note=note,
+            )
+    for name in _names_from_seed(seed_features.get("primary_roads")):
+        _append_unique_named(
+            roads,
+            name,
+            type="road",
+            level=classify_road_level(name, "primary"),
+            level_source="s1_external_context_seed.primary_roads",
+            source="s1_external_context_seed",
+        )
+    for name in _names_from_seed(seed_features.get("secondary_roads")):
+        _append_unique_named(
+            roads,
+            name,
+            type="road",
+            level=classify_road_level(name, "secondary"),
+            level_source="s1_external_context_seed.secondary_roads",
+            source="s1_external_context_seed",
+        )
     for name in _names_from_seed(seed_amap.get("roads")):
-        _append_unique_named(roads, name, type="road", source="s1_external_context_seed")
+        _append_unique_named(
+            roads,
+            name,
+            type="road",
+            level=classify_road_level(name),
+            level_source="name_heuristic",
+            source="s1_external_context_seed",
+        )
 
     poi_sources: list[tuple[str, list]] = []
     nearby = regeo.get("nearby_pois")
@@ -688,11 +775,20 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
                     roads,
                     item.get("name"),
                     type="bridge",
+                    level=classify_road_level(item.get("name"), "local"),
+                    level_source="poi_bridge_default",
                     source=source,
                     note=str(item.get("distance_m") or item.get("distance") or ""),
                 )
             for match in ROAD_NAME_RE.findall(text):
-                _append_unique_named(roads, match, type="road", source=source)
+                _append_unique_named(
+                    roads,
+                    match,
+                    type="road",
+                    level=classify_road_level(match),
+                    level_source="name_heuristic",
+                    source=source,
+                )
 
     poi_1000m = seed_amap.get("poi_1000m") if isinstance(seed_amap.get("poi_1000m"), dict) else {}
     for category, names in poi_1000m.items():
@@ -711,6 +807,33 @@ def extract_surroundings_from_s1(context: dict) -> dict[str, object]:
         "land_uses": list(land_uses.values()),
         "notes": notes,
     }
+
+
+def build_candidate_entrances(roads: object, redline: object) -> list[dict[str, object]]:
+    if not isinstance(roads, list) or not isinstance(redline, dict):
+        return []
+    points = redline.get("normalized_points")
+    if not isinstance(points, list) or len(points) < 2:
+        return []
+    candidates: list[dict[str, object]] = []
+    usable_roads = [road for road in roads if isinstance(road, dict) and str(road.get("name") or "").strip()]
+    for index, road in enumerate(usable_roads[: min(4, len(points))], start=1):
+        edge_index = (index - 1) % len(points)
+        candidates.append(
+            {
+                "id": f"ENT-C{index}",
+                "label": f"候选出入口 {index}",
+                "point_on_redline": {
+                    "edge_index": edge_index,
+                    "edge_t": 0.5,
+                },
+                "faces_road": str(road.get("name") or "").strip(),
+                "road_level": road.get("level") or None,
+                "source": "auto_s2_rough_alignment",
+                "confidence": "candidate_needs_user_review",
+            }
+        )
+    return candidates
 
 
 def _finite_float(value: object, field: str) -> float:
@@ -800,6 +923,7 @@ def clean_site_context_payload(payload: dict, code: str) -> dict[str, object]:
         faces_road = str(raw.get("faces_road") or "").strip()
         if not faces_road:
             raise ValueError(f"entrances[{index}].faces_road 不能为空")
+        road_level = str(raw.get("road_level") or "").strip() or classify_road_level(faces_road)
         point = raw.get("point_on_redline")
         if not isinstance(point, dict):
             raise ValueError(f"entrances[{index}].point_on_redline 必须是对象")
@@ -816,6 +940,7 @@ def clean_site_context_payload(payload: dict, code: str) -> dict[str, object]:
                 "label": str(raw.get("label") or f"出入口 {index}").strip(),
                 "point_on_redline": cleaned_point,
                 "faces_road": faces_road,
+                "road_level": road_level,
                 "note": str(raw.get("note") or "").strip() or None,
             }
         )
@@ -902,6 +1027,51 @@ def write_style_preset_library(presets: list[dict]) -> dict:
     return library
 
 
+def build_env_check_payload() -> dict[str, object]:
+    loaded_env = load_env_file()
+    key_env = configured_env_name(("AMAP_JSAPI_KEY",))
+    key = os.environ.get(key_env, "").strip() if key_env else ""
+    service_host = os.environ.get("AMAP_JSAPI_SERVICE_HOST", "").strip()
+    security_jscode = os.environ.get("AMAP_JSAPI_SECURITY_JSCODE", "").strip()
+    webservice_key_env = configured_env_name(AMAP_WEBSERVICE_ENV_NAMES)
+    tdt_key = os.environ.get("TIANDITU_KEY", "").strip()
+    env_file_exists = ENV_FILE.exists()
+    warnings: list[str] = []
+
+    security: dict[str, object] = {"mode": "none"}
+    if service_host:
+        security = {"mode": "service_host", "service_host": service_host}
+    elif security_jscode:
+        security = {"mode": "security_jscode", "security_jscode": security_jscode}
+    elif key:
+        warnings.append("未配置 AMAP_JSAPI_SECURITY_JSCODE 或 AMAP_JSAPI_SERVICE_HOST；若控制台启用安全密钥，S1 高德地图会加载失败。")
+
+    if not env_file_exists:
+        warnings.append("未找到仓库根目录 .env；请复制 .env.example 后配置地图 key。")
+    if not tdt_key:
+        warnings.append("缺 TIANDITU_KEY，S1/S2 天地图高清卫星底图不可用，请在仓库根 .env 配置。")
+    if not webservice_key_env:
+        warnings.append("缺 AMAP_WEBSERVICE_KEY，无法生成 S1 高德上下文和周边路网语义。")
+    if not key:
+        warnings.append("未配置 AMAP_JSAPI_KEY；S1 高德拾点地图不可用，但 S2 底图不依赖它。")
+
+    return {
+        "ok": True,
+        "configured": bool(key_env),
+        "key": key or None,
+        "key_env": key_env,
+        "webservice_configured": bool(webservice_key_env),
+        "webservice_key_env": webservice_key_env,
+        "tianditu_configured": bool(tdt_key),
+        "tianditu_key": tdt_key or None,
+        "security": security,
+        "warnings": warnings,
+        "referer_hint": AMAP_JSAPI_REFERER_HINT,
+        "env_loaded": loaded_env,
+        "env_file_exists": env_file_exists,
+    }
+
+
 class UploaderHandler(BaseHTTPRequestHandler):
     server_version = "ArchitectureUploader/0.1"
 
@@ -918,6 +1088,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 self.handle_amap_check()
             elif parsed.path == "/api/amap-jsapi-config":
                 self.handle_amap_jsapi_config()
+            elif parsed.path == "/api/env-check":
+                self.handle_env_check()
+            elif parsed.path == "/api/s2/basemap":
+                self.handle_s2_basemap(parsed.query)
             elif parsed.path == "/api/spatial":
                 self.handle_spatial(parsed.query)
             elif parsed.path == "/api/site-context":
@@ -1648,44 +1822,35 @@ class UploaderHandler(BaseHTTPRequestHandler):
         self.send_json(payload, HTTPStatus.OK if rc in (0, 2) else HTTPStatus.BAD_REQUEST)
 
     def handle_amap_jsapi_config(self) -> None:
-        loaded_env = load_env_file()
-        key_env = configured_env_name(("AMAP_JSAPI_KEY",))
-        key = os.environ.get(key_env, "").strip() if key_env else ""
-        service_host = os.environ.get("AMAP_JSAPI_SERVICE_HOST", "").strip()
-        security_jscode = os.environ.get("AMAP_JSAPI_SECURITY_JSCODE", "").strip()
-        webservice_key_env = configured_env_name(AMAP_WEBSERVICE_ENV_NAMES)
-        env_file_exists = ENV_FILE.exists()
-        warnings: list[str] = []
+        self.send_json(build_env_check_payload())
 
-        security: dict[str, object] = {"mode": "none"}
-        if service_host:
-            security = {"mode": "service_host", "service_host": service_host}
-        elif security_jscode:
-            security = {"mode": "security_jscode", "security_jscode": security_jscode}
-        elif key:
-            warnings.append("未配置 AMAP_JSAPI_SECURITY_JSCODE 或 AMAP_JSAPI_SERVICE_HOST；若控制台启用安全密钥，地图会加载失败。")
+    def handle_env_check(self) -> None:
+        self.send_json(build_env_check_payload())
 
-        if not env_file_exists:
-            warnings.append("未找到仓库根目录 .env，S1/S2 内嵌地图与高德上下文不可用。")
-        if not key:
-            warnings.append("未配置 AMAP_JSAPI_KEY，内嵌地图不可用。")
-        if not webservice_key_env:
-            warnings.append("未配置 AMAP_WEBSERVICE_KEY，无法生成 S1 高德上下文。")
-
+    def handle_s2_basemap(self, query: str) -> None:
+        params = parse_qs(query)
+        code = safe_project(params.get("project", [""])[0])
+        proj = project_dir(code)
+        target = proj / SITE_BASEMAP_REL
+        try:
+            meta = generate_tdt_site_basemap(proj, target)
+        except Exception as exc:
+            self.send_json(
+                {
+                    "ok": False,
+                    "configured": bool(os.environ.get("TIANDITU_KEY", "").strip()),
+                    "error": str(exc),
+                    "missing": "TIANDITU_KEY" if "TIANDITU_KEY" in str(exc) else None,
+                }
+            )
+            return
+        rel_path = str(SITE_BASEMAP_REL).replace("\\", "/")
         self.send_json(
             {
                 "ok": True,
-                "configured": bool(key_env),
-                "key": key or None,
-                "key_env": key_env,
-                "webservice_configured": bool(webservice_key_env),
-                "webservice_key_env": webservice_key_env,
-                "security": security,
-                "tianditu_key": os.environ.get("TIANDITU_KEY", "").strip() or None,
-                "warnings": warnings,
-                "referer_hint": AMAP_JSAPI_REFERER_HINT,
-                "env_loaded": loaded_env,
-                "env_file_exists": env_file_exists,
+                "path": rel_path,
+                "image_url": self.project_file_url(code, rel_path),
+                **meta,
             }
         )
 
@@ -1818,6 +1983,10 @@ class UploaderHandler(BaseHTTPRequestHandler):
                 },
                 "normalized_points": [],
             }
+        payload["candidate_entrances"] = build_candidate_entrances(
+            (payload.get("surroundings") or {}).get("roads") if isinstance(payload.get("surroundings"), dict) else [],
+            payload.get("redline"),
+        )
         site_context_path = proj / SITE_CONTEXT_REL
         payload["site_context_exists"] = site_context_path.exists()
         if site_context_path.exists():
