@@ -367,6 +367,21 @@ def assert_location_analysis_semantic_candidates(proj_dir: Path) -> None:
         f"S1 semantic candidates should be auditable: {objects}"
     )
 
+    context_path = proj_dir / "05_output" / "amap" / "s1_map_context.json"
+    original_context = json.loads(context_path.read_text(encoding="utf-8"))
+    bad_context = json.loads(json.dumps(original_context))
+    features = bad_context["map_context"]["osm_context"]["features"]
+    features[0]["confidence"] = "low_location_fallback"
+    features[2]["confidence"] = "seed"
+    context_path.write_text(json.dumps(bad_context, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        normalized = uploader_server.build_location_analysis_semantic_objects(proj_dir, radius_m=1000)
+    finally:
+        context_path.write_text(json.dumps(original_context, ensure_ascii=False, indent=2), encoding="utf-8")
+    allowed = {"high", "medium", "low"}
+    invalid = [item.get("confidence") for item in normalized if item.get("confidence") not in allowed]
+    assert not invalid, f"S1 semantic candidates must normalize drawing confidence levels: {normalized}"
+
 
 def assert_s1_auto_draft_missing_context_error(proj_dir: Path) -> None:
     context_path = proj_dir / "05_output" / "amap" / "s1_map_context.json"

@@ -630,6 +630,15 @@ def _semantic_geometry_to_normalized_path(
     return coords
 
 
+def drawing_confidence(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"high", "medium", "low"}:
+        return text
+    if text.startswith("low"):
+        return "low"
+    return "medium"
+
+
 def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[dict[str, object]]:
     context_path = proj / "05_output" / "amap" / "s1_map_context.json"
     if not context_path.exists():
@@ -657,7 +666,7 @@ def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[
                 "type": "location_road_line",
                 "geometry": {"kind": "path", "closed": False, "coords": coords},
                 "label": str(road.get("name") or f"road {index}"),
-                "confidence": road.get("confidence") or "medium",
+                "confidence": drawing_confidence(road.get("confidence")),
                 "source": "s1_semantic_context",
                 "style_hints": {
                     "inline_text": {"enabled": True, "text": str(road.get("name") or ""), "position": 0.5}
@@ -683,7 +692,7 @@ def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[
                 "type": "location_water_area",
                 "geometry": {"kind": "path", "closed": True, "coords": coords},
                 "label": str(water.get("name") or f"water {index}"),
-                "confidence": water.get("confidence") or "medium",
+                "confidence": drawing_confidence(water.get("confidence")),
                 "source": "s1_semantic_context",
             }
         )
