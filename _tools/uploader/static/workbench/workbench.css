@@ -1315,8 +1315,11 @@
 .ppt-element-handle[data-ppt-element-handle="w"]{left:-4px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 .ppt-info-box h4{margin:0 0 6px;font-size:12px;color:var(--ppt-accent,#D9882B)}
 .ppt-info-box p{margin:0;font-size:12px;line-height:1.55;white-space:pre-wrap}
+.ppt-text-editor{width:100%;height:100%;outline:none;overflow:auto;cursor:text}
+.ppt-text-editor:focus{box-shadow:inset 0 0 0 1px rgba(217,136,43,.45)}
 .ppt-text-body{color:#3a3732;text-align:justify}
-.ppt-text-heading,.ppt-text-body strong{color:var(--ppt-accent,#D9882B);font-weight:700;font-size:1.05em}
+.ppt-text-heading,.ppt-text-brand,.ppt-text-body strong{color:var(--ppt-accent,#D9882B);font-weight:700}
+.ppt-text-heading{font-size:1.08em}
 .ppt-legend-box{overflow:hidden}
 .ppt-legend-box .zone-legend-item{padding:4px 0;font-size:11px}
 .ppt-supporting-img{background:#f4efe4;border:1px solid rgba(43,39,34,.14);overflow:hidden}

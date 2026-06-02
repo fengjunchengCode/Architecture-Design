@@ -42,6 +42,9 @@ def prepare_project() -> Path:
     Image.new("RGB", (900, 600), (245, 242, 232)).save(base_dir / "master_plan.jpg", "JPEG")
     Image.new("RGB", (1024, 1024), (42, 42, 42)).save(base_dir / "location_analysis_2km.png", "PNG")
     Image.new("RGB", (900, 600), (235, 238, 232)).save(base_dir / "civil_defense_base.jpg", "JPEG")
+    upload_dir = proj_dir / "00_upload"
+    upload_dir.mkdir(parents=True)
+    Image.new("RGB", (640, 480), (84, 112, 148)).save(upload_dir / "uploaded_base.png", "PNG")
     semantic_dir = proj_dir / "05_output" / "drawings" / "semantic"
     semantic_dir.mkdir(parents=True)
     legacy_fz = {
@@ -187,6 +190,68 @@ def assert_fz_regression(page) -> None:
     assert any(abs(float(item["opacity"] or 0) - 0.42) < 0.001 for item in fills), (
         "FZ legacy fill_enabled=true does not render fill-opacity≈0.42"
     )
+    assert_base_upload_loads_and_persists(page)
+
+
+def assert_base_upload_loads_and_persists(page) -> None:
+    upload_path = REPO_ROOT / "projects" / TEST_PROJECT / "00_upload" / "uploaded_base.png"
+    page.click("#toggleBasePanel")
+    assert page.locator("#uploadBaseImage", has_text="上传并加载底图").count() == 1, (
+        "base image action should combine upload and load in one button"
+    )
+    page.set_input_files("#baseImageFile", str(upload_path))
+    with page.expect_response(lambda r: "/api/drawing/base/upload" in r.url and r.status == 200, timeout=15000):
+        page.click("#uploadBaseImage")
+    page.wait_for_function(
+        """() => {
+            const path = document.querySelector('#baseImagePath')?.value || '';
+            const image = document.querySelector('#baseImage');
+            return path.endsWith('/uploaded_base.png')
+              && image?.src.includes('uploaded_base.png')
+              && image?.complete
+              && image?.naturalWidth === 640;
+        }""",
+        timeout=15000,
+    )
+    page.evaluate("() => window.DrawingWorkbenchTest.loadCurrentDrawing()")
+    persisted = page.eval_on_selector("#baseImagePath", "(el) => el.value")
+    assert persisted.endswith("/uploaded_base.png"), f"uploaded base path should persist after reload, got {persisted}"
+
+
+def assert_amap_env_prompt_and_no_external_picker(page) -> None:
+    page.route(
+        "**/api/amap-jsapi-config",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "ok": True,
+                    "configured": False,
+                    "key": None,
+                    "key_env": None,
+                    "security": {"mode": "none"},
+                    "tianditu_key": None,
+                    "warnings": ["未配置 AMAP_JSAPI_KEY，请在仓库根目录 .env 配置后重启服务。"],
+                    "env_loaded": [],
+                    "env_file_exists": False,
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    page.goto(f"{BASE}/?project={TEST_PROJECT}&page=s1", wait_until="networkidle", timeout=30000)
+    page.wait_for_function(
+        "() => (document.querySelector('#s1AmapHint')?.textContent || '').includes('.env')",
+        timeout=10000,
+    )
+    assert page.locator("#checkAmap").count() == 0, "S1 UI should not require a manual AMap key check button"
+    assert page.locator("a[href*='lbs.amap.com/tools/picker']").count() == 0, "external AMap picker fallback should not render"
+    body_text = page.locator("body").inner_text()
+    assert "外部拾取器" not in body_text and "外部高德拾取器" not in body_text, (
+        "UI should not tell users to use the external AMap picker fallback"
+    )
+    page.unroute("**/api/amap-jsapi-config")
 
 
 def assert_control_rules(page, drawing_type: str, tools: list[str]) -> None:
@@ -1031,6 +1096,7 @@ def assert_ppt_preview_basics(page) -> None:
     assert page.locator("[data-ppt-drawing-frame='true']").count() == 1, "PPT preview should render one global drawing frame"
     assert page.locator("[data-ppt-element='text']", has_text=text).count() == 1, "PPT preview should render saved slide text"
     assert_preview_shows_objects(page)
+    assert_ppt_text_inplace_edit_and_markup(page)
     media = page.locator("[data-ppt-drawing-frame='true'] [data-ppt-drawing-media='true']")
     assert media.count() == 1, "PPT preview should mark drawing media for contain checks"
     assert page.locator("[data-ppt-drawing-plate='true']").count() == 1, "PPT preview should render a drawing plate"
@@ -1071,18 +1137,72 @@ def assert_preview_legend_clean(page) -> None:
     page.click('[data-style-segment="fill_mode"][data-style-value="none"]')
     page.click('[data-style-segment="border_style"][data-style-value="none"]')
     page.wait_for_function(
-        """() => document.querySelectorAll('#zoneLegendPreview .zone-legend-hint').length > 0
-            && document.querySelectorAll('#zoneLegendPreview .zone-legend-invisible-hint').length > 0""",
+        """() => document.querySelectorAll('#zoneLegendPreview .zone-legend-label').length >= 1""",
         timeout=10000,
     )
+    edit_legend_text = page.locator("#zoneLegendPreview").inner_text()
+    assert "预览分区 A" in edit_legend_text and "预览分区 B" not in edit_legend_text, (
+        f"edit legend should display the first name from a merged style group, got: {edit_legend_text!r}"
+    )
+    assert page.locator("#zoneLegendPreview .zone-legend-count").count() == 0, "edit legend should not show duplicate counts"
+    assert page.locator("#zoneLegendPreview .zone-legend-hint").count() == 0, "edit legend should not show merge hints"
+    assert page.locator("#zoneLegendPreview .zone-legend-invisible-hint").count() == 0, "edit legend should not show invisible hints"
+    assert "等" not in edit_legend_text and "x " not in edit_legend_text, f"edit legend should only show names, got: {edit_legend_text!r}"
     page.click("#togglePptPreview")
     assert page.locator("#pptPreviewPanel").is_visible(), "PPT preview panel should become visible for legend cleanup"
     legend = page.locator("[data-ppt-element='legend']")
-    assert legend.locator(".zone-legend-count", has_text="x 2").count() >= 1, (
-        "PPT preview should keep final merged legend counts"
+    legend_text = legend.inner_text()
+    assert "预览分区 A" in legend_text and "预览分区 B" not in legend_text, (
+        f"PPT legend should display the first name from a merged style group, got: {legend_text!r}"
     )
+    assert legend.locator(".zone-legend-count").count() == 0, "PPT preview should not show duplicate legend counts"
     assert legend.locator(".zone-legend-hint").count() == 0, "PPT preview should omit edit-only merge hints"
     assert legend.locator(".zone-legend-invisible-hint").count() == 0, "PPT preview should omit edit-only invisible hints"
+    assert "等" not in legend_text and "x " not in legend_text, f"PPT legend should only show names, got: {legend_text!r}"
+
+
+def assert_ppt_text_inplace_edit_and_markup(page) -> None:
+    editor = page.locator("[data-ppt-text-editor='true']")
+    assert editor.count() == 1, "PPT text box should expose an in-preview editable text editor"
+    edited = "停车配套：沿街设置临停位"
+    editor.fill(edited)
+    page.wait_for_function(
+        """({project, expected}) =>
+            document.querySelector('#pptSlideText')?.value === expected
+            && fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": edited},
+        timeout=10000,
+    )
+    editor.evaluate(
+        """(node) => {
+            node.focus();
+            const target = node.firstChild || node;
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }"""
+    )
+    page.keyboard.press("Control+B")
+    page.wait_for_function(
+        """({project, expected}) =>
+            document.querySelector('#pptSlideText')?.value === expected
+            && fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": f"*{edited}*"},
+        timeout=10000,
+    )
+    brand = page.locator("[data-ppt-text-brand='true']").first
+    assert brand.count() == 1, "Ctrl+B should render selected text as brand emphasis"
+    assert brand.evaluate("(node) => getComputedStyle(node).color") == "rgb(217, 136, 43)", (
+        "brand emphasis should use global PPT accent"
+    )
 
 
 def set_selected_zone_label(page, label: str) -> None:
@@ -1536,6 +1656,7 @@ def main() -> int:
             console_errors: list[str] = []
             page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
+            assert_amap_env_prompt_and_no_external_picker(page)
             page.goto(f"{BASE}/?project={TEST_PROJECT}&page=workbench&drawing=functional_zoning", wait_until="networkidle", timeout=30000)
             page.wait_for_function("window.DrawingWorkbenchTest && document.querySelectorAll('[data-drawing-type]').length >= 10", timeout=20000)
             line_multipoint_checked = False

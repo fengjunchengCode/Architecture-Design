@@ -105,10 +105,9 @@ def setup_hint(project_code: str | None = None) -> dict[str, Any]:
         "required_env": list(KEY_ENV_NAMES),
         "recommended_env": "AMAP_WEBSERVICE_KEY",
         "check_command": "python _tools/amap_context.py --check",
-        "run_with_picker_location": (
+        "run_with_location": (
             f'python _tools/amap_context.py {command_project} --location "lng,lat" --write'
         ),
-        "picker": "https://lbs.amap.com/tools/picker?utm_source=chatgpt.com",
         "agent_rule": (
             "If the AMap key or reliable location is missing, do not invent roads, POIs, "
             "water features, or entry relationships. Write pending questions instead."
@@ -715,7 +714,7 @@ def write_outputs(project_dir: Path, payload: dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build S1 AMap context for a project")
     parser.add_argument("project", nargs="?", help="Project code or project directory")
-    parser.add_argument("--location", help="AMap/GCJ-02 location from picker, formatted as lng,lat")
+    parser.add_argument("--location", help="AMap/GCJ-02 location, formatted as lng,lat")
     parser.add_argument(
         "--location-crs",
         choices=("gcj02", "amap", "autonavi", "wgs84", "gps", "baidu", "mapbar"),

@@ -167,7 +167,6 @@
                   <input id="centerLocation" placeholder="94.032582,31.92547" autocomplete="off">
                 </label>
                 <div class="inline-actions">
-                  <button id="checkAmap">检查高德 Key</button>
                   <button id="saveCenter" class="primary">生成 S1 高德上下文</button>
                 </div>
                 <label>
@@ -187,7 +186,6 @@
                   <div class="bucket-state">未选择文件</div>
                   <button>上传到当前项目</button>
                 </article>
-                <a class="button-link" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">打开高德拾取器</a>
                 <div class="handoff-note">
                   S1 输入完成后，回到对话里说"执行 S1"。只有中心点时，只能定位外部关系，不能把入口精确落到红线边。
                 </div>
@@ -214,7 +212,7 @@
                   <button id="s1ScreenshotBtn" class="amap-sm-btn" title="截图保存">截图</button>
                 </div>
                 <div class="amap-map" id="s1AmapMap">
-                  <div class="map-empty">输入或加载中心点后显示地图；外部拾取器仍可作为备用。</div>
+                  <div class="map-empty">输入或加载中心点后显示地图。</div>
                 </div>
                 <div class="amap-map" id="s1TdtMap" style="display:none">
                   <div class="map-empty">天地图高清卫星</div>
@@ -274,7 +272,6 @@
                     <div class="map-empty">地图会从 S1 中心点启动；不会使用默认城市。</div>
                   </div>
                   <p class="map-hint" id="s2AmapHint">点击地图后会把 GCJ-02 坐标写入当前 CAD 候选点并加入控制点列表。</p>
-                  <a class="map-fallback" href="https://lbs.amap.com/tools/picker?utm_source=chatgpt.com" target="_blank" rel="noreferrer">外部高德拾取器备用</a>
                 </div>
                 <div class="box-head">
                   <b>已选地图点 ↔ CAD 点</b>
@@ -293,7 +290,7 @@
             </div>
 
             <div class="handoff-note">
-              S2 输入完成后，按候选点卡片上的建议去高德拾取坐标，粘贴后加入控制点并保存。地物类型由 agent/视觉模型预判，只有坐标需要你确认。
+              S2 输入完成后，按候选点卡片上的建议在内嵌地图拾取坐标，加入控制点并保存。地物类型由 agent/视觉模型预判，只有坐标需要你确认。
             </div>
           </section>
 
@@ -312,7 +309,7 @@
                     <h5>底图设置</h5>
                     <label>底图路径<input id="baseImagePath" type="text" value="05_output/drawings/base/master_plan.jpg" autocomplete="off"></label>
                     <label>上传底图<input id="baseImageFile" type="file" accept=".jpg,.jpeg,.png"></label>
-                    <button id="uploadBaseImage" class="wb3-btn">上传底图</button>
+                    <button id="uploadBaseImage" class="wb3-btn">上传并加载底图</button>
                   </div>
                 </div>
               </nav>
@@ -488,6 +485,7 @@
     </main>
     <script src="/app.js"></script>
     <script src="/workbench/workbench_model.js"></script>
+    <script src="/workbench/ppt_text_markup.js"></script>
     <script src="/workbench/workbench.js"></script>
   </body>
 </html>

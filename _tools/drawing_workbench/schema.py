@@ -428,7 +428,7 @@ def _normalize_text_geometry(value: dict, object_index: int) -> dict[str, Any]:
 
 
 def _normalize_coord(value: object, object_index: int) -> list[float]:
-    if not isinstance(value, list | tuple) or len(value) != 2:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise DrawingValidationError(f"objects[{object_index}].geometry.coords entries must be [x, y]")
     try:
         x = float(value[0])

@@ -200,11 +200,53 @@ function amapFailureHint(error) {
   return warnings.length ? warnings[0] : error?.message || "高德 JSAPI 暂不可用";
 }
 
+function amapConfigWarning(config) {
+  const warnings = Array.isArray(config?.warnings) ? config.warnings : [];
+  if (warnings.length) return warnings.join(" ");
+  if (!config?.configured) return "未配置 AMAP_JSAPI_KEY，内嵌地图不可用。";
+  if (config.webservice_configured === false) return "未配置 AMAP_WEBSERVICE_KEY，无法生成 S1 高德上下文。";
+  return "";
+}
+
 async function loadAmapJsapiConfig() {
   if (state.amap.config) return state.amap.config;
   state.amap.config = await api("/api/amap-jsapi-config");
   state.amap.tiandituKey = state.amap.config.tianditu_key || null;
   return state.amap.config;
+}
+
+async function syncAmapEnvStatus() {
+  if (!["s1", "s2"].includes(state.page)) return;
+  try {
+    const config = await loadAmapJsapiConfig();
+    const warning = amapConfigWarning(config);
+    if (warning) {
+      setAmapStatus("高德配置不完整", false);
+      if (state.page === "s1") {
+        setMapStatus("#s1AmapStatus", "高德配置不完整", false);
+        setMapHint("#s1AmapHint", warning, true);
+        if (!state.amap.s1Map) setMapEmpty("#s1AmapMap", warning);
+      }
+      if (state.page === "s2") {
+        setMapStatus("#s2AmapStatus", "高德配置不完整", false);
+        setMapHint("#s2AmapHint", warning, true);
+        if (!state.amap.s2Map) setMapEmpty("#s2AmapMap", warning);
+      }
+      return;
+    }
+    if (state.page === "s1" && !state.amap.s1Map) {
+      setMapStatus("#s1AmapStatus", "高德配置已加载", true);
+      setMapHint("#s1AmapHint", "输入或加载中心点后显示内嵌地图。");
+    }
+    if (state.page === "s2" && !state.amap.s2Map) {
+      setMapStatus("#s2AmapStatus", "高德配置已加载", true);
+      setMapHint("#s2AmapHint", "选择 CAD 候选点后，在内嵌地图上点击对应位置。");
+    }
+  } catch (err) {
+    setAmapStatus("高德配置读取失败", false);
+    if (state.page === "s1") setMapHint("#s1AmapHint", err.message || String(err), true);
+    if (state.page === "s2") setMapHint("#s2AmapHint", err.message || String(err), true);
+  }
 }
 
 async function ensureAmapSdk() {
@@ -271,7 +313,7 @@ async function ensureS1Map() {
   if (!center) {
     setMapStatus("#s1AmapStatus", "等待中心点", null);
     setMapHint("#s1AmapHint", "先输入或从已有 S1 上下文加载 GCJ-02 中心点。");
-    if (!state.amap.s1Map) setMapEmpty("#s1AmapMap", "输入或加载中心点后显示地图；外部拾取器仍可作为备用。");
+    if (!state.amap.s1Map) setMapEmpty("#s1AmapMap", "输入或加载中心点后显示地图。");
     return;
   }
   try {
@@ -307,7 +349,7 @@ async function ensureS1Map() {
   } catch (err) {
     setMapStatus("#s1AmapStatus", "地图不可用", false);
     setMapHint("#s1AmapHint", amapFailureHint(err), true);
-    setMapEmpty("#s1AmapMap", "内嵌地图暂不可用；请使用外部高德拾取器备用。");
+    setMapEmpty("#s1AmapMap", "内嵌地图暂不可用，请检查 .env 中的高德配置和高德控制台 referer 白名单。");
   }
 }
 
@@ -1055,12 +1097,13 @@ async function ensureS2Map() {
   } catch (err) {
     setMapStatus("#s2AmapStatus", "地图不可用", false);
     setMapHint("#s2AmapHint", amapFailureHint(err), true);
-    setMapEmpty("#s2AmapMap", "内嵌地图暂不可用；请使用外部高德拾取器备用。");
+    setMapEmpty("#s2AmapMap", "内嵌地图暂不可用，请检查 .env 中的高德配置和高德控制台 referer 白名单。");
   }
 }
 
 function syncAmapUi() {
   updateActiveCandidatePanel();
+  syncAmapEnvStatus().catch((err) => writeOutput(err.message));
   if (state.page === "s1") ensureS1Map().catch((err) => writeOutput(err.message));
   if (state.page === "s2") ensureS2Map().catch((err) => writeOutput(err.message));
 }
@@ -1634,7 +1677,8 @@ function setControls() {
     "#cadZoomIn",
     "#saveControlPoints",
   ].forEach((selector) => {
-    $(selector).disabled = !hasProject;
+    const control = $(selector);
+    if (control) control.disabled = !hasProject;
   });
   $("#saveControlPoints").disabled = !hasProject || hasStaleControlPoints();
   applyCadPreviewZoom();
@@ -2288,7 +2332,7 @@ function bind() {
   $("#runValidate").addEventListener("click", () => { setPage("status"); runValidate().catch((err) => writeOutput(err.message)); });
   $("#runInventoryStatus").addEventListener("click", () => runInventory().catch((err) => writeOutput(err.message)));
   $("#runValidateStatus").addEventListener("click", () => runValidate().catch((err) => writeOutput(err.message)));
-  $("#checkAmap").addEventListener("click", () => checkAmap().catch((err) => writeOutput(err.message)));
+  $("#checkAmap")?.addEventListener("click", () => checkAmap().catch((err) => writeOutput(err.message)));
   $("#runCadPreview").addEventListener("click", () => runCadPreview().catch((err) => {
     setCadPreviewStatus("生成失败", false);
     writeOutput(err.message);

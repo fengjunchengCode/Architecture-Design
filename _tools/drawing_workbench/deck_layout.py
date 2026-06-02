@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from _tools.drawing_workbench.registry import DRAWING_REGISTRY, DRAWING_TYPES
+from _tools.drawing_workbench.ppt_text_markup import parse_ppt_text_markup
 
 
 SCHEMA_VERSION = "1.0"
@@ -355,7 +356,10 @@ def estimate_legend_count(objects: list[dict[str, Any]]) -> int:
             "stroke_style": style.get("stroke_style"),
             "border_style": style.get("border_style"),
         }
-        keys.add(json.dumps({"style": style_key, "label": label}, sort_keys=True, ensure_ascii=False))
+        key_payload: dict[str, Any] = {"style": style_key}
+        if obj.get("type") != "functional_zone":
+            key_payload["label"] = label
+        keys.add(json.dumps(key_payload, sort_keys=True, ensure_ascii=False))
     return max(1, len(keys))
 
 
@@ -593,6 +597,38 @@ def add_text_box(slide: Any, box: dict[str, float], text: str, *, size: int, col
     run.font.color.rgb = RGBColor(*hex_to_rgb(color))
 
 
+def add_markup_text_box(
+    slide: Any,
+    box: dict[str, float],
+    text: str,
+    *,
+    body_size: int,
+    body_color: str,
+    body_weight: str,
+    accent: str,
+) -> None:
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+
+    paragraphs = parse_ppt_text_markup(text)
+    if not paragraphs:
+        paragraphs = parse_ppt_text_markup("暂无图纸说明。")
+    x, y, w, h = rel_box_to_inches(box)
+    shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    for index, paragraph_data in enumerate(paragraphs):
+        paragraph = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        for run_data in paragraph_data.runs:
+            run = paragraph.add_run()
+            run.text = run_data.text
+            is_marked = run_data.role in {"heading", "brand"}
+            run.font.size = Pt(body_size + 1 if run_data.role == "heading" else body_size)
+            run.font.bold = is_marked or str(body_weight) != "400"
+            run.font.color.rgb = RGBColor(*hex_to_rgb(accent if is_marked else body_color))
+
+
 def export_frame_inconsistencies(layout: dict[str, Any]) -> list[str]:
     frame = layout.get("drawing_frame") or {}
     problems = []
@@ -651,12 +687,14 @@ def export_deck_pptx(project_dir: Path, layout: dict[str, Any], project_code: st
         text_box = elements.get("text")
         if isinstance(text_box, dict):
             body = ((slide_data.get("typography") or {}).get("body") or {})
-            add_text_box(
+            add_markup_text_box(
                 slide,
                 text_box,
                 str(slide_data.get("text") or "暂无图纸说明。"),
-                size=int(body.get("size") or 12),
-                color=str(body.get("color") or BODY_TYPOGRAPHY["color"]),
+                body_size=int(body.get("size") or 12),
+                body_color=str(body.get("color") or BODY_TYPOGRAPHY["color"]),
+                body_weight=str(body.get("weight") or BODY_TYPOGRAPHY["weight"]),
+                accent=accent,
             )
         legend_box = elements.get("legend")
         if isinstance(legend_box, dict):

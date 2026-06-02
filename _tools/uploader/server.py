@@ -111,6 +111,7 @@ AMAP_JSAPI_REFERER_HINT = (
     "AMAP_JSAPI_KEY 需在高德控制台勾选 'Web 端' 并把 referer 白名单加入 "
     "http://127.0.0.1:8765 / http://localhost:8765"
 )
+AMAP_WEBSERVICE_ENV_NAMES = ("AMAP_WEBSERVICE_KEY", "AMAP_WEB_SERVICE_KEY", "AMAP_KEY")
 
 
 def safe_project(code: str) -> str:
@@ -258,6 +259,15 @@ def load_env_file(path: Path = ENV_FILE) -> list[str]:
         os.environ[key] = value.strip().strip('"').strip("'")
         loaded.append(key)
     return loaded
+
+
+def configured_env_name(names: tuple[str, ...]) -> str | None:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        lowered = value.lower()
+        if value and lowered not in {"xxx", "your_key", "your_amap_webservice_key", "none"} and not lowered.startswith("your_"):
+            return name
+    return None
 
 
 def _font(size: int, bold: bool = False):
@@ -1303,10 +1313,13 @@ class UploaderHandler(BaseHTTPRequestHandler):
 
     def handle_amap_jsapi_config(self) -> None:
         loaded_env = load_env_file()
-        key = os.environ.get("AMAP_JSAPI_KEY", "").strip()
+        key_env = configured_env_name(("AMAP_JSAPI_KEY",))
+        key = os.environ.get(key_env, "").strip() if key_env else ""
         service_host = os.environ.get("AMAP_JSAPI_SERVICE_HOST", "").strip()
         security_jscode = os.environ.get("AMAP_JSAPI_SECURITY_JSCODE", "").strip()
-        warnings = [AMAP_JSAPI_REFERER_HINT]
+        webservice_key_env = configured_env_name(AMAP_WEBSERVICE_ENV_NAMES)
+        env_file_exists = ENV_FILE.exists()
+        warnings: list[str] = []
 
         security: dict[str, object] = {"mode": "none"}
         if service_host:
@@ -1316,19 +1329,27 @@ class UploaderHandler(BaseHTTPRequestHandler):
         elif key:
             warnings.append("未配置 AMAP_JSAPI_SECURITY_JSCODE 或 AMAP_JSAPI_SERVICE_HOST；若控制台启用安全密钥，地图会加载失败。")
 
+        if not env_file_exists:
+            warnings.append("未找到仓库根目录 .env，S1/S2 内嵌地图与高德上下文不可用。")
         if not key:
-            warnings.append("未配置 AMAP_JSAPI_KEY，内嵌地图不可用；可继续使用外部高德坐标拾取器。")
+            warnings.append("未配置 AMAP_JSAPI_KEY，内嵌地图不可用。")
+        if not webservice_key_env:
+            warnings.append("未配置 AMAP_WEBSERVICE_KEY，无法生成 S1 高德上下文。")
 
         self.send_json(
             {
                 "ok": True,
-                "configured": bool(key),
+                "configured": bool(key_env),
                 "key": key or None,
-                "key_env": "AMAP_JSAPI_KEY" if key else None,
+                "key_env": key_env,
+                "webservice_configured": bool(webservice_key_env),
+                "webservice_key_env": webservice_key_env,
                 "security": security,
                 "tianditu_key": os.environ.get("TIANDITU_KEY", "").strip() or None,
                 "warnings": warnings,
+                "referer_hint": AMAP_JSAPI_REFERER_HINT,
                 "env_loaded": loaded_env,
+                "env_file_exists": env_file_exists,
             }
         )
 

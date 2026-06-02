@@ -11,6 +11,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -146,6 +147,21 @@ def assert_reflow_adaptive(proj_dir: Path) -> None:
     )
 
 
+def assert_pptx_rich_text_export(path: Path) -> None:
+    with zipfile.ZipFile(path) as pptx:
+        slide_xml = "\n".join(
+            pptx.read(name).decode("utf-8", errors="ignore")
+            for name in pptx.namelist()
+            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        )
+    assert "停车配套：" in slide_xml, "exported PPTX should include heading text"
+    assert "酒店运营" in slide_xml, "exported PPTX should include brand emphasis text"
+    assert "**停车配套" not in slide_xml and "*酒店运营*" not in slide_xml, (
+        "exported PPTX should render lightweight markup instead of exporting literal asterisks"
+    )
+    assert "D9882B" in slide_xml.upper(), "exported PPTX should apply the global brand accent to marked text"
+
+
 def main() -> int:
     proj_dir = REPO_ROOT / "projects" / TEST_PROJECT
     if proj_dir.exists():
@@ -217,12 +233,13 @@ def main() -> int:
         assert layout.get("drawing_plate", {}).get("aspect_ratio") == expected_plate_aspect, (
             f"drawing_plate should match global frame ratio: {layout.get('drawing_plate')} vs {expected_plate_aspect}"
         )
+        rich_text = "**停车配套：** 沿街设置 *酒店运营* 配套。"
         saved_deck = api_post(
             "/api/drawing/deck-layout/save",
             {
                 "project": TEST_PROJECT,
                 "drawing_type": "functional_zoning",
-                "slide": {"text": "PPT smoke text"},
+                "slide": {"text": rich_text},
             },
         )
         assert (
@@ -230,7 +247,7 @@ def main() -> int:
             .get("slides", {})
             .get("functional_zoning", {})
             .get("text")
-            == "PPT smoke text"
+            == rich_text
         ), f"deck slide text did not save: {saved_deck}"
         version_before = int(saved_deck.get("layout", {}).get("drawing_frame_version") or 0)
         switched = api_post(
@@ -260,6 +277,7 @@ def main() -> int:
         exported = api_post("/api/drawing/deck-layout/export", {"project": TEST_PROJECT})
         assert exported.get("ok") and exported.get("path", "").endswith("deck.pptx"), f"PPT export failed: {exported}"
         assert (proj_dir / exported["path"]).exists(), f"PPT export file missing: {exported}"
+        assert_pptx_rich_text_export(proj_dir / exported["path"])
         inconsistent_layout = api_get(f"/api/drawing/deck-layout?project={TEST_PROJECT}")["layout"]
         inconsistent_layout["slides"]["traffic_analysis"]["drawing_frame"] = {"x": 0.12, "y": 0.2, "w": 0.52, "h": 0.7}
         api_post("/api/drawing/deck-layout/save", {"project": TEST_PROJECT, "layout": inconsistent_layout})
