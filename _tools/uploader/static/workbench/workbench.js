@@ -235,6 +235,9 @@
     pptPreviewMode: false,
     pptSelectedElement: "",
     pptTextSaveTimer: null,
+    pptUndoStack: [],
+    pptRedoStack: [],
+    pptTextHistoryActive: false,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -616,6 +619,79 @@
   function resetHistory(type = drawingType()) {
     state.undoStacks[type] = [];
     state.redoStacks[type] = [];
+  }
+
+  function snapshotPptLayout() {
+    return state.deckLayout ? JSON.parse(JSON.stringify(state.deckLayout)) : null;
+  }
+
+  function resetPptHistory() {
+    state.pptUndoStack = [];
+    state.pptRedoStack = [];
+    state.pptTextHistoryActive = false;
+  }
+
+  function pushPptUndoSnapshot() {
+    const snapshot = snapshotPptLayout();
+    if (!snapshot) return false;
+    state.pptUndoStack.push(snapshot);
+    if (state.pptUndoStack.length > UNDO_LIMIT) state.pptUndoStack.shift();
+    state.pptRedoStack = [];
+    return true;
+  }
+
+  function beginPptTextHistory() {
+    if (state.pptTextHistoryActive) return;
+    if (pushPptUndoSnapshot()) state.pptTextHistoryActive = true;
+  }
+
+  function endPptTextHistory() {
+    state.pptTextHistoryActive = false;
+  }
+
+  async function restorePptLayoutSnapshot(snapshot) {
+    if (!snapshot) return;
+    if (state.pptTextSaveTimer) {
+      clearTimeout(state.pptTextSaveTimer);
+      state.pptTextSaveTimer = null;
+    }
+    endPptTextHistory();
+    state.deckLayout = JSON.parse(JSON.stringify(snapshot));
+    renderPptControls();
+    renderPptPreview();
+    await saveDeckLayout({ layout: state.deckLayout }, { history: false });
+  }
+
+  function undoPptHistory() {
+    if (!state.pptUndoStack.length) {
+      setStatus("没有可撤销的PPT编辑。", false);
+      return false;
+    }
+    const current = snapshotPptLayout();
+    if (current) {
+      state.pptRedoStack.push(current);
+      if (state.pptRedoStack.length > UNDO_LIMIT) state.pptRedoStack.shift();
+    }
+    restorePptLayoutSnapshot(state.pptUndoStack.pop())
+      .then(() => setStatus("已撤销PPT编辑。"))
+      .catch((err) => setStatus(err.message, false));
+    return true;
+  }
+
+  function redoPptHistory() {
+    if (!state.pptRedoStack.length) {
+      setStatus("没有可重做的PPT编辑。", false);
+      return false;
+    }
+    const current = snapshotPptLayout();
+    if (current) {
+      state.pptUndoStack.push(current);
+      if (state.pptUndoStack.length > UNDO_LIMIT) state.pptUndoStack.shift();
+    }
+    restorePptLayoutSnapshot(state.pptRedoStack.pop())
+      .then(() => setStatus("已重做PPT编辑。"))
+      .catch((err) => setStatus(err.message, false));
+    return true;
   }
 
   function undoHistory() {
@@ -1097,6 +1173,7 @@
     const data = await api(`/api/drawing/deck-layout?${params}`);
     state.deckLayout = data.layout || null;
     state.deckLayoutPath = data.path || "";
+    resetPptHistory();
     renderPptControls();
     renderPptPreview();
     return state.deckLayout;
@@ -1124,6 +1201,7 @@
       setPptStatus("已取消重新排版，保留本页手动调整。", true);
       return state.deckLayout;
     }
+    pushPptUndoSnapshot();
     const data = await api("/api/drawing/deck-layout/reflow", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1462,6 +1540,7 @@
       const onUp = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        pushPptUndoSnapshot();
         saveDeckLayout({ drawing_frame: nextFrame })
           .then(() => setStatus("已更新全局PPT图纸框，所有图纸页已标记为需重新排版。"))
           .catch((err) => {
@@ -1511,6 +1590,7 @@
     const value = String(text || "");
     const slide = currentPptSlide();
     if (slide) {
+      if (options.history !== false && String(slide.text || "") !== value) beginPptTextHistory();
       slide.text = value;
       slide.manual_overrides = true;
     }
@@ -1526,13 +1606,13 @@
       saveDeckLayout({
         drawing_type: drawingType(),
         slide: { text: String(text || ""), manual_overrides: true },
-      }).catch((err) => setStatus(err.message, false));
+      }, { history: false }).catch((err) => setStatus(err.message, false));
     }, 350);
   }
 
   function applyPptTextEditorValue(editor, options = {}) {
     const text = PptText.serializeElement(editor);
-    setCurrentPptTextValue(text, { save: options.save !== false });
+    setCurrentPptTextValue(text, { save: options.save !== false, history: options.history !== false });
     if (options.render !== false) renderPptPreview();
   }
 
@@ -1569,7 +1649,14 @@
   }
 
   function handlePptTextShortcut(event) {
-    if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "b") return;
+    if (event.defaultPrevented || !(event.ctrlKey || event.metaKey)) return;
+    if ((event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y") && activePptTextEditor()) {
+      event.preventDefault();
+      if (event.key.toLowerCase() === "y" || event.shiftKey) redoPptHistory();
+      else undoPptHistory();
+      return;
+    }
+    if (event.key.toLowerCase() !== "b") return;
     const editor = activePptTextEditor();
     if (!editor) return;
     event.preventDefault();
@@ -1594,8 +1681,15 @@
     });
     editor.addEventListener("blur", () => {
       applyPptTextEditorValue(editor, { render: true });
+      endPptTextHistory();
     });
     editor.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
+        event.preventDefault();
+        if (event.key.toLowerCase() === "y" || event.shiftKey) redoPptHistory();
+        else undoPptHistory();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
         wrapPptTextSelection("*");
@@ -1647,6 +1741,7 @@
         const onUp = () => {
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("mouseup", onUp);
+          pushPptUndoSnapshot();
           saveDeckLayout({
             drawing_type: drawingType(),
             slide: {
@@ -1684,7 +1779,8 @@
     await saveDeckLayout({
       drawing_type: drawingType(),
       slide: { text: input ? input.value : "" },
-    });
+    }, { history: false });
+    endPptTextHistory();
     setStatus("已保存PPT图纸说明。");
   }
 
@@ -1702,6 +1798,7 @@
     const size = Number($("#pptTextFontSize")?.value || typography.body.size || 12);
     typography.body.size = Math.max(8, Math.min(22, Math.round(size)));
     typography.body.color = safeCssColor($("#pptTextColor")?.value, typography.body.color || "#3A3732");
+    pushPptUndoSnapshot();
     await saveDeckLayout({
       drawing_type: drawingType(),
       slide: { typography, manual_overrides: true },
@@ -1711,6 +1808,7 @@
 
   async function savePptAccent() {
     const color = safeCssColor($("#pptAccentColor")?.value, "#D9882B");
+    pushPptUndoSnapshot();
     await saveDeckLayout({ typography_accent: color });
     setStatus("已更新全局PPT品牌色。");
   }
@@ -1721,6 +1819,7 @@
       renderPptControls();
       return;
     }
+    pushPptUndoSnapshot();
     await saveDeckLayout({ template_side: templateSide });
     setStatus("已更新全局PPT版式，所有页面已标记为需重新排版。");
   }
@@ -4455,6 +4554,12 @@
       if (pasteClipboardObject()) event.preventDefault();
       return;
     }
+    if (modifier && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y") && state.pptPreviewMode) {
+      event.preventDefault();
+      if (event.key.toLowerCase() === "y" || event.shiftKey) redoPptHistory();
+      else undoPptHistory();
+      return;
+    }
     if (modifier && event.key.toLowerCase() === "z" && !isEditableElement(document.activeElement)) {
       event.preventDefault();
       if (event.shiftKey) redoHistory();
@@ -4517,11 +4622,19 @@
     $("#savePptSlideText")?.addEventListener("click", () => saveCurrentPptText().catch((err) => setStatus(err.message, false)));
     $("#pptSlideText")?.addEventListener("input", handlePptTextareaInput);
     $("#pptSlideText")?.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
+        event.preventDefault();
+        if (event.key.toLowerCase() === "y" || event.shiftKey) redoPptHistory();
+        else undoPptHistory();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
         event.preventDefault();
         wrapTextareaSelection(event.currentTarget, "*");
       }
     });
+    $("#pptSlideText")?.addEventListener("change", endPptTextHistory);
+    $("#pptSlideText")?.addEventListener("blur", endPptTextHistory);
     document.addEventListener("keydown", handlePptTextShortcut);
     $("#pptTextFontSize")?.addEventListener("change", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));
     $("#pptTextColor")?.addEventListener("input", () => saveCurrentPptTypography().catch((err) => setStatus(err.message, false)));

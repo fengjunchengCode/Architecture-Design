@@ -1566,6 +1566,7 @@ def assert_preview_legend_clean(page) -> None:
 def assert_ppt_text_inplace_edit_and_markup(page) -> None:
     editor = page.locator("[data-ppt-text-editor='true']")
     assert editor.count() == 1, "PPT text box should expose an in-preview editable text editor"
+    original = page.locator("#pptSlideText").input_value()
     edited = "停车配套：沿街设置临停位"
     editor.fill(edited)
     page.wait_for_function(
@@ -1578,6 +1579,31 @@ def assert_ppt_text_inplace_edit_and_markup(page) -> None:
         arg={"project": TEST_PROJECT, "expected": edited},
         timeout=10000,
     )
+    page.click("#pptSlidePreview", position={"x": 12, "y": 12})
+    page.keyboard.press("Control+Z")
+    page.wait_for_function(
+        """({project, expected}) =>
+            document.querySelector('#pptSlideText')?.value === expected
+            && fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": original},
+        timeout=10000,
+    )
+    page.click("#pptSlidePreview", position={"x": 12, "y": 12})
+    page.keyboard.press("Control+Shift+Z")
+    page.wait_for_function(
+        """({project, expected}) =>
+            document.querySelector('#pptSlideText')?.value === expected
+            && fetch(`/api/drawing/deck-layout?project=${project}`)
+              .then((r) => r.json())
+              .then((data) => data.layout.slides.functional_zoning.text === expected)
+        """,
+        arg={"project": TEST_PROJECT, "expected": edited},
+        timeout=10000,
+    )
+    editor = page.locator("[data-ppt-text-editor='true']")
     editor.evaluate(
         """(node) => {
             node.focus();
