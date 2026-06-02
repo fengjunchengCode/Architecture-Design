@@ -363,8 +363,11 @@ def assert_location_analysis_semantic_candidates(proj_dir: Path) -> None:
     types = {item.get("type") for item in objects}
     assert "location_road_line" in types, f"S1 location analysis should get road candidates: {objects}"
     assert "location_water_area" in types, f"S1 location analysis should get water candidates: {objects}"
-    assert all(item.get("source") == "s1_semantic_context" for item in objects), (
-        f"S1 semantic candidates should be auditable: {objects}"
+    assert all(item.get("source") == "agent_visual_draft" for item in objects), (
+        f"S1 semantic candidates should use a drawing-schema source: {objects}"
+    )
+    assert all((item.get("style_hints") or {}).get("semantic_source") == "s1_semantic_context" for item in objects), (
+        f"S1 semantic candidates should preserve auditable semantic provenance: {objects}"
     )
 
     context_path = proj_dir / "05_output" / "amap" / "s1_map_context.json"
@@ -381,6 +384,9 @@ def assert_location_analysis_semantic_candidates(proj_dir: Path) -> None:
     allowed = {"high", "medium", "low"}
     invalid = [item.get("confidence") for item in normalized if item.get("confidence") not in allowed]
     assert not invalid, f"S1 semantic candidates must normalize drawing confidence levels: {normalized}"
+    source_allowed = {"user_sketch", "agent_visual_draft", "vision_inferred", "cad_extracted"}
+    invalid_sources = [item.get("source") for item in normalized if item.get("source") not in source_allowed]
+    assert not invalid_sources, f"S1 semantic candidates must normalize drawing source values: {normalized}"
 
 
 def assert_s1_auto_draft_missing_context_error(proj_dir: Path) -> None:

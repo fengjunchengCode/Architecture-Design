@@ -639,6 +639,17 @@ def drawing_confidence(value: object) -> str:
     return "medium"
 
 
+def is_s1_semantic_drawing_object(obj: object) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    style_hints = obj.get("style_hints") if isinstance(obj.get("style_hints"), dict) else {}
+    return (
+        str(obj.get("source") or "") == "s1_semantic_context"
+        or str(obj.get("id") or "").startswith("auto-s1-")
+        or style_hints.get("semantic_source") == "s1_semantic_context"
+    )
+
+
 def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[dict[str, object]]:
     context_path = proj / "05_output" / "amap" / "s1_map_context.json"
     if not context_path.exists():
@@ -667,9 +678,11 @@ def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[
                 "geometry": {"kind": "path", "closed": False, "coords": coords},
                 "label": str(road.get("name") or f"road {index}"),
                 "confidence": drawing_confidence(road.get("confidence")),
-                "source": "s1_semantic_context",
+                "source": "agent_visual_draft",
                 "style_hints": {
-                    "inline_text": {"enabled": True, "text": str(road.get("name") or ""), "position": 0.5}
+                    "inline_text": {"enabled": True, "text": str(road.get("name") or ""), "position": 0.5},
+                    "semantic_source": "s1_semantic_context",
+                    "semantic_provider": str(road.get("source") or ""),
                 },
             }
         )
@@ -693,7 +706,11 @@ def build_location_analysis_semantic_objects(proj: Path, radius_m: int) -> list[
                 "geometry": {"kind": "path", "closed": True, "coords": coords},
                 "label": str(water.get("name") or f"water {index}"),
                 "confidence": drawing_confidence(water.get("confidence")),
-                "source": "s1_semantic_context",
+                "source": "agent_visual_draft",
+                "style_hints": {
+                    "semantic_source": "s1_semantic_context",
+                    "semantic_provider": str(water.get("source") or ""),
+                },
             }
         )
     return objects
@@ -751,7 +768,7 @@ def sync_location_analysis_drawing(proj: Path, code: str, screenshot_rel: str, r
     manual_objects = [
         obj
         for obj in drawing.get("objects", [])
-        if isinstance(obj, dict) and obj.get("source") != "s1_semantic_context"
+        if isinstance(obj, dict) and not is_s1_semantic_drawing_object(obj)
     ]
     auto_objects = build_location_analysis_semantic_objects(proj, radius_m)
     drawing["objects"] = manual_objects + auto_objects
