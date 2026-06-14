@@ -101,7 +101,12 @@ DRAWING_REGISTRY: dict[str, dict[str, Any]] = {
     },
 }
 
-DRAWING_ALIASES: dict[str, str] = {}
+DRAWING_ALIASES: dict[str, str] = {
+    # Legacy planning IDs kept readable so older task packs and handoff notes do
+    # not strand saved work when the canonical registry names evolve.
+    "elevation": "vertical_analysis",
+    "accessible_design": "accessibility_design",
+}
 
 DRAWING_TYPES: set[str] = set(DRAWING_REGISTRY.keys())
 

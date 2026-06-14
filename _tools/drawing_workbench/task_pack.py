@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from _tools.drawing_workbench.pdf_page_extract import extract_page
-from _tools.drawing_workbench.registry import DRAWING_TYPES, default_base_path_for
+from _tools.drawing_workbench.registry import DRAWING_TYPES, default_base_path_for, normalize_drawing_type
 from _tools.drawing_workbench.schema import drawing_output_paths, normalize_drawing
 
 
@@ -46,8 +46,7 @@ def build_task_pack(
     user_notes: str = "",
 ) -> Path:
     code = safe_project(project_code)
-    if drawing_type not in DRAWING_TYPES:
-        raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+    drawing_type = normalize_drawing_type(drawing_type)
     proj = project_dir(code)
     rels = drawing_output_paths(drawing_type)
     sketch_rel = str(sketch_path or rels["semantic"]).replace("\\", "/").lstrip("/")

@@ -7,10 +7,12 @@ import unittest
 from pathlib import Path
 
 from _tools.drawing_workbench.registry import (
+    DRAWING_ALIASES,
     DRAWING_TYPES,
     OBJECT_TYPES,
     OBJECT_TYPE_ALIASES,
     default_object_style,
+    normalize_drawing_type,
 )
 from _tools.drawing_workbench.schema import (
     ACCEPTED_SCHEMA_VERSIONS,
@@ -95,32 +97,40 @@ class TestSchemaVersion(unittest.TestCase):
 
 class TestRegistry(unittest.TestCase):
     def test_drawing_types_count(self):
-        self.assertEqual(len(DRAWING_TYPES), 10)
+        self.assertEqual(len(DRAWING_TYPES), 11)
 
     def test_all_expected_drawing_types(self):
         expected = {
-            "functional_zoning", "planting_design", "landscape_analysis",
-            "traffic_analysis", "fire_route", "vertical_analysis",
-            "supporting_facilities", "sponge_city", "accessibility_design",
-            "civil_defense",
+            "functional_zoning", "location_analysis", "planting_design",
+            "landscape_analysis", "traffic_analysis", "fire_route",
+            "vertical_analysis", "supporting_facilities", "sponge_city",
+            "accessibility_design", "civil_defense",
         }
         self.assertEqual(DRAWING_TYPES, expected)
 
     def test_object_types_include_all(self):
         expected = {
-            "functional_zone", "planting_zone", "key_planting_zone",
-            "planting_edge_line", "landscape_axis_primary", "landscape_axis_secondary",
-            "landscape_node", "vehicle_flow", "pedestrian_flow", "underground_flow",
-            "entrance_marker", "fire_route_line", "turning_radius",
-            "elevation_marker", "slope_arrow", "facility_zone",
-            "trash_collection_point", "sponge_zone", "ecological_ditch_line",
-            "runoff_line", "accessible_facility_zone", "accessible_point",
-            "civil_defense_zone",
+            "functional_zone", "location_road_line", "location_water_area",
+            "planting_zone", "key_planting_zone", "planting_edge_line",
+            "landscape_axis_primary", "landscape_axis_secondary", "landscape_node",
+            "vehicle_flow", "pedestrian_flow", "underground_flow", "entrance_marker",
+            "fire_route_line", "turning_radius", "elevation_marker", "slope_arrow",
+            "facility_zone", "trash_collection_point", "sponge_zone",
+            "ecological_ditch_line", "runoff_line", "accessible_facility_zone",
+            "accessible_point", "civil_defense_zone",
         }
         self.assertTrue(expected.issubset(OBJECT_TYPES))
 
     def test_aliases(self):
         self.assertEqual(OBJECT_TYPE_ALIASES.get("main_entrance"), "entrance_marker")
+        self.assertEqual(DRAWING_ALIASES.get("elevation"), "vertical_analysis")
+        self.assertEqual(DRAWING_ALIASES.get("accessible_design"), "accessibility_design")
+        self.assertEqual(normalize_drawing_type("elevation"), "vertical_analysis")
+        self.assertEqual(normalize_drawing_type("accessible_design"), "accessibility_design")
+        self.assertEqual(
+            normalize_drawing(_make_drawing(drawing_type="elevation"))["drawing_type"],
+            "vertical_analysis",
+        )
 
 
 class TestClosedPathGeometry(unittest.TestCase):

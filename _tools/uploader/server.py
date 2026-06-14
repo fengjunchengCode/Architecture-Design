@@ -29,11 +29,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from _tools.drawing_workbench.registry import (
+    DRAWING_ALIASES,
     DRAWING_REGISTRY,
     DRAWING_TYPES,
     OBJECT_TYPE_REGISTRY,
     default_base_path_for,
     default_object_style,
+    normalize_drawing_type,
 )
 from _tools.drawing_workbench.deck_layout import (
     export_deck_pptx,
@@ -134,6 +136,15 @@ def project_dir(code: str) -> Path:
     if PROJECTS_DIR.resolve() not in path.parents:
         raise ValueError("项目路径越界")
     return path
+
+
+def canonical_drawing_type(value: object) -> str:
+    try:
+        return normalize_drawing_type(value)
+    except ValueError as exc:
+        aliases = ", ".join(f"{old}->{new}" for old, new in sorted(DRAWING_ALIASES.items()))
+        detail = f"; aliases: {aliases}" if aliases else ""
+        raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}{detail}") from exc
 
 
 def sanitize_filename(name: str) -> str:
@@ -268,11 +279,24 @@ def load_env_file(path: Path = ENV_FILE) -> list[str]:
     return loaded
 
 
+def is_placeholder_env_value(value: str) -> bool:
+    lowered = value.strip().lower()
+    return (
+        not lowered
+        or lowered in {"xxx", "your_key", "your_amap_webservice_key", "<用户的key>", "none"}
+        or lowered.startswith("your_")
+        or lowered.startswith("填入")
+    )
+
+
+def configured_env_value(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    return "" if is_placeholder_env_value(value) else value
+
+
 def configured_env_name(names: tuple[str, ...]) -> str | None:
     for name in names:
-        value = os.environ.get(name, "").strip()
-        lowered = value.lower()
-        if value and lowered not in {"xxx", "your_key", "your_amap_webservice_key", "none"} and not lowered.startswith("your_"):
+        if configured_env_value(name):
             return name
     return None
 
@@ -387,7 +411,7 @@ def generate_tdt_location_snapshot(proj: Path, radius_m: int, output_path: Path)
     from _tools.s1_location_analysis import gcj02_to_wgs84
 
     load_env_file()
-    tk = os.environ.get("TIANDITU_KEY", "").strip()
+    tk = configured_env_value("TIANDITU_KEY")
     if not tk:
         raise ValueError("缺少 TIANDITU_KEY，无法服务端生成天地图卫星快照")
     context_path = proj / "05_output" / "amap" / "s1_map_context.json"
@@ -458,7 +482,7 @@ def generate_tdt_site_basemap(proj: Path, output_path: Path) -> dict[str, object
     from PIL import Image, ImageEnhance
 
     load_env_file()
-    tk = os.environ.get("TIANDITU_KEY", "").strip()
+    tk = configured_env_value("TIANDITU_KEY")
     if not tk:
         raise ValueError("缺 TIANDITU_KEY，S2 天地图卫星底图不可用，请在仓库根 .env 配置")
     lng_gcj, lat_gcj = read_s2_center_gcj02(proj)
@@ -1510,11 +1534,11 @@ def write_style_preset_library(presets: list[dict]) -> dict:
 def build_env_check_payload() -> dict[str, object]:
     loaded_env = load_env_file()
     key_env = configured_env_name(("AMAP_JSAPI_KEY",))
-    key = os.environ.get(key_env, "").strip() if key_env else ""
-    service_host = os.environ.get("AMAP_JSAPI_SERVICE_HOST", "").strip()
-    security_jscode = os.environ.get("AMAP_JSAPI_SECURITY_JSCODE", "").strip()
+    key = configured_env_value(key_env) if key_env else ""
+    service_host = configured_env_value("AMAP_JSAPI_SERVICE_HOST")
+    security_jscode = configured_env_value("AMAP_JSAPI_SECURITY_JSCODE")
     webservice_key_env = configured_env_name(AMAP_WEBSERVICE_ENV_NAMES)
-    tdt_key = os.environ.get("TIANDITU_KEY", "").strip()
+    tdt_key = configured_env_value("TIANDITU_KEY")
     env_file_exists = ENV_FILE.exists()
     warnings: list[str] = []
 
@@ -1769,6 +1793,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             "schema_version": "1.0",
             "default_drawing_type": "functional_zoning",
             "drawings": drawings,
+            "drawing_aliases": DRAWING_ALIASES,
             "objects": objects,
         })
 
@@ -1837,8 +1862,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             layout = payload["layout"]
         drawing_type = str(payload.get("drawing_type") or "").strip()
         if drawing_type:
-            if drawing_type not in DRAWING_TYPES:
-                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+            drawing_type = canonical_drawing_type(drawing_type)
             slide_patch = payload.get("slide") if isinstance(payload.get("slide"), dict) else {}
             slide = (layout.get("slides") or {}).get(drawing_type) or {}
             if "text" in slide_patch:
@@ -1873,9 +1897,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
         if scope == "all":
             drawing_type_arg = None
         else:
-            if drawing_type not in DRAWING_TYPES:
-                raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
-            drawing_type_arg = drawing_type
+            drawing_type_arg = canonical_drawing_type(drawing_type)
         layout = reflow_deck(proj, layout, drawing_type=drawing_type_arg)
         saved = save_deck_layout(proj, layout, code)
         self.send_json({"ok": True, "project": code, "path": layout_rel_path(), "layout": saved})
@@ -1891,9 +1913,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_supporting_list(self, query: str) -> None:
         params = parse_qs(query)
         code = safe_project(params.get("project", [""])[0])
-        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(params.get("drawing_type", [""])[0])
         proj = project_dir(code)
         manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
         if not manifest_path.exists():
@@ -1912,9 +1932,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_supporting_upload(self, query: str) -> None:
         params = parse_qs(query)
         code = safe_project(params.get("project", [""])[0])
-        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(params.get("drawing_type", [""])[0])
         proj = project_dir(code)
 
         content_type = self.headers.get("Content-Type", "")
@@ -1970,9 +1988,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_supporting_update(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
-        drawing_type = str(payload.get("drawing_type", "")).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(payload.get("drawing_type"))
         proj = project_dir(code)
         manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
         if not manifest_path.exists():
@@ -1997,9 +2013,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_supporting_delete(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
-        drawing_type = str(payload.get("drawing_type", "")).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(payload.get("drawing_type"))
         proj = project_dir(code)
         manifest_path = proj / "05_output" / "drawings" / "supporting" / drawing_type / "manifest.json"
         if not manifest_path.exists():
@@ -2025,9 +2039,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_drawing_load(self, query: str) -> None:
         params = parse_qs(query)
         code = safe_project(params.get("project", [""])[0])
-        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(params.get("drawing_type", [""])[0])
         proj = project_dir(code)
         paths = self.drawing_paths(proj, drawing_type)
         rels = drawing_output_paths(drawing_type)
@@ -2117,9 +2129,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_drawing_task_pack(self) -> None:
         payload = self.read_json()
         code = safe_project(str(payload.get("project", "")))
-        drawing_type = str(payload.get("drawing_type") or "").strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(payload.get("drawing_type"))
         rels = drawing_output_paths(drawing_type)
         pack_path = build_task_pack(
             code,
@@ -2140,9 +2150,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
     def handle_drawing_export(self, query: str) -> None:
         params = parse_qs(query)
         code = safe_project(params.get("project", [""])[0])
-        drawing_type = str(params.get("drawing_type", [""])[0]).strip()
-        if drawing_type not in DRAWING_TYPES:
-            raise ValueError(f"drawing_type must be one of {sorted(DRAWING_TYPES)}")
+        drawing_type = canonical_drawing_type(params.get("drawing_type", [""])[0])
         proj = project_dir(code)
         rels = drawing_output_paths(drawing_type)
         svg_path = proj / rels["svg"]
@@ -2316,7 +2324,7 @@ class UploaderHandler(BaseHTTPRequestHandler):
             meta = generate_tdt_site_basemap(proj, target)
         except Exception as exc:
             load_env_file()
-            configured = bool(os.environ.get("TIANDITU_KEY", "").strip())
+            configured = bool(configured_env_value("TIANDITU_KEY"))
             center_gcj02 = None
             tile_debug = None
             try:

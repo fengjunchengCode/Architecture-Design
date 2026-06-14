@@ -341,6 +341,11 @@ def assert_site_context_api(proj_dir: Path) -> None:
 def assert_s2_basemap_diagnostics_contract(proj_dir: Path) -> None:
     from _tools.uploader import server as uploader_server
 
+    missing = api_get(f"/api/s2/basemap?project={TEST_PROJECT}")
+    assert missing.get("ok") is False, f"placeholder Tianditu key should not generate a basemap: {missing}"
+    assert missing.get("configured") is False, f"placeholder Tianditu key must be reported as missing: {missing}"
+    assert missing.get("reason") == "missing_key", f"placeholder Tianditu key should be categorized as missing: {missing}"
+
     payload = uploader_server.build_s2_basemap_error_payload(
         RuntimeError("tile fetch failed: timeout"),
         configured=True,
@@ -412,6 +417,18 @@ def assert_s1_auto_draft_missing_context_error(proj_dir: Path) -> None:
     assert body.get("error_stage") == "s1_map_context", f"missing context should identify the failure stage: {body}"
     assert "请先生成 S1 高德上下文" in (body.get("error") or ""), f"missing context copy should be explicit: {body}"
     assert "生成失败" not in (body.get("error") or ""), f"API must not collapse the real error into generic copy: {body}"
+
+
+def assert_env_placeholders_not_configured() -> None:
+    result = api_get("/api/env-check")
+    assert result.get("ok"), f"env check failed: {result}"
+    assert result.get("tianditu_configured") is False, f"placeholder TIANDITU_KEY must not count as configured: {result}"
+    assert result.get("webservice_configured") is False, f"placeholder AMAP_WEBSERVICE_KEY must not count as configured: {result}"
+    assert result.get("configured") is False, f"placeholder AMAP_JSAPI_KEY must not count as configured: {result}"
+    warning_text = "\n".join(result.get("warnings") or [])
+    assert "TIANDITU_KEY" in warning_text and "AMAP_WEBSERVICE_KEY" in warning_text, (
+        f"env warnings should name missing map keys: {result}"
+    )
 
 
 def assert_project_conventions_standard_interactions() -> None:
@@ -503,6 +520,10 @@ def main() -> int:
 
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    env["AMAP_WEBSERVICE_KEY"] = "your_amap_webservice_key"
+    env["AMAP_JSAPI_KEY"] = "your_amap_jsapi_key"
+    env["AMAP_JSAPI_SECURITY_JSCODE"] = "your_amap_jsapi_security_jscode"
+    env["TIANDITU_KEY"] = "your_tianditu_key"
     preset_src = REPO_ROOT / "_tools" / "drawing_workbench" / "style_presets.json"
     preset_test = proj_dir / "05_output" / "drawings" / "style_presets_api_smoke.json"
     shutil.copyfile(preset_src, preset_test)
@@ -531,6 +552,7 @@ def main() -> int:
         reg = api_get("/api/drawing/registry")
         assert reg.get("ok"), f"registry not ok: {reg}"
         drawings = reg.get("drawings", {})
+        aliases = reg.get("drawing_aliases", {})
         required_types = [
             "functional_zoning", "location_analysis", "planting_design",
             "landscape_analysis", "traffic_analysis", "fire_route",
@@ -539,6 +561,8 @@ def main() -> int:
         ]
         for dt in required_types:
             assert dt in drawings, f"missing drawing type: {dt}"
+        assert aliases.get("elevation") == "vertical_analysis", f"missing elevation alias: {aliases}"
+        assert aliases.get("accessible_design") == "accessibility_design", f"missing accessibility alias: {aliases}"
         expected_types = list(drawings.keys())
         print(f"OK: registry has {len(drawings)} drawing types")
 
@@ -547,6 +571,11 @@ def main() -> int:
             result = api_get(f"/api/drawing/load?project={TEST_PROJECT}&drawing_type={dt}")
             assert result.get("ok"), f"load failed for {dt}: {result}"
             assert result.get("drawing"), f"no drawing for {dt}"
+        alias_result = api_get(f"/api/drawing/load?project={TEST_PROJECT}&drawing_type=elevation")
+        assert alias_result.get("drawing_type") == "vertical_analysis", f"alias did not normalize: {alias_result}"
+        assert alias_result.get("drawing", {}).get("drawing_type") == "vertical_analysis", (
+            f"alias drawing payload did not normalize: {alias_result}"
+        )
         print(f"OK: load works for all {len(expected_types)} drawing types")
 
         # Test PPT deck layout load/save/reflow
@@ -708,6 +737,8 @@ def main() -> int:
         assert_site_context_api(proj_dir)
         assert_s2_basemap_diagnostics_contract(proj_dir)
         print("OK: S2 site context API load/save/schema works")
+        assert_env_placeholders_not_configured()
+        print("OK: env placeholders are treated as missing")
         assert_s1_auto_draft_missing_context_error(proj_dir)
         print("OK: S1 auto draft reports missing context explicitly")
         assert_location_analysis_semantic_candidates(proj_dir)

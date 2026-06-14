@@ -491,9 +491,11 @@ schema 1.2 在 1.1 基础上新增了以下几何和样式能力：
 - `inline_text`: 旋转文字（坡度箭头）
 - `legend_enabled`, `legend_label`: 图例控制
 
-### 14.3 支持的图纸类型 (10 种)
+### 14.3 支持的图纸类型 (11 种)
 
-`functional_zoning`, `planting_design`, `landscape_analysis`, `traffic_analysis`, `fire_route`, `vertical_analysis`, `supporting_facilities`, `sponge_city`, `accessibility_design`, `civil_defense`
+`functional_zoning`, `location_analysis`, `planting_design`, `landscape_analysis`, `traffic_analysis`, `fire_route`, `vertical_analysis`, `supporting_facilities`, `sponge_city`, `accessibility_design`, `civil_defense`
+
+兼容旧 ID：`elevation` 会归一化为 `vertical_analysis`，`accessible_design` 会归一化为 `accessibility_design`。新 task_pack 和新语义 JSON 应继续写 canonical ID。
 
 ### 14.4 配图 (Supporting Images)
 

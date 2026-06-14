@@ -43,7 +43,7 @@ skills/                            # agent skills
 
 ## 3. 制图工作台 + PPT —— 当前能力(已成型)
 
-**10 种图纸类型**(registry):`functional_zoning`(功能分区,认可的基准)、`location_analysis`(选址/区位分析)、`planting_design`、`landscape_analysis`、`traffic_analysis`、`fire_route`、`sponge_city`、`accessible_design`、`civil_defense`、`elevation`(竖向)等。
+**11 种图纸类型**(registry):`functional_zoning`(功能分区,认可的基准)、`location_analysis`(选址/区位分析)、`planting_design`、`landscape_analysis`、`traffic_analysis`、`fire_route`、`vertical_analysis`(竖向)、`supporting_facilities`、`sponge_city`、`accessibility_design`、`civil_defense`。兼容旧 ID：`elevation` -> `vertical_analysis`，`accessible_design` -> `accessibility_design`。
 
 **绘制能力**:多边形/线段/圆形/三角形/文字/转弯半径标注/标高点/坡度箭头。统一到功能分区(FZ)的同一套:
 - **单一样式模型**(`Model.normalizeStyleHints`,超集,含 functional_zone)、**单一控件渲染器**(`PRIMITIVE_STYLE_SPEC` 驱动)、**单一 SVG 渲染器**(按 geometry.kind 分支)。

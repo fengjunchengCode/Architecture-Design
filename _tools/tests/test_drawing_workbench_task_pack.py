@@ -28,6 +28,7 @@ def _ensure_test_project() -> Path:
 def _make_minimal_drawing(drawing_type: str) -> dict:
     obj_type_map = {
         "functional_zoning": ("functional_zone", "path", True),
+        "location_analysis": ("location_road_line", "path", False),
         "planting_design": ("planting_zone", "path", True),
         "landscape_analysis": ("landscape_node", "circle", None),
         "traffic_analysis": ("vehicle_flow", "path", False),
@@ -107,6 +108,21 @@ class TestTaskPackBuildsForAllDrawingTypes(unittest.TestCase):
             task = json.loads((pack_dir / "task.json").read_text(encoding="utf-8"))
             si = task["inputs"].get("supporting_images", {})
             self.assertEqual(si.get("count", 0), 0)
+        finally:
+            self._cleanup_packs()
+            sketch_path.unlink(missing_ok=True)
+
+    def test_alias_drawing_type_builds_canonical_pack(self):
+        self._cleanup_packs()
+        semantic_dir = self.proj / "05_output" / "drawings" / "semantic"
+        sketch_path = semantic_dir / "vertical_analysis.json"
+        drawing = _make_minimal_drawing("vertical_analysis")
+        sketch_path.write_text(json.dumps(drawing, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            pack_dir = build_task_pack(TEST_PROJECT, "elevation", sketch_path=str(sketch_path))
+            task = json.loads((pack_dir / "task.json").read_text(encoding="utf-8"))
+            self.assertEqual(task["drawing_type"], "vertical_analysis")
+            self.assertTrue(pack_dir.name.startswith("vertical_analysis__"))
         finally:
             self._cleanup_packs()
             sketch_path.unlink(missing_ok=True)
